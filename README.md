@@ -1,5 +1,7 @@
 # how-much-is-this-property-worth
 
+![How much is this house worth MVP](docs/imgs/how-much-is-this-house-worth.png)
+
 ## Project Description
 
 `how-much-is-this-property-worth` is a residential property valuation tool focused on sale price estimation. The goal is to estimate what a property is worth today based on market evidence in the surrounding area, answering a simple owner question: **"How much is this property worth, and how much could I sell it for today?"**
