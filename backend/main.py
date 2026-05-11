@@ -1,0 +1,119 @@
+import logging
+import os
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
+from geocoder import get_municipio_from_address
+from models import ValuationRequest, ValuationResponse, ValuationStats
+from scraper import scrape_idealista_listings
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("House Valuation API starting up")
+    yield
+    logger.info("House Valuation API shutting down")
+
+
+app = FastAPI(
+    title="House Valuation API",
+    description="MVP — estimates your home value using real-time Idealista listings",
+    version="0.1.0",
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Serve the frontend from ../frontend/
+FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
+
+app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
+
+
+@app.get("/", include_in_schema=False)
+async def serve_frontend():
+    return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
+@app.post("/api/valuation", response_model=ValuationResponse)
+async def get_valuation(request: ValuationRequest):
+    """
+    Main valuation endpoint.
+    1. Geocode the address to extract the municipio.
+    2. Scrape Idealista for comparable listings.
+    3. Compute basic price statistics and an estimated value.
+    """
+    # --- Step 1: Geocode ---
+    try:
+        municipio = await get_municipio_from_address(request.address)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        logger.error(f"Geocoding failed: {exc}", exc_info=True)
+        raise HTTPException(status_code=502, detail="Geocoding service unavailable")
+
+    logger.info(f"Municipio resolved: {municipio.name} (slug: {municipio.slug})")
+
+    # --- Step 2: Scrape Idealista ---
+    try:
+        listings, search_url = await scrape_idealista_listings(
+            address=request.address,
+            bedrooms=request.bedrooms,
+            bathrooms=request.bathrooms,
+            m2=request.m2,
+        )
+    except Exception as exc:
+        logger.error(f"Scraping failed: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Could not fetch listings from Idealista: {str(exc)}",
+        )
+
+    # --- Step 3: Statistics ---
+    prices = [lst.price for lst in listings if lst.price]
+    ppms = [lst.price_per_m2 for lst in listings if lst.price_per_m2]
+
+    avg_ppm2 = int(sum(ppms) / len(ppms)) if ppms else None
+    estimated = int(avg_ppm2 * request.m2) if avg_ppm2 else None
+
+    stats = ValuationStats(
+        total_comparables=len(listings),
+        avg_price=int(sum(prices) / len(prices)) if prices else None,
+        min_price=min(prices) if prices else None,
+        max_price=max(prices) if prices else None,
+        avg_price_per_m2=avg_ppm2,
+        estimated_value=estimated,
+        price_range_low=int(estimated * 0.90) if estimated else None,
+        price_range_high=int(estimated * 1.10) if estimated else None,
+    )
+
+    return ValuationResponse(
+        municipio=municipio,
+        listings=listings,
+        stats=stats,
+        search_url=search_url,
+    )
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=True)
