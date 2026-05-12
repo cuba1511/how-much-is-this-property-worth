@@ -1,16 +1,20 @@
-import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
 from time import perf_counter
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from geocoder import get_municipio_from_address
-from models import ValuationRequest, ValuationResponse, ValuationStats
+from geocoder import (
+    get_municipio_from_address,
+    municipio_from_resolved_address,
+    reverse_geocode,
+    suggest_addresses,
+)
+from models import ResolvedAddress, ValuationRequest, ValuationResponse, ValuationStats
 from scraper import scrape_idealista_listings
 
 logging.basicConfig(level=logging.INFO)
@@ -55,6 +59,32 @@ async def health():
     return {"status": "ok"}
 
 
+@app.get("/api/addresses/autocomplete", response_model=list[ResolvedAddress])
+async def autocomplete_addresses(
+    q: str = Query(..., min_length=3),
+    limit: int = Query(5, ge=1, le=8),
+):
+    try:
+        return await suggest_addresses(q, limit=limit)
+    except Exception as exc:
+        logger.error(f"Address autocomplete failed: {exc}", exc_info=True)
+        raise HTTPException(status_code=502, detail="Address autocomplete unavailable")
+
+
+@app.get("/api/addresses/reverse", response_model=ResolvedAddress)
+async def reverse_address(
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+):
+    try:
+        return await reverse_geocode(lat, lon)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        logger.error(f"Reverse geocoding failed: {exc}", exc_info=True)
+        raise HTTPException(status_code=502, detail="Reverse geocoding unavailable")
+
+
 @app.post("/api/valuation", response_model=ValuationResponse)
 async def get_valuation(request: ValuationRequest):
     """
@@ -64,10 +94,15 @@ async def get_valuation(request: ValuationRequest):
     3. Compute basic price statistics and an estimated value.
     """
     request_started_at = perf_counter()
+    valuation_address = request.selected_address.label if request.selected_address else request.address
 
     # --- Step 1: Geocode ---
     try:
-        municipio = await get_municipio_from_address(request.address)
+        municipio = (
+            municipio_from_resolved_address(request.selected_address)
+            if request.selected_address
+            else await get_municipio_from_address(request.address)
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     except Exception as exc:
@@ -79,7 +114,7 @@ async def get_valuation(request: ValuationRequest):
     # --- Step 2: Scrape Idealista ---
     try:
         listings, search_url, search_metadata = await scrape_idealista_listings(
-            address=request.address,
+            address=valuation_address,
             municipio=municipio,
             bedrooms=request.bedrooms,
             bathrooms=request.bathrooms,

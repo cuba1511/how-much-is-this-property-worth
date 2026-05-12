@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>¿Cuánto vale tu casa?</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    crossorigin=""
+  />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <style>
@@ -47,6 +52,17 @@
       from { opacity: 0; transform: translateY(12px); }
       to   { opacity: 1; transform: translateY(0); }
     }
+    #addressMap {
+      height: 260px;
+    }
+    .leaflet-container {
+      border-radius: 1rem;
+    }
+    .suggestion-panel {
+      position: absolute;
+      z-index: 20;
+      width: 100%;
+    }
   </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
@@ -86,14 +102,27 @@
           <label class="block text-sm font-semibold text-gray-700 mb-1.5">
             Dirección completa
           </label>
-          <input
-            type="text"
-            id="address"
-            placeholder="Calle Gran Vía 28, Madrid"
-            required
-            class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-800 placeholder-gray-400"
-          />
-          <p class="text-xs text-gray-400 mt-1">Usamos esto para identificar el municipio automáticamente</p>
+          <div class="relative">
+            <input
+              type="text"
+              id="address"
+              placeholder="Calle Gran Vía 28, Madrid"
+              required
+              autocomplete="off"
+              class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-800 placeholder-gray-400"
+            />
+            <div id="addressSuggestions" class="suggestion-panel hidden mt-2 rounded-2xl border border-gray-200 bg-white shadow-xl overflow-hidden"></div>
+          </div>
+          <div id="selectedAddressBox" class="hidden mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+            <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700">Ubicación seleccionada</p>
+            <p id="selectedAddressText" class="mt-1 text-sm text-emerald-900 font-medium"></p>
+          </div>
+          <div class="mt-3">
+            <div id="addressMap" class="w-full border border-gray-200 shadow-sm"></div>
+          </div>
+          <p class="text-xs text-gray-400 mt-2">
+            Puedes escribir y elegir una sugerencia, o hacer click en el mapa para autocompletar la dirección.
+          </p>
         </div>
 
         <!-- M2 -->
@@ -225,203 +254,7 @@
     </div>
   </section>
 
-<script>
-const API_BASE = '';  // Same origin via FastAPI static serving
-const PROGRESS_STEPS = [
-  { afterMs: 0, text: 'Buscando en la dirección exacta…' },
-  { afterMs: 12000, text: 'Ampliando a la misma calle para encontrar más comparables…' },
-  { afterMs: 24000, text: 'Si hace falta, abrimos la búsqueda a una zona cercana…' },
-];
-
-let progressInterval = null;
-
-function fmt(n) {
-  if (n == null) return '—';
-  return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n);
-}
-
-function statCard(label, value, sub) {
-  return `
-    <div class="stat-card rounded-xl p-4 border border-gray-100">
-      <p class="text-xs text-gray-500 font-medium uppercase tracking-wide">${label}</p>
-      <p class="text-xl font-extrabold text-gray-800 mt-1">${value}</p>
-      ${sub ? `<p class="text-xs text-gray-400 mt-0.5">${sub}</p>` : ''}
-    </div>
-  `;
-}
-
-function listingCard(l) {
-  const img = l.image_url
-    ? `<img src="${l.image_url}" alt="" class="listing-img" onerror="this.style.display='none'">`
-    : `<div class="listing-img flex items-center justify-center bg-gray-100">
-         <svg class="w-8 h-8 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-             d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
-         </svg>
-       </div>`;
-
-  const badges = [];
-  if (l.m2)       badges.push(`${l.m2} m²`);
-  if (l.bedrooms) badges.push(`${l.bedrooms} hab.`);
-  if (l.bathrooms) badges.push(`${l.bathrooms} baños`);
-  if (l.floor)    badges.push(l.floor);
-
-  return `
-    <a href="${l.url}" target="_blank"
-       class="card-hover bg-white rounded-2xl border border-gray-100 overflow-hidden flex flex-col shadow-sm">
-      ${img}
-      <div class="p-4 flex flex-col flex-1">
-        <p class="text-sm text-gray-500 truncate mb-1">${l.address || ''}</p>
-        <p class="font-bold text-gray-900 text-lg">${fmt(l.price)}</p>
-        ${l.price_per_m2 ? `<p class="text-xs text-gray-400">${fmt(l.price_per_m2)}/m²</p>` : ''}
-        <div class="flex flex-wrap gap-1.5 mt-3">
-          ${badges.map(b => `<span class="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">${b}</span>`).join('')}
-        </div>
-      </div>
-    </a>
-  `;
-}
-
-function renderSearchMetadata(searchMetadata) {
-  const box = document.getElementById('searchMeta');
-  if (!searchMetadata) {
-    box.classList.add('hidden');
-    box.innerHTML = '';
-    return;
-  }
-
-  box.innerHTML = `
-    <p class="text-sm font-semibold text-gray-800 mb-1">Cómo encontramos los comparables</p>
-    <p class="text-sm text-gray-600 mb-3">
-      Estrategia: búsqueda escalonada · etapa final: <strong>${searchMetadata.final_stage}</strong> · tiempo total: <strong>${(searchMetadata.total_duration_ms / 1000).toFixed(1)}s</strong>
-    </p>
-    <div class="flex flex-wrap gap-2">
-      ${searchMetadata.stages.map(stage => `
-        <div class="text-xs rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-gray-700">
-          ${stage.label}: ${stage.listings_found} comps · ${(stage.duration_ms / 1000).toFixed(1)}s
-        </div>
-      `).join('')}
-    </div>
-  `;
-  box.classList.remove('hidden');
-}
-
-function startProgressUI() {
-  const progressBox = document.getElementById('progressBox');
-  const progressMsg = document.getElementById('progressMsg');
-  const startedAt = Date.now();
-
-  progressBox.classList.remove('hidden');
-  progressMsg.textContent = PROGRESS_STEPS[0].text;
-
-  progressInterval = setInterval(() => {
-    const elapsed = Date.now() - startedAt;
-    let currentStep = PROGRESS_STEPS[0];
-    for (const step of PROGRESS_STEPS) {
-      if (elapsed >= step.afterMs) currentStep = step;
-    }
-    progressMsg.textContent = currentStep.text;
-  }, 500);
-}
-
-function stopProgressUI() {
-  document.getElementById('progressBox').classList.add('hidden');
-  if (progressInterval) {
-    clearInterval(progressInterval);
-    progressInterval = null;
-  }
-}
-
-document.getElementById('valuationForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-
-  // Reset UI
-  document.getElementById('results').classList.add('hidden');
-  document.getElementById('errorBox').classList.add('hidden');
-  document.getElementById('searchMeta').classList.add('hidden');
-  startProgressUI();
-
-  const btn = document.getElementById('submitBtn');
-  const spinner = document.getElementById('btnSpinner');
-  const btnText = document.getElementById('btnText');
-  btn.disabled = true;
-  spinner.classList.remove('hidden');
-  btnText.textContent = 'Buscando comparables…';
-
-  const payload = {
-    address:   document.getElementById('address').value.trim(),
-    m2:        parseInt(document.getElementById('m2').value),
-    bedrooms:  parseInt(document.getElementById('bedrooms').value),
-    bathrooms: parseInt(document.getElementById('bathrooms').value),
-  };
-
-  try {
-    const res = await fetch(`${API_BASE}/api/valuation`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: 'Error desconocido' }));
-      throw new Error(err.detail || `HTTP ${res.status}`);
-    }
-
-    const data = await res.json();
-    renderResults(data, payload);
-
-  } catch (err) {
-    document.getElementById('errorMsg').textContent = `Error: ${err.message}`;
-    document.getElementById('errorBox').classList.remove('hidden');
-  } finally {
-    stopProgressUI();
-    btn.disabled = false;
-    spinner.classList.add('hidden');
-    btnText.textContent = 'Estimar valor';
-  }
-});
-
-function renderResults(data, payload) {
-  const { municipio, listings, stats, search_url, search_metadata } = data;
-
-  // Municipio label
-  document.getElementById('municipioLabel').textContent =
-    `${municipio.name}${municipio.province ? `, ${municipio.province}` : ''}`;
-  document.getElementById('idealistaLink').href = search_url;
-  renderSearchMetadata(search_metadata);
-
-  // Stats grid
-  const sg = document.getElementById('statsGrid');
-  sg.innerHTML = [
-    statCard('Comparables', stats.total_comparables, 'listados encontrados'),
-    statCard('Precio medio', fmt(stats.avg_price), 'en esta búsqueda'),
-    statCard('€/m² medio', stats.avg_price_per_m2 ? `${stats.avg_price_per_m2.toLocaleString('es-ES')} €` : '—', 'precio por metro cuadrado'),
-    statCard('Rango', stats.min_price && stats.max_price ? `${fmt(stats.min_price)} – ${fmt(stats.max_price)}` : '—', 'mín – máx'),
-  ].join('');
-
-  // Estimate card
-  if (stats.estimated_value) {
-    document.getElementById('estimateValue').textContent = fmt(stats.estimated_value);
-    document.getElementById('estimateRange').textContent =
-      `Rango estimado: ${fmt(stats.price_range_low)} – ${fmt(stats.price_range_high)}`;
-    document.getElementById('estimateCount').textContent = stats.total_comparables;
-    document.getElementById('estimateM2').textContent = payload.m2;
-    document.getElementById('estimateCard').classList.remove('hidden');
-  }
-
-  // Listings
-  const grid = document.getElementById('listingsGrid');
-  if (listings.length === 0) {
-    document.getElementById('noListings').classList.remove('hidden');
-    grid.innerHTML = '';
-  } else {
-    document.getElementById('noListings').classList.add('hidden');
-    grid.innerHTML = listings.map(listingCard).join('');
-  }
-
-  document.getElementById('results').classList.remove('hidden');
-  document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-</script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script type="module" src="/static/js/app.js"></script>
 </body>
 </html>

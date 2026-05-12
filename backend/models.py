@@ -2,11 +2,30 @@ from pydantic import BaseModel, Field
 from typing import Optional
 
 
+class ResolvedAddress(BaseModel):
+    label: str
+    lat: float
+    lon: float
+    municipality: str
+    province: Optional[str] = None
+    road: Optional[str] = None
+    house_number: Optional[str] = None
+    postcode: Optional[str] = None
+    neighbourhood: Optional[str] = None
+    quarter: Optional[str] = None
+    city_district: Optional[str] = None
+    country: Optional[str] = None
+    provider: str = "nominatim"
+    provider_id: Optional[str] = None
+    precision: Optional[str] = None
+
+
 class ValuationRequest(BaseModel):
     address: str = Field(..., description="Full address of the property")
     m2: int = Field(..., gt=0, description="Surface area in square meters")
     bedrooms: int = Field(..., ge=0, description="Number of bedrooms")
     bathrooms: int = Field(..., ge=1, description="Number of bathrooms")
+    selected_address: Optional[ResolvedAddress] = None
 
 
 class MunicipioInfo(BaseModel):

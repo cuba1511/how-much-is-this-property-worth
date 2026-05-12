@@ -1,11 +1,11 @@
 """
 Idealista scraper using Bright Data's Scraping Browser (CDP over WebSocket).
 
-The scraper now follows a staged comparable strategy:
-1. Search the exact address
-2. If there are too few comps, search the same street without the house number
-3. If there are still too few comps, broaden to the municipality
-4. Merge, de-duplicate, rank, and return the best comparables
+Comparable collection follows layered geography:
+1. Same street
+2. Same microzone
+3. Same district
+4. Municipality
 """
 
 from dataclasses import dataclass
@@ -19,6 +19,7 @@ from time import perf_counter
 from typing import Optional
 
 from dotenv import load_dotenv
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 from playwright.async_api import Route
 from playwright.async_api import TimeoutError as PlaywrightTimeout
@@ -35,8 +36,12 @@ SBR_WS_CDP = os.getenv("BRIGHT_DATA_CDP")
 IDEALISTA_BASE = "https://www.idealista.com"
 IDEALISTA_HOME = f"{IDEALISTA_BASE}/"
 TARGET_COMPARABLES = 10
-STOP_IF_COMPARABLES_REACHED = 8
-STOP_IF_LOCAL_COMPARABLES_REACHED = 4
+STOP_RULES_BY_STAGE = {
+    "same_street": 3,
+    "same_microzone": 5,
+    "same_local_area": 8,
+    "municipality": 8,
+}
 INITIAL_CAPTCHA_TIMEOUT_MS = 12_000
 FOLLOW_UP_CAPTCHA_TIMEOUT_MS = 1_500
 FILTER_CAPTCHA_TIMEOUT_MS = 750
@@ -199,26 +204,60 @@ def build_broader_zone_query(address: str, municipio: MunicipioInfo) -> str:
     return municipality or normalize_space(address)
 
 
+def build_microzone_query(municipio: MunicipioInfo) -> str:
+    microzone_candidates = [
+        municipio.quarter,
+        municipio.neighbourhood,
+    ]
+    microzone = next(
+        (normalize_space(value) for value in microzone_candidates if normalize_space(value or "")),
+        "",
+    )
+    municipality = normalize_space(municipio.name)
+
+    if microzone and municipality and microzone.lower() != municipality.lower():
+        return f"{microzone}, {municipality}"
+    return microzone or municipality
+
+
+def build_district_query(municipio: MunicipioInfo) -> str:
+    district = normalize_space(municipio.city_district or "")
+    municipality = normalize_space(municipio.name)
+
+    if district and municipality and district.lower() != municipality.lower():
+        return f"{district}, {municipality}"
+    return district or municipality
+
+
+def build_municipality_query(municipio: MunicipioInfo) -> str:
+    municipality = normalize_space(municipio.name)
+    province = normalize_space(municipio.province or "")
+    if municipality and province and municipality.lower() != province.lower():
+        return f"{municipality}, {province}"
+    return municipality
+
+
 def build_search_stages(address: str, municipio: MunicipioInfo) -> list[SearchStageConfig]:
-    exact_query = normalize_space(address)
     street_query = build_same_street_query(address, municipio)
-    broader_query = build_broader_zone_query(address, municipio)
+    microzone_query = build_microzone_query(municipio)
+    district_query = build_district_query(municipio)
+    municipality_query = build_municipality_query(municipio)
 
     stages = [
-        SearchStageConfig(
-            name="exact_address",
-            label="Direccion exacta",
-            query=exact_query,
-            stage_priority=0,
-            area_tolerance=0.20,
-            min_area_delta=10,
-            bedrooms_mode="exact",
-            bathrooms_mode="exact",
-        ),
         SearchStageConfig(
             name="same_street",
             label="Misma calle",
             query=street_query,
+            stage_priority=0,
+            area_tolerance=0.25,
+            min_area_delta=12,
+            bedrooms_mode="exact",
+            bathrooms_mode="at_least_minus_one",
+        ),
+        SearchStageConfig(
+            name="same_microzone",
+            label="Microzona",
+            query=microzone_query,
             stage_priority=1,
             area_tolerance=0.30,
             min_area_delta=15,
@@ -226,12 +265,22 @@ def build_search_stages(address: str, municipio: MunicipioInfo) -> list[SearchSt
             bathrooms_mode="at_least_minus_one",
         ),
         SearchStageConfig(
-            name="broader_zone",
-            label="Zona amplia",
-            query=broader_query,
+            name="same_local_area",
+            label="Área local",
+            query=district_query,
             stage_priority=2,
             area_tolerance=0.40,
             min_area_delta=20,
+            bedrooms_mode="plus_minus_one",
+            bathrooms_mode="at_least_minus_one",
+        ),
+        SearchStageConfig(
+            name="municipality",
+            label="Municipio",
+            query=municipality_query,
+            stage_priority=3,
+            area_tolerance=0.45,
+            min_area_delta=25,
             bedrooms_mode="plus_minus_one",
             bathrooms_mode="at_least_minus_one",
         ),
@@ -325,7 +374,7 @@ def score_listing(
     if listing.bathrooms is not None and target_bathrooms is not None:
         bathroom_penalty = abs(listing.bathrooms - target_bathrooms) * 10
 
-    return stage_priority * 40 + area_penalty + bedroom_penalty + bathroom_penalty
+    return stage_priority * 55 + area_penalty + bedroom_penalty + bathroom_penalty
 
 
 def dedupe_candidates(candidates: list[ComparableCandidate]) -> list[ComparableCandidate]:
@@ -371,9 +420,8 @@ def rank_candidates(
 
 
 def should_stop_after_stage(stage: SearchStageConfig, ranked_listings: list[Listing]) -> bool:
-    if len(ranked_listings) >= STOP_IF_COMPARABLES_REACHED:
-        return True
-    if stage.name == "same_street" and len(ranked_listings) >= STOP_IF_LOCAL_COMPARABLES_REACHED:
+    threshold = STOP_RULES_BY_STAGE.get(stage.name, TARGET_COMPARABLES)
+    if len(ranked_listings) >= max(threshold, TARGET_COMPARABLES if stage.name == "municipality" else threshold):
         return True
     return False
 
@@ -622,6 +670,25 @@ async def run_search_stage(
                 bathrooms_mode=stage.bathrooms_mode,
             ),
         )
+    except PlaywrightError as exc:
+        duration_ms = int((perf_counter() - stage_started_at) * 1000)
+        search_url = await extract_search_url(page)
+        logger.warning(f"Stage {stage.name} failed at {search_url}: {exc}")
+        return (
+            [],
+            SearchStageResult(
+                name=stage.name,
+                label=stage.label,
+                query=stage.query,
+                search_url=search_url,
+                listings_found=0,
+                duration_ms=duration_ms,
+                area_min=area_min,
+                area_max=area_max,
+                bedrooms_mode=stage.bedrooms_mode,
+                bathrooms_mode=stage.bathrooms_mode,
+            ),
+        )
 def build_candidates(
     listings: list[Listing],
     *,
@@ -716,7 +783,7 @@ async def scrape_idealista_listings(
     final_stage = executed_stages[-1].name if executed_stages else "none"
 
     search_metadata = SearchMetadata(
-        strategy="hybrid_fallback",
+        strategy="layered_geography",
         target_comparables=TARGET_COMPARABLES,
         final_stage=final_stage,
         total_duration_ms=total_duration_ms,
