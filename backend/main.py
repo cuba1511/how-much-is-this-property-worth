@@ -1,6 +1,8 @@
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
+from time import perf_counter
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -61,6 +63,8 @@ async def get_valuation(request: ValuationRequest):
     2. Scrape Idealista for comparable listings.
     3. Compute basic price statistics and an estimated value.
     """
+    request_started_at = perf_counter()
+
     # --- Step 1: Geocode ---
     try:
         municipio = await get_municipio_from_address(request.address)
@@ -74,8 +78,9 @@ async def get_valuation(request: ValuationRequest):
 
     # --- Step 2: Scrape Idealista ---
     try:
-        listings, search_url = await scrape_idealista_listings(
+        listings, search_url, search_metadata = await scrape_idealista_listings(
             address=request.address,
+            municipio=municipio,
             bedrooms=request.bedrooms,
             bathrooms=request.bathrooms,
             m2=request.m2,
@@ -105,11 +110,18 @@ async def get_valuation(request: ValuationRequest):
         price_range_high=int(estimated * 1.10) if estimated else None,
     )
 
+    logger.info(
+        "Valuation finished in %sms using stage %s",
+        int((perf_counter() - request_started_at) * 1000),
+        search_metadata.final_stage,
+    )
+
     return ValuationResponse(
         municipio=municipio,
         listings=listings,
         stats=stats,
         search_url=search_url,
+        search_metadata=search_metadata,
     )
 
 

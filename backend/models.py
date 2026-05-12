@@ -15,6 +15,11 @@ class MunicipioInfo(BaseModel):
     province: Optional[str] = None
     lat: Optional[float] = None
     lon: Optional[float] = None
+    road: Optional[str] = None
+    neighbourhood: Optional[str] = None
+    quarter: Optional[str] = None
+    city_district: Optional[str] = None
+    postcode: Optional[str] = None
 
 
 class Listing(BaseModel):
@@ -28,6 +33,7 @@ class Listing(BaseModel):
     url: str
     image_url: Optional[str] = None
     floor: Optional[str] = None
+    source_stage: Optional[str] = None
 
 
 class ValuationStats(BaseModel):
@@ -41,8 +47,30 @@ class ValuationStats(BaseModel):
     price_range_high: Optional[int] = None
 
 
+class SearchStageResult(BaseModel):
+    name: str
+    label: str
+    query: str
+    search_url: str
+    listings_found: int
+    duration_ms: int
+    area_min: Optional[int] = None
+    area_max: Optional[int] = None
+    bedrooms_mode: str
+    bathrooms_mode: str
+
+
+class SearchMetadata(BaseModel):
+    strategy: str
+    target_comparables: int
+    final_stage: str
+    total_duration_ms: int
+    stages: list[SearchStageResult]
+
+
 class ValuationResponse(BaseModel):
     municipio: MunicipioInfo
     listings: list[Listing]
     stats: ValuationStats
     search_url: str
+    search_metadata: SearchMetadata

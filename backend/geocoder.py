@@ -39,6 +39,11 @@ def extract_municipio_from_nominatim(address_data: dict) -> dict:
         "province": province,
         "lat": float(address_data.get("lat", 0)),
         "lon": float(address_data.get("lon", 0)),
+        "road": addr.get("road"),
+        "neighbourhood": addr.get("neighbourhood") or addr.get("suburb"),
+        "quarter": addr.get("quarter"),
+        "city_district": addr.get("city_district"),
+        "postcode": addr.get("postcode"),
     }
 
 
@@ -91,4 +96,9 @@ async def get_municipio_from_address(address: str) -> MunicipioInfo:
         province=info["province"],
         lat=info["lat"],
         lon=info["lon"],
+        road=info["road"],
+        neighbourhood=info["neighbourhood"],
+        quarter=info["quarter"],
+        city_district=info["city_district"],
+        postcode=info["postcode"],
     )
