@@ -12,7 +12,7 @@ Build a React landing page where users input property details (address via autoc
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundation + Branded Shell** — Types, schemas, API client, hero section with PropHero branding
+- [x] **Phase 1: Foundation + Branded Shell** — Types, schemas, API client, hero section with PropHero branding *(completed 2026-05-13)*
 - [ ] **Phase 2: Interactive Map** — Leaflet map component with marker placement and tile rendering
 - [ ] **Phase 3: Address Autocomplete** — Debounced Nominatim search, suggestion selection, map integration
 - [ ] **Phase 4: Form Composition + Submission** — Stepper inputs, m² field, Zod validation, backend submission
@@ -32,8 +32,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans:** 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Foundation modules + demo cleanup (types, schemas, API client, remove demo artifacts, Spanish lang)
-- [ ] 01-02-PLAN.md — Hero section + app shell (HeroSection component, App.tsx rewrite, placeholder card)
+- [x] 01-01-PLAN.md — Foundation modules + demo cleanup (types, schemas, API client, remove demo artifacts, Spanish lang) *(complete)*
+- [x] 01-02-PLAN.md — Hero section + app shell (HeroSection component, App.tsx rewrite, placeholder card) *(complete)*
 
 **UI hint**: yes
 
