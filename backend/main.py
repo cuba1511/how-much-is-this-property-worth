@@ -8,6 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from typing import Optional
+
 from geocoder import (
     get_municipio_from_address,
     municipio_from_resolved_address,
@@ -15,11 +17,79 @@ from geocoder import (
     suggest_addresses,
 )
 from market_transactions import build_market_transactions_mock
-from models import ResolvedAddress, ValuationRequest, ValuationResponse, ValuationStats
+from models import (
+    ComparablesDataset,
+    DatasetRow,
+    Listing,
+    ResolvedAddress,
+    ValuationRequest,
+    ValuationResponse,
+    ValuationStats,
+)
 from scraper import scrape_idealista_listings
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+DATASET_MAX_ROWS = 10
+DATASET_MIN_ROWS = 3
+
+
+def _flag(value: Optional[bool]) -> int:
+    return 1 if value else 0
+
+
+def build_dataset(listings: list[Listing]) -> ComparablesDataset:
+    rows = [
+        DatasetRow(
+            listing_url=listing.url,
+            address=listing.address,
+            metros=listing.m2,
+            precio=listing.price,
+            habitaciones=listing.bedrooms,
+            banos=listing.bathrooms,
+            planta=listing.floor_number,
+            ascensor=_flag(listing.has_elevator),
+            piscina=_flag(listing.has_pool),
+            jardin=_flag(listing.has_garden),
+            garaje=_flag(listing.has_garage),
+            trastero=_flag(listing.has_storage_room),
+        )
+        for listing in listings[:DATASET_MAX_ROWS]
+    ]
+    return ComparablesDataset(
+        rows=rows,
+        row_count=len(rows),
+        min_required=DATASET_MIN_ROWS,
+        max_allowed=DATASET_MAX_ROWS,
+    )
+
+
+def log_dataset(dataset: ComparablesDataset) -> None:
+    logger.info("Comparables dataset (%d rows)", dataset.row_count)
+    logger.info("| # | metros | precio | hab | banos | planta | asc | pis | jar | gar | tra |")
+    logger.info("|---|--------|--------|-----|-------|--------|-----|-----|-----|-----|-----|")
+    for idx, row in enumerate(dataset.rows, start=1):
+        logger.info(
+            "| %d | %s | %s | %s | %s | %s | %d | %d | %d | %d | %d |",
+            idx,
+            row.metros if row.metros is not None else "-",
+            row.precio if row.precio is not None else "-",
+            row.habitaciones if row.habitaciones is not None else "-",
+            row.banos if row.banos is not None else "-",
+            row.planta if row.planta is not None else "-",
+            row.ascensor,
+            row.piscina,
+            row.jardin,
+            row.garaje,
+            row.trastero,
+        )
+    if dataset.row_count < dataset.min_required:
+        logger.warning(
+            "Dataset has %d rows, below recommended minimum of %d",
+            dataset.row_count,
+            dataset.min_required,
+        )
 
 
 @asynccontextmanager
@@ -120,6 +190,7 @@ async def get_valuation(request: ValuationRequest):
             bedrooms=request.bedrooms,
             bathrooms=request.bathrooms,
             m2=request.m2,
+            max_listings=DATASET_MAX_ROWS,
         )
     except Exception as exc:
         logger.error(f"Scraping failed: {exc}", exc_info=True)
@@ -154,6 +225,9 @@ async def get_valuation(request: ValuationRequest):
         listing_avg_price_per_m2=avg_ppm2,
     )
 
+    dataset = build_dataset(listings)
+    log_dataset(dataset)
+
     logger.info(
         "Valuation finished in %sms using stage %s",
         int((perf_counter() - request_started_at) * 1000),
@@ -167,6 +241,7 @@ async def get_valuation(request: ValuationRequest):
         search_url=search_url,
         search_metadata=search_metadata,
         market_transactions=market_transactions,
+        dataset=dataset,
     )
 
 

@@ -13,6 +13,7 @@ import logging
 import os
 from pathlib import Path
 import re
+import unicodedata
 from urllib.parse import quote, urlsplit, urlunsplit
 from statistics import median
 from time import perf_counter
@@ -28,6 +29,9 @@ from playwright.async_api import async_playwright
 from models import Listing, MunicipioInfo, SearchMetadata, SearchStageResult
 
 logger = logging.getLogger(__name__)
+
+# Imported lazily inside scrape_idealista_listings to avoid an import cycle
+# (listing_detail imports helpers from this module).
 
 load_dotenv(Path(__file__).with_name(".env"))
 
@@ -45,6 +49,58 @@ STOP_RULES_BY_STAGE = {
 INITIAL_CAPTCHA_TIMEOUT_MS = 12_000
 FOLLOW_UP_CAPTCHA_TIMEOUT_MS = 1_500
 FILTER_CAPTCHA_TIMEOUT_MS = 750
+
+CONDITION_MAP = {
+    "obra nueva": "obra_nueva",
+    "promocion": "obra_nueva",
+    "promociones": "obra_nueva",
+    "promocion de obra nueva": "obra_nueva",
+    "reformado": "reformado",
+    "reformada": "reformado",
+    "a reformar": "a_reformar",
+    "para reformar": "a_reformar",
+    "segunda mano": "segunda_mano",
+    "de segunda mano": "segunda_mano",
+    "segunda mano/buen estado": "segunda_mano",
+    "segunda mano/para reformar": "a_reformar",
+}
+
+AC_KEYWORDS = (
+    "aire acondicionado",
+    "climatizacion",
+    "climatización",
+    "climatizado",
+    "climatizada",
+    " a/a ",
+    " a.a ",
+    " aa ",
+)
+
+NO_ELEVATOR_PHRASES = (
+    "sin ascensor",
+    "no ascensor",
+    "no tiene ascensor",
+    "no dispone de ascensor",
+    "sin elevador",
+)
+
+# Idealista's SERP does not expose bathrooms as a structured detail, but the
+# truncated description often mentions them ("3 dormitorios y 2 baños",
+# "2 cuartos de baño", "1 aseo"). This regex covers the common forms so the
+# scraper can keep a bathrooms signal even when detail enrichment fails.
+BATHROOM_DESCRIPTION_REGEX = re.compile(
+    r"(\d+)\s+(?:cuartos?\s+de\s+)?(?:banos?|aseos?|wc)\b",
+    re.IGNORECASE,
+)
+
+
+def extract_bathrooms_from_description(description: Optional[str]) -> Optional[int]:
+    """Best-effort regex extraction of bathroom count from a free-form description."""
+    if not description:
+        return None
+    description_ascii = strip_accents(description.lower())
+    match = BATHROOM_DESCRIPTION_REGEX.search(description_ascii)
+    return int(match.group(1)) if match else None
 
 
 @dataclass(frozen=True)
@@ -71,6 +127,15 @@ def normalize_space(value: str) -> str:
     return re.sub(r"\s+", " ", value or "").strip()
 
 
+def strip_accents(text: str) -> str:
+    """Remove combining accents so 'baños', 'banos' and 'baÃ±os' all collapse to 'banos'."""
+    return "".join(
+        char
+        for char in unicodedata.normalize("NFKD", text or "")
+        if not unicodedata.combining(char)
+    )
+
+
 def parse_price(text: str) -> Optional[int]:
     """Extract integer price from strings like '250.000 €' or '1.200.000€'."""
     if not text:
@@ -92,6 +157,40 @@ def parse_rooms(text: str) -> Optional[int]:
     if not text:
         return None
     match = re.search(r"(\d+)", text)
+    return int(match.group(1)) if match else None
+
+
+FLOOR_WORD_MAP: dict[str, Optional[int]] = {
+    "sotano": -1,
+    "sótano": -1,
+    "subterraneo": -1,
+    "subterráneo": -1,
+    "semisotano": -1,
+    "semisótano": -1,
+    "bajo": 0,
+    "entresuelo": 0,
+    "entreplanta": 0,
+    "principal": 1,
+    "atico": None,
+    "ático": None,
+}
+
+
+def parse_floor_number(floor_text: Optional[str]) -> Optional[int]:
+    """Convert a free-form floor string ('Bajo', '3ª planta', 'Planta 5') to an int."""
+    if not floor_text:
+        return None
+    text = floor_text.strip().lower()
+    if not text:
+        return None
+    for word, value in FLOOR_WORD_MAP.items():
+        if word in text:
+            return value
+    match = re.search(r"(\d+)\s*[ªa\.]*\s*planta", text)
+    if not match:
+        match = re.search(r"planta\s*(\d+)", text)
+    if not match:
+        match = re.search(r"\b(\d+)\b", text)
     return int(match.group(1)) if match else None
 
 
@@ -297,6 +396,89 @@ def build_search_stages(address: str, municipio: MunicipioInfo) -> list[SearchSt
     return deduped
 
 
+def normalize_tag(text: str) -> str:
+    return normalize_space(text).lower()
+
+
+def parse_listing_signals(
+    raw_tags: list[str],
+    parking_text: Optional[str],
+    description: Optional[str],
+    floor_text: Optional[str] = None,
+) -> dict:
+    """Derive normalized feature signals from SERP tags + parking + description + floor.
+
+    Idealista regularly encodes the elevator state inside the floor detail
+    (e.g. ``"Planta 3 exterior con ascensor"``), so we accept ``floor_text``
+    and use it as a secondary signal source.
+    """
+    tags = unique_preserve_order(
+        [normalize_tag(tag) for tag in (raw_tags or []) if tag]
+    )
+
+    condition = next(
+        (CONDITION_MAP[tag] for tag in tags if tag in CONDITION_MAP),
+        None,
+    )
+
+    has_elevator: Optional[bool] = None
+    if any(phrase in tag for tag in tags for phrase in NO_ELEVATOR_PHRASES):
+        has_elevator = False
+    elif any("ascensor" in tag for tag in tags):
+        has_elevator = True
+
+    has_terrace = True if "terraza" in tags else None
+    has_pool = True if "piscina" in tags else None
+
+    has_garden: Optional[bool] = (
+        True if any("jardin" in tag or "jardín" in tag for tag in tags) else None
+    )
+    has_storage_room: Optional[bool] = (
+        True if any("trastero" in tag for tag in tags) else None
+    )
+
+    parking_lower = (parking_text or "").lower()
+    if any("garaje" in tag or "parking" in tag or "plaza de" in tag for tag in tags):
+        has_garage: Optional[bool] = True
+    elif "garaje" in parking_lower or "parking" in parking_lower:
+        has_garage = True
+    else:
+        has_garage = None
+
+    has_ac: Optional[bool] = None
+    desc_lower = description.lower() if description else ""
+    if desc_lower:
+        if any(keyword.strip() in desc_lower for keyword in AC_KEYWORDS):
+            has_ac = True
+        if has_garden is None and ("jardin" in desc_lower or "jardín" in desc_lower):
+            has_garden = True
+        if has_storage_room is None and "trastero" in desc_lower:
+            has_storage_room = True
+        if any(phrase in desc_lower for phrase in NO_ELEVATOR_PHRASES):
+            has_elevator = False
+        elif has_elevator is None and "con ascensor" in desc_lower:
+            has_elevator = True
+
+    floor_lower = floor_text.lower() if floor_text else ""
+    if floor_lower:
+        if any(phrase in floor_lower for phrase in NO_ELEVATOR_PHRASES):
+            has_elevator = False
+        elif has_elevator is None and "con ascensor" in floor_lower:
+            has_elevator = True
+
+    return {
+        "tags": tags,
+        "condition": condition,
+        "has_elevator": has_elevator,
+        "has_terrace": has_terrace,
+        "has_pool": has_pool,
+        "has_garage": has_garage,
+        "has_garden": has_garden,
+        "has_storage_room": has_storage_room,
+        "has_air_conditioning": has_ac,
+    }
+
+
 def build_listing_from_raw(raw: dict, source_stage: str) -> Optional[Listing]:
     if not raw.get("url"):
         return None
@@ -304,18 +486,39 @@ def build_listing_from_raw(raw: dict, source_stage: str) -> Optional[Listing]:
     price = parse_price(raw.get("price", ""))
     listing_m2 = None
     listing_beds = None
-    listing_baths = None
+    # Idealista's SERP never exposes bathrooms as a structured detail; we rely
+    # on the detail-page enrichment step in
+    # listing_detail.enrich_listings_with_details and, as a fallback, regex
+    # over the (often truncated) SERP description below.
+    listing_baths: Optional[int] = extract_bathrooms_from_description(
+        raw.get("description")
+    )
     floor = None
+    raw_parking_detail: Optional[str] = None
 
-    for detail in raw.get("details", []):
+    raw_details = raw.get("details", []) or []
+    raw_description = raw.get("description")
+    logger.info("Listing raw details: %s", raw_details)
+    if raw_description:
+        logger.info("Listing description (first 200 chars): %s", raw_description[:200])
+
+    floor_word_ascii = {strip_accents(word) for word in FLOOR_WORD_MAP}
+
+    for detail in raw_details:
         detail_lower = detail.lower()
-        if "m²" in detail_lower or "m2" in detail_lower:
+        detail_ascii = strip_accents(detail_lower)
+
+        if "m²" in detail_lower or "m2" in detail_ascii:
             listing_m2 = parse_m2(detail)
-        elif "hab" in detail_lower or "habitacion" in detail_lower:
+        elif "hab" in detail_ascii or "habitacion" in detail_ascii or "dorm" in detail_ascii:
             listing_beds = parse_rooms(detail)
-        elif "baño" in detail_lower or "bano" in detail_lower:
-            listing_baths = parse_rooms(detail)
-        elif "planta" in detail_lower or "piso" in detail_lower:
+        elif "garaje" in detail_ascii or "parking" in detail_ascii:
+            raw_parking_detail = detail
+        elif (
+            "planta" in detail_ascii
+            or "piso" in detail_ascii
+            or any(word in detail_ascii for word in floor_word_ascii)
+        ):
             floor = detail
 
     price_per_m2 = None
@@ -329,6 +532,17 @@ def build_listing_from_raw(raw: dict, source_stage: str) -> Optional[Listing]:
     )
     title = raw.get("title") or raw.get("address") or "Listing"
 
+    combined_parking = " ".join(
+        part for part in (raw.get("parking"), raw_parking_detail) if part
+    ) or None
+    signals = parse_listing_signals(
+        raw.get("tags", []),
+        combined_parking,
+        raw.get("description"),
+        floor_text=floor,
+    )
+    floor_number = parse_floor_number(floor)
+
     return Listing(
         title=title,
         price=price,
@@ -340,7 +554,9 @@ def build_listing_from_raw(raw: dict, source_stage: str) -> Optional[Listing]:
         url=full_url,
         image_url=raw.get("image"),
         floor=floor,
+        floor_number=floor_number,
         source_stage=source_stage,
+        **signals,
     )
 
 
@@ -564,13 +780,57 @@ async def extract_raw_listings(page: Page) -> list[dict]:
                 'main#main-content section.items-container article.item, section.items-list article.item'
             );
 
+            const collectTextList = (root, selector) => {
+                const seen = new Set();
+                const values = [];
+                root.querySelectorAll(selector).forEach((el) => {
+                    const value = (el.textContent || '').replace(/\\s+/g, ' ').trim();
+                    if (!value) return;
+                    const key = value.toLowerCase();
+                    if (seen.has(key)) return;
+                    seen.add(key);
+                    values.push(value);
+                });
+                return values;
+            };
+
+            const firstText = (root, selector) => {
+                const el = root.querySelector(selector);
+                if (!el) return null;
+                const value = (el.textContent || '').replace(/\\s+/g, ' ').trim();
+                return value || null;
+            };
+
             return Array.from(articles).map(article => {
                 const linkEl = article.querySelector('a.item-link');
                 const priceEl = article.querySelector('.item-price, .price-row .item-price');
                 const detailEls = article.querySelectorAll('.item-detail-char .item-detail');
                 const imgEl = article.querySelector('.item-gallery img, .item-multimedia img, .item-multimedia-pictures img');
-                const details = Array.from(detailEls).map(el => el.textContent.trim());
+                const details = Array.from(detailEls).map(el => {
+                    const text = (el.textContent || '').replace(/\\s+/g, ' ').trim();
+                    const tooltipChild = el.querySelector('[aria-label], [title], [data-tooltip-text]');
+                    const tooltip = el.getAttribute('data-tooltip-text')
+                        || el.getAttribute('title')
+                        || el.getAttribute('aria-label')
+                        || tooltipChild?.getAttribute('aria-label')
+                        || tooltipChild?.getAttribute('title')
+                        || tooltipChild?.getAttribute('data-tooltip-text')
+                        || '';
+                    return tooltip ? `${text} ${tooltip}`.trim() : text;
+                });
                 const title = linkEl?.getAttribute('title') || linkEl?.textContent?.trim() || null;
+                const tags = collectTextList(
+                    article,
+                    '.item-tags span, .item-tags li, .adv-tags span, .adv-tags li, .item-detail-tags span, .listing-tags span'
+                );
+                const parking = firstText(
+                    article,
+                    '.item-parking, .parking-row, .item-detail-parking-row, .parking-included'
+                );
+                const description = firstText(
+                    article,
+                    '.item-description, .item-description-text, .description, p.ellipsis'
+                );
 
                 return {
                     url: linkEl ? linkEl.getAttribute('href') : null,
@@ -579,6 +839,9 @@ async def extract_raw_listings(page: Page) -> list[dict]:
                     address: title,
                     image: imgEl ? (imgEl.getAttribute('src') || imgEl.getAttribute('data-src')) : null,
                     title: title,
+                    tags: tags,
+                    parking: parking,
+                    description: description,
                 };
             });
         }
@@ -741,6 +1004,9 @@ async def scrape_idealista_listings(
     logger.info(f"Connecting to Bright Data CDP: {SBR_WS_CDP[:60]}...")
     connect_started_at = perf_counter()
 
+    # Imported here to break the scraper <-> listing_detail import cycle.
+    from listing_detail import enrich_listings_with_details
+
     async with async_playwright() as pw:
         browser = await pw.chromium.connect_over_cdp(SBR_WS_CDP)
         logger.info(
@@ -775,10 +1041,15 @@ async def scrape_idealista_listings(
                 ranked_so_far = rank_candidates(candidates, max_listings=max_listings)
                 if should_stop_after_stage(stage, ranked_so_far):
                     break
+
+            ranked_listings = rank_candidates(candidates, max_listings=max_listings)
+            ranked_listings = await enrich_listings_with_details(
+                browser,
+                ranked_listings,
+            )
         finally:
             await browser.close()
 
-    ranked_listings = rank_candidates(candidates, max_listings=max_listings)
     total_duration_ms = int((perf_counter() - total_started_at) * 1000)
     final_stage = executed_stages[-1].name if executed_stages else "none"
 

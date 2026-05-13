@@ -52,7 +52,53 @@ class Listing(BaseModel):
     url: str
     image_url: Optional[str] = None
     floor: Optional[str] = None
+    floor_number: Optional[int] = None
     source_stage: Optional[str] = None
+    tags: list[str] = Field(default_factory=list)
+    condition: Optional[str] = None
+    has_elevator: Optional[bool] = None
+    has_terrace: Optional[bool] = None
+    has_pool: Optional[bool] = None
+    has_garage: Optional[bool] = None
+    has_garden: Optional[bool] = None
+    has_storage_room: Optional[bool] = None
+    has_air_conditioning: Optional[bool] = None
+
+
+class DatasetRow(BaseModel):
+    listing_url: str
+    address: Optional[str] = None
+    metros: Optional[int] = None
+    precio: Optional[int] = None
+    habitaciones: Optional[int] = None
+    banos: Optional[int] = None
+    planta: Optional[int] = None
+    ascensor: int = 0
+    piscina: int = 0
+    jardin: int = 0
+    garaje: int = 0
+    trastero: int = 0
+
+
+class ComparablesDataset(BaseModel):
+    columns: list[str] = Field(
+        default_factory=lambda: [
+            "metros",
+            "precio",
+            "habitaciones",
+            "banos",
+            "planta",
+            "ascensor",
+            "piscina",
+            "jardin",
+            "garaje",
+            "trastero",
+        ]
+    )
+    rows: list[DatasetRow] = Field(default_factory=list)
+    row_count: int = 0
+    min_required: int = 3
+    max_allowed: int = 10
 
 
 class ValuationStats(BaseModel):
@@ -135,3 +181,4 @@ class ValuationResponse(BaseModel):
     search_url: str
     search_metadata: SearchMetadata
     market_transactions: Optional[MarketTransactions] = None
+    dataset: Optional[ComparablesDataset] = None

@@ -6,14 +6,17 @@ AI-powered house valuation tool. Users input property details and receive real-t
 ## Architecture (MVP)
 ```
 Input (address, m2, beds, baths)
-  └─► Geocoder (Nominatim OSM) → municipio metadata
-        └─► Idealista Scraper
-              ├─► Open idealista.com
-              ├─► Search using the real address
-              ├─► Apply comparable filters (m2 / beds / baths)
-              └─► Extract final listings
-                    └─► Stats calculator → estimated value
-                          └─► FastAPI response → HTML frontend
+ └─► Geocoder (Nominatim OSM) → municipio metadata
+ └─► Idealista Scraper
+ ├─► Open idealista.com
+ ├─► Search using the real address
+ ├─► Apply comparable filters (m2 / beds / baths)
+ ├─► Extract SERP listings (no bathrooms / amenities here)
+ └─► Detail enrichment (parallel): open each top-N listing detail page
+ to fill bathrooms + features (pool, terrace, garden, AC, condition)
+ + full description, with merge-non-destructive into the SERP listing
+ └─► Stats calculator → estimated value
+ └─► FastAPI response → HTML frontend
 ```
 
 ## Stack
@@ -26,7 +29,8 @@ Input (address, m2, beds, baths)
 | File | Purpose |
 |------|---------|
 | `backend/main.py` | FastAPI app, routes, stats calculation |
-| `backend/scraper.py` | Idealista scraper via Bright Data |
+| `backend/scraper.py` | Idealista scraper via Bright Data (SERP collection) |
+| `backend/listing_detail.py` | Parallel per-listing detail enrichment (bathrooms, features, description) |
 | `backend/geocoder.py` | Address → municipio (Nominatim) |
 | `backend/models.py` | Pydantic models |
 | `frontend/index.html` | Single-page UI |

@@ -95,6 +95,26 @@ function sourceLabel(source) {
   return source.replaceAll("-", " ");
 }
 
+const CONDITION_LABELS = {
+  obra_nueva: "Obra nueva",
+  reformado: "Reformado",
+  a_reformar: "A reformar",
+  segunda_mano: "Segunda mano",
+};
+
+function listingFeatures(listing) {
+  const features = [];
+  if (listing.condition && CONDITION_LABELS[listing.condition]) {
+    features.push(CONDITION_LABELS[listing.condition]);
+  }
+  if (listing.has_elevator) features.push("Ascensor");
+  if (listing.has_terrace) features.push("Terraza");
+  if (listing.has_pool) features.push("Piscina");
+  if (listing.has_garage) features.push("Garaje");
+  if (listing.has_air_conditioning) features.push("A/C");
+  return features;
+}
+
 function listingCard(listing) {
   const img = listing.image_url
     ? `<img src="${escapeHtml(listing.image_url)}" alt="" class="listing-img" onerror="this.style.display='none'">`
@@ -111,6 +131,18 @@ function listingCard(listing) {
   if (listing.bathrooms) badges.push(`${listing.bathrooms} baños`);
   if (listing.floor) badges.push(listing.floor);
 
+  const features = listingFeatures(listing);
+  const featuresMarkup = features.length
+    ? `<div class="flex flex-wrap gap-1.5 mt-2">
+         ${features
+           .map(
+             (feature) =>
+               `<span class="text-xs bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full px-2 py-0.5 font-medium">${escapeHtml(feature)}</span>`,
+           )
+           .join("")}
+       </div>`
+    : "";
+
   return `
     <a href="${escapeHtml(listing.url)}" target="_blank" rel="noreferrer"
        class="card-hover bg-white rounded-2xl border border-gray-100 overflow-hidden flex flex-col shadow-sm">
@@ -122,6 +154,7 @@ function listingCard(listing) {
         <div class="flex flex-wrap gap-1.5 mt-3">
           ${badges.map((badge) => `<span class="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">${escapeHtml(badge)}</span>`).join("")}
         </div>
+        ${featuresMarkup}
       </div>
     </a>
   `;
@@ -282,6 +315,88 @@ function renderMarketChart(chartSeries) {
   `;
 }
 
+const DATASET_NUMERIC_COLS = [
+  { key: "metros", label: "metros" },
+  { key: "precio", label: "precio" },
+  { key: "habitaciones", label: "habitaciones" },
+  { key: "banos", label: "baños" },
+  { key: "planta", label: "planta" },
+];
+
+const DATASET_CATEGORICAL_COLS = [
+  { key: "ascensor", label: "ascensor" },
+  { key: "piscina", label: "piscina" },
+  { key: "jardin", label: "jardín" },
+  { key: "garaje", label: "garaje" },
+  { key: "trastero", label: "trastero" },
+];
+
+function renderDataset(dataset) {
+  const section = document.getElementById("datasetSection");
+  const badge = document.getElementById("datasetBadge");
+  const warning = document.getElementById("datasetWarning");
+  const table = document.getElementById("datasetTable");
+
+  if (!dataset || !dataset.rows?.length) {
+    section.classList.add("hidden");
+    table.innerHTML = "";
+    warning.classList.add("hidden");
+    return;
+  }
+
+  badge.textContent = `${dataset.row_count} / ${dataset.max_allowed} filas`;
+  if (dataset.row_count < dataset.min_required) {
+    warning.textContent = `Solo ${dataset.row_count} comparables disponibles, por debajo del mínimo recomendado (${dataset.min_required}). Los resultados pueden ser menos fiables.`;
+    warning.classList.remove("hidden");
+  } else {
+    warning.classList.add("hidden");
+  }
+
+  const headerCells = [
+    `<th class="text-left px-3 py-2 font-semibold text-gray-500">#</th>`,
+    ...DATASET_NUMERIC_COLS.map(
+      (col) => `<th class="text-right px-3 py-2 font-semibold text-gray-500">${escapeHtml(col.label)}</th>`,
+    ),
+    ...DATASET_CATEGORICAL_COLS.map(
+      (col) => `<th class="text-center px-3 py-2 font-semibold text-gray-500">${escapeHtml(col.label)}</th>`,
+    ),
+  ].join("");
+
+  const bodyRows = dataset.rows
+    .map((row, index) => {
+      const numericCells = DATASET_NUMERIC_COLS.map((col) => {
+        const value = row[col.key];
+        const cell = value == null
+          ? '<span class="text-gray-300">-</span>'
+          : escapeHtml(fmtNumber(value));
+        return `<td class="text-right px-3 py-2 text-gray-800 tabular-nums">${cell}</td>`;
+      }).join("");
+      const categoricalCells = DATASET_CATEGORICAL_COLS.map((col) => {
+        const value = row[col.key];
+        const cls = value === 1
+          ? "bg-emerald-50 text-emerald-700"
+          : "bg-gray-50 text-gray-400";
+        return `<td class="text-center px-3 py-2"><span class="inline-flex items-center justify-center w-7 h-7 rounded-full ${cls} font-semibold">${value}</span></td>`;
+      }).join("");
+      return `
+        <tr class="border-t border-gray-100">
+          <td class="px-3 py-2 text-gray-500">${index + 1}</td>
+          ${numericCells}
+          ${categoricalCells}
+        </tr>
+      `;
+    })
+    .join("");
+
+  table.innerHTML = `
+    <thead class="bg-gray-50">
+      <tr>${headerCells}</tr>
+    </thead>
+    <tbody>${bodyRows}</tbody>
+  `;
+  section.classList.remove("hidden");
+}
+
 function renderMarketTransactions(marketTransactions) {
   const section = document.getElementById("marketTransactionsSection");
   const badge = document.getElementById("marketTransactionsBadge");
@@ -350,7 +465,7 @@ function renderMarketTransactions(marketTransactions) {
 }
 
 export function renderResults(data, payload) {
-  const { municipio, listings, stats, search_url, search_metadata, market_transactions } = data;
+  const { municipio, listings, stats, search_url, search_metadata, market_transactions, dataset } = data;
 
   document.getElementById("municipioLabel").textContent =
     `${municipio.name}${municipio.province ? `, ${municipio.province}` : ""}`;
@@ -386,6 +501,7 @@ export function renderResults(data, payload) {
   }
 
   renderMarketTransactions(market_transactions);
+  renderDataset(dataset);
 
   const listingsGrid = document.getElementById("listingsGrid");
   if (listings.length === 0) {
