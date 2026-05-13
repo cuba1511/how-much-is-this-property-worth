@@ -87,9 +87,15 @@ window.addEventListener("DOMContentLoaded", () => {
       selected_address: selectedAddress,
     };
 
+    const userFeatures = {
+      m2: payload.m2,
+      bedrooms: payload.bedrooms,
+      bathrooms: payload.bathrooms,
+    };
+
     try {
       const data = await submitValuation(payload);
-      renderResults(data, payload);
+      renderResults(data, payload, userFeatures);
     } catch (error) {
       showError(error.message);
     } finally {

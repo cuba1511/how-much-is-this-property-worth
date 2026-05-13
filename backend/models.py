@@ -67,42 +67,26 @@ class Listing(BaseModel):
 
 class DatasetRow(BaseModel):
     listing_url: str
-    address: Optional[str] = None
     metros: Optional[int] = None
     precio: Optional[int] = None
     habitaciones: Optional[int] = None
     banos: Optional[int] = None
-    planta: Optional[int] = None
-    ascensor: int = 0
-    piscina: int = 0
-    jardin: int = 0
-    garaje: int = 0
-    trastero: int = 0
-    closing_value: Optional[int] = None
-    negotiation_factor: Optional[float] = None
 
 
 class ComparablesDataset(BaseModel):
     columns: list[str] = Field(
         default_factory=lambda: [
+            "listing_url",
             "metros",
             "precio",
-            "closing_value",
-            "negotiation_factor",
             "habitaciones",
             "banos",
-            "planta",
-            "ascensor",
-            "piscina",
-            "jardin",
-            "garaje",
-            "trastero",
         ]
     )
     rows: list[DatasetRow] = Field(default_factory=list)
     row_count: int = 0
     min_required: int = 3
-    max_allowed: int = 6
+    max_allowed: int = 10
 
 
 class ValuationStats(BaseModel):
@@ -114,6 +98,25 @@ class ValuationStats(BaseModel):
     estimated_value: Optional[int] = None
     price_range_low: Optional[int] = None
     price_range_high: Optional[int] = None
+
+
+class RegressionCoefficient(BaseModel):
+    feature: str
+    label: str
+    kind: str  # "intercept" | "continuous"
+    unit_label: Optional[str] = None
+    coefficient: float
+
+
+class RegressionResult(BaseModel):
+    method: str = "ols_lstsq"
+    coefficients: list[RegressionCoefficient] = Field(default_factory=list)
+    sample_size: int
+    feature_count: int
+    is_underdetermined: bool
+    r_squared: Optional[float] = None
+    alpha: Optional[float] = None
+    notes: Optional[str] = None
 
 
 class MarketTransactionChartPoint(BaseModel):
@@ -186,3 +189,4 @@ class ValuationResponse(BaseModel):
     search_metadata: SearchMetadata
     market_transactions: Optional[MarketTransactions] = None
     dataset: Optional[ComparablesDataset] = None
+    regression: Optional[RegressionResult] = None

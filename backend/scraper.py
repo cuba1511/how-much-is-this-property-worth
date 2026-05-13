@@ -39,7 +39,7 @@ SBR_WS_CDP = os.getenv("BRIGHT_DATA_CDP")
 
 IDEALISTA_BASE = "https://www.idealista.com"
 IDEALISTA_HOME = f"{IDEALISTA_BASE}/"
-TARGET_COMPARABLES = 6
+TARGET_COMPARABLES = 10
 STOP_RULES_BY_STAGE = {
     "same_street": 3,
     "same_microzone": 5,
@@ -368,9 +368,9 @@ def build_search_stages(address: str, municipio: MunicipioInfo) -> list[SearchSt
             label="Misma calle",
             query=street_query,
             stage_priority=0,
-            area_tolerance=0.25,
-            min_area_delta=12,
-            bedrooms_mode="exact",
+            area_tolerance=0.30,
+            min_area_delta=15,
+            bedrooms_mode="plus_minus_one",
             bathrooms_mode="at_least_minus_one",
         ),
         SearchStageConfig(
@@ -380,7 +380,7 @@ def build_search_stages(address: str, municipio: MunicipioInfo) -> list[SearchSt
             stage_priority=1,
             area_tolerance=0.30,
             min_area_delta=15,
-            bedrooms_mode="exact",
+            bedrooms_mode="plus_minus_one",
             bathrooms_mode="at_least_minus_one",
         ),
         SearchStageConfig(
@@ -388,8 +388,8 @@ def build_search_stages(address: str, municipio: MunicipioInfo) -> list[SearchSt
             label="Área local",
             query=district_query,
             stage_priority=2,
-            area_tolerance=0.40,
-            min_area_delta=20,
+            area_tolerance=0.30,
+            min_area_delta=15,
             bedrooms_mode="plus_minus_one",
             bathrooms_mode="at_least_minus_one",
         ),
@@ -398,8 +398,8 @@ def build_search_stages(address: str, municipio: MunicipioInfo) -> list[SearchSt
             label="Municipio",
             query=municipality_query,
             stage_priority=3,
-            area_tolerance=0.45,
-            min_area_delta=25,
+            area_tolerance=0.30,
+            min_area_delta=15,
             bedrooms_mode="plus_minus_one",
             bathrooms_mode="at_least_minus_one",
         ),

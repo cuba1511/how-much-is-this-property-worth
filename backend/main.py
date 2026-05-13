@@ -16,7 +16,6 @@ from geocoder import (
     reverse_geocode,
     suggest_addresses,
 )
-from market_pricing import get_median_sqm_price
 from market_transactions import build_market_transactions_mock
 from models import (
     ComparablesDataset,
@@ -27,53 +26,26 @@ from models import (
     ValuationResponse,
     ValuationStats,
 )
+from regression import fit_listing_regression
 from scraper import scrape_idealista_listings
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-DATASET_MAX_ROWS = 6
+DATASET_MAX_ROWS = 10
 DATASET_MIN_ROWS = 3
 
 
-def _flag(value: Optional[bool]) -> int:
-    return 1 if value else 0
-
-
-def build_dataset(
-    listings: list[Listing],
-    *,
-    median_sqm_price: Optional[float] = None,
-) -> ComparablesDataset:
-    def _closing(m2: Optional[int]) -> Optional[int]:
-        if median_sqm_price is None or m2 is None:
-            return None
-        return int(round(m2 * median_sqm_price))
-
-    def _negotiation(price: Optional[int], closing: Optional[int]) -> Optional[float]:
-        if price is None or not price or closing is None:
-            return None
-        return round(closing / price, 4)
-
+def build_dataset(listings: list[Listing]) -> ComparablesDataset:
     rows: list[DatasetRow] = []
     for listing in listings[:DATASET_MAX_ROWS]:
-        closing = _closing(listing.m2)
         rows.append(
             DatasetRow(
                 listing_url=listing.url,
-                address=listing.address,
                 metros=listing.m2,
                 precio=listing.price,
                 habitaciones=listing.bedrooms,
                 banos=listing.bathrooms,
-                planta=listing.floor_number,
-                ascensor=_flag(listing.has_elevator),
-                piscina=_flag(listing.has_pool),
-                jardin=_flag(listing.has_garden),
-                garaje=_flag(listing.has_garage),
-                trastero=_flag(listing.has_storage_room),
-                closing_value=closing,
-                negotiation_factor=_negotiation(listing.price, closing),
             )
         )
     return ComparablesDataset(
@@ -86,33 +58,16 @@ def build_dataset(
 
 def log_dataset(dataset: ComparablesDataset) -> None:
     logger.info("Comparables dataset (%d rows)", dataset.row_count)
-    logger.info(
-        "| # | metros | precio | closing | neg. | hab | banos | planta | asc | pis | jar | gar | tra |"
-    )
-    logger.info(
-        "|---|--------|--------|---------|------|-----|-------|--------|-----|-----|-----|-----|-----|"
-    )
+    logger.info("| # | metros | precio | hab | banos |")
+    logger.info("|---|--------|--------|-----|-------|")
     for idx, row in enumerate(dataset.rows, start=1):
-        neg = (
-            f"{row.negotiation_factor:.4f}"
-            if row.negotiation_factor is not None
-            else "-"
-        )
         logger.info(
-            "| %d | %s | %s | %s | %s | %s | %s | %s | %d | %d | %d | %d | %d |",
+            "| %d | %s | %s | %s | %s |",
             idx,
             row.metros if row.metros is not None else "-",
             row.precio if row.precio is not None else "-",
-            row.closing_value if row.closing_value is not None else "-",
-            neg,
             row.habitaciones if row.habitaciones is not None else "-",
             row.banos if row.banos is not None else "-",
-            row.planta if row.planta is not None else "-",
-            row.ascensor,
-            row.piscina,
-            row.jardin,
-            row.garaje,
-            row.trastero,
         )
     if dataset.row_count < dataset.min_required:
         logger.warning(
@@ -212,20 +167,6 @@ async def get_valuation(request: ValuationRequest):
 
     logger.info(f"Municipio resolved: {municipio.name} (slug: {municipio.slug})")
 
-    median_sqm_price = get_median_sqm_price(municipio.name)
-    if median_sqm_price is None:
-        logger.warning(
-            "Median sqm price (second_hand 2026Q1) not found for %s; "
-            "closing_value/negotiation_factor will be null",
-            municipio.name,
-        )
-    else:
-        logger.info(
-            "Median sqm price (second_hand 2026Q1) for %s: %.2f EUR/m2",
-            municipio.name,
-            median_sqm_price,
-        )
-
     # --- Step 2: Scrape Idealista ---
     try:
         listings, search_url, search_metadata = await scrape_idealista_listings(
@@ -269,8 +210,33 @@ async def get_valuation(request: ValuationRequest):
         listing_avg_price_per_m2=avg_ppm2,
     )
 
-    dataset = build_dataset(listings, median_sqm_price=median_sqm_price)
+    dataset = build_dataset(listings)
     log_dataset(dataset)
+
+    regression = fit_listing_regression(dataset.rows)
+    if regression:
+        alpha_repr = f"{regression.alpha:.3g}" if regression.alpha is not None else "n/a"
+        r2_repr = (
+            f"{regression.r_squared:.4f}" if regression.r_squared is not None else "n/a"
+        )
+        logger.info(
+            "Regression (%s, n=%d, p=%d, alpha=%s, underdet=%s, R2=%s)",
+            regression.method,
+            regression.sample_size,
+            regression.feature_count,
+            alpha_repr,
+            regression.is_underdetermined,
+            r2_repr,
+        )
+        for coef in regression.coefficients:
+            logger.info(
+                "  %-26s (%s): %+.4f",
+                coef.label,
+                coef.kind,
+                coef.coefficient,
+            )
+    else:
+        logger.warning("Regression not produced (insufficient data)")
 
     logger.info(
         "Valuation finished in %sms using stage %s",
@@ -286,6 +252,7 @@ async def get_valuation(request: ValuationRequest):
         search_metadata=search_metadata,
         market_transactions=market_transactions,
         dataset=dataset,
+        regression=regression,
     )
 
 
