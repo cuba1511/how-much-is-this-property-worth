@@ -154,6 +154,9 @@ def strip_accents(text: str) -> str:
         for char in unicodedata.normalize("NFKD", text or "")
         if not unicodedata.combining(char)
     )
+def normalize_for_match(text: str) -> str:
+    nfkd = unicodedata.normalize("NFKD", text.lower())
+    return "".join(c for c in nfkd if not unicodedata.combining(c))
 
 
 def parse_price(text: str) -> Optional[int]:
@@ -497,6 +500,37 @@ def parse_listing_signals(
         "has_storage_room": has_storage_room,
         "has_air_conditioning": has_ac,
     }
+def build_geo_keywords(municipio: MunicipioInfo, address: str) -> list[str]:
+    """Build a list of normalized geographic keywords from municipio + address for proximity checks."""
+    raw_terms = [
+        municipio.name,
+        municipio.neighbourhood,
+        municipio.quarter,
+        municipio.city_district,
+        municipio.road,
+        municipio.postcode,
+    ]
+    parts = [p.strip() for p in address.split(",") if p.strip()]
+    if len(parts) > 1:
+        raw_terms.extend(parts[1:])
+
+    keywords: list[str] = []
+    for term in raw_terms:
+        if not term:
+            continue
+        normalized = normalize_for_match(term.strip())
+        if normalized and len(normalized) > 2:
+            keywords.append(normalized)
+    return keywords
+
+
+def listing_matches_geo(listing_address: Optional[str], geo_keywords: list[str]) -> float:
+    """Return a 0-1 score indicating how well the listing address matches expected geography."""
+    if not listing_address or not geo_keywords:
+        return 0.5  # neutral when we can't check
+    normalized_addr = normalize_for_match(listing_address)
+    matches = sum(1 for kw in geo_keywords if kw in normalized_addr)
+    return min(1.0, matches / max(1, min(3, len(geo_keywords))))
 
 
 def build_listing_from_raw(raw: dict, source_stage: str) -> Optional[Listing]:
@@ -597,6 +631,7 @@ def score_listing(
     target_bedrooms: Optional[int],
     target_bathrooms: Optional[int],
     stage_priority: int,
+    geo_keywords: Optional[list[str]] = None,
 ) -> float:
     area_penalty = 20.0
     if listing.m2 and target_m2:
@@ -610,7 +645,10 @@ def score_listing(
     if listing.bathrooms is not None and target_bathrooms is not None:
         bathroom_penalty = abs(listing.bathrooms - target_bathrooms) * 10
 
-    return stage_priority * 55 + area_penalty + bedroom_penalty + bathroom_penalty
+    geo_match = listing_matches_geo(listing.address or listing.title, geo_keywords or [])
+    geo_penalty = (1.0 - geo_match) * 80
+
+    return stage_priority * 55 + area_penalty + bedroom_penalty + bathroom_penalty + geo_penalty
 
 
 def dedupe_candidates(candidates: list[ComparableCandidate]) -> list[ComparableCandidate]:
@@ -784,6 +822,39 @@ async def wait_for_results(page: Page) -> None:
     )
 
 
+async def validate_search_landed_in_area(page: Page, stage: SearchStageConfig, municipio_name: str) -> bool:
+    """Check that Idealista resolved the search to the expected geographic area."""
+    try:
+        h1_el = page.locator("#h1-container__text, h1").first
+        h1_text = await h1_el.text_content(timeout=3000)
+        if not h1_text:
+            return True  # can't validate, assume OK
+        h1_normalized = normalize_for_match(h1_text)
+        municipio_normalized = normalize_for_match(municipio_name)
+        expected_tokens = [municipio_normalized]
+        for extra in [stage.query]:
+            for part in extra.split(","):
+                token = normalize_for_match(part.strip())
+                if token and len(token) > 2:
+                    expected_tokens.append(token)
+
+        if any(token in h1_normalized for token in expected_tokens):
+            return True
+
+        canonical = page.url
+        canonical_normalized = normalize_for_match(canonical)
+        if any(token.replace(" ", "-") in canonical_normalized for token in expected_tokens):
+            return True
+
+        logger.warning(
+            "Stage %s landed in unexpected area — H1: '%s', expected tokens: %s",
+            stage.name, h1_text.strip(), expected_tokens,
+        )
+        return False
+    except Exception:
+        return True  # can't validate, proceed
+
+
 async def extract_search_url(page: Page) -> str:
     try:
         canonical = await page.locator("link[rel='canonical']").first.get_attribute("href")
@@ -877,6 +948,8 @@ async def run_search_stage(
     target_bedrooms: Optional[int],
     target_bathrooms: Optional[int],
     max_listings: int,
+    municipio_name: str = "",
+    geo_keywords: Optional[list[str]] = None,
 ) -> tuple[list[Listing], SearchStageResult]:
     stage_started_at = perf_counter()
 
@@ -899,6 +972,31 @@ async def run_search_stage(
             stage.query,
             detect_timeout_ms=search_captcha_timeout_ms,
         )
+
+        in_area = await validate_search_landed_in_area(page, stage, municipio_name)
+        if not in_area:
+            duration_ms = int((perf_counter() - stage_started_at) * 1000)
+            search_url = await extract_search_url(page)
+            logger.info(
+                "Skipping stage %s — Idealista resolved to wrong area (%s)",
+                stage.name, search_url,
+            )
+            return (
+                [],
+                SearchStageResult(
+                    name=stage.name,
+                    label=stage.label,
+                    query=stage.query,
+                    search_url=search_url,
+                    listings_found=0,
+                    duration_ms=duration_ms,
+                    area_min=area_min,
+                    area_max=area_max,
+                    bedrooms_mode=stage.bedrooms_mode,
+                    bathrooms_mode=stage.bathrooms_mode,
+                ),
+            )
+
         await apply_filters(
             page,
             room_filters=room_filters,
@@ -910,14 +1008,31 @@ async def run_search_stage(
         await wait_for_results(page)
         search_url = await extract_search_url(page)
         raw_listings = await extract_raw_listings(page)
-        listings = [
+        all_listings = [
             listing
             for raw in raw_listings[: max_listings * 2]
             if (listing := build_listing_from_raw(raw, stage.name))
         ]
+
+        if geo_keywords:
+            geo_filtered = [
+                lst for lst in all_listings
+                if listing_matches_geo(lst.address or lst.title, geo_keywords) > 0.0
+            ]
+            discarded = len(all_listings) - len(geo_filtered)
+            if discarded > 0:
+                logger.info(
+                    "Stage %s: filtered out %d/%d listings with no geo match",
+                    stage.name, discarded, len(all_listings),
+                )
+            listings = geo_filtered if len(geo_filtered) >= 2 else all_listings
+        else:
+            listings = all_listings
+
         duration_ms = int((perf_counter() - stage_started_at) * 1000)
         logger.info(
-            f"Stage {stage.name} finished in {duration_ms}ms with {len(listings)} listings"
+            "Stage %s finished in %dms with %d listings (of %d raw)",
+            stage.name, duration_ms, len(listings), len(all_listings),
         )
         return (
             listings,
@@ -980,6 +1095,7 @@ def build_candidates(
     target_m2: Optional[int],
     target_bedrooms: Optional[int],
     target_bathrooms: Optional[int],
+    geo_keywords: Optional[list[str]] = None,
 ) -> list[ComparableCandidate]:
     return [
         ComparableCandidate(
@@ -992,6 +1108,7 @@ def build_candidates(
                 target_bedrooms=target_bedrooms,
                 target_bathrooms=target_bathrooms,
                 stage_priority=stage_priority,
+                geo_keywords=geo_keywords,
             ),
         )
         for listing in listings
@@ -1017,10 +1134,16 @@ async def scrape_idealista_listings(
 
     total_started_at = perf_counter()
     stages = build_search_stages(address, municipio)
+    geo_keywords = build_geo_keywords(municipio, address)
     candidates: list[ComparableCandidate] = []
     executed_stages: list[SearchStageResult] = []
     final_search_url = IDEALISTA_HOME
 
+    logger.info(
+        "Search stages: %s | geo_keywords: %s",
+        [s.name for s in stages],
+        geo_keywords,
+    )
     logger.info(f"Connecting to Bright Data CDP: {SBR_WS_CDP[:60]}...")
     connect_started_at = perf_counter()
 
@@ -1044,6 +1167,8 @@ async def scrape_idealista_listings(
                     target_bedrooms=bedrooms,
                     target_bathrooms=bathrooms,
                     max_listings=max_listings,
+                    municipio_name=municipio.name,
+                    geo_keywords=geo_keywords,
                 )
                 executed_stages.append(stage_result)
                 final_search_url = stage_result.search_url
@@ -1055,6 +1180,7 @@ async def scrape_idealista_listings(
                         target_m2=m2,
                         target_bedrooms=bedrooms,
                         target_bathrooms=bathrooms,
+                        geo_keywords=geo_keywords,
                     )
                 )
 

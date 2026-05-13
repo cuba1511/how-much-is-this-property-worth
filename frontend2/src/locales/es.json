@@ -1,0 +1,187 @@
+{
+  "hero": {
+    "title": "¿Cuánto vale ",
+    "titleHighlight": "mi casa",
+    "titleEnd": "?",
+    "subtitle": "Introduce los datos de tu propiedad y te mostramos comparables reales para estimar su valor de mercado."
+  },
+  "steps": {
+    "property": "Propiedad",
+    "location": "Ubicación",
+    "details": "Detalles"
+  },
+  "impacts": {
+    "propertiesSold": "+265.000 propiedades vendidas en todo el mundo en los últimos 5 años",
+    "avgSaleTime": "Tiempo medio de venta: menos de 5 meses",
+    "locationValue": "La ubicación determina hasta el 70% del valor de una vivienda",
+    "realTimePrices": "Analizamos precios reales de tu zona en tiempo real",
+    "precisionMatters": "Cuanto más preciso, mejor será tu valoración",
+    "resultTime": "Resultado en menos de 60 segundos"
+  },
+  "form": {
+    "back": "Atrás",
+    "next": "Siguiente",
+    "submit": "Valorar mi propiedad",
+    "analyzing": "Analizando mercado…",
+    "serverError": "Error al contactar con el servidor"
+  },
+  "propertyType": {
+    "label": "Tipo de propiedad",
+    "house": "Casa",
+    "apartment": "Piso",
+    "error": "Selecciona un tipo de propiedad"
+  },
+  "features": {
+    "label": "Características",
+    "pool": "Piscina",
+    "terrace": "Terraza",
+    "elevator": "Ascensor",
+    "parking": "Estacionamiento"
+  },
+  "address": {
+    "label": "Dirección",
+    "placeholder": "Busca tu dirección...",
+    "error": "Introduce una dirección válida",
+    "confirmed": "Dirección confirmada",
+    "searchLabel": "Buscar dirección",
+    "clearSearch": "Limpiar búsqueda",
+    "suggestions": "Sugerencias de dirección"
+  },
+  "condition": {
+    "label": "Estado de la propiedad",
+    "newBuild": "Obra nueva",
+    "good": "Buen estado",
+    "toRenovate": "A reformar",
+    "error": "Selecciona el estado"
+  },
+  "details": {
+    "area": "Superficie (m²)",
+    "areaPlaceholder": "Ej: 80",
+    "areaMin": "Mínimo 20 m²",
+    "areaMax": "Máximo 500 m²",
+    "areaRequired": "Introduce los metros cuadrados",
+    "bedrooms": "Habitaciones",
+    "bathrooms": "Baños"
+  },
+  "stepper": {
+    "decrease": "Reducir {{label}}",
+    "increase": "Aumentar {{label}}",
+    "decreaseDefault": "Reducir valor",
+    "increaseDefault": "Aumentar valor"
+  },
+  "results": {
+    "estimatedValuation": "Valoración estimada",
+    "newValuation": "Nueva valoración",
+    "range": "Rango: {{low}} – {{high}}",
+    "noData": "No hay suficientes datos para estimar el valor",
+    "avgPrice": "Precio medio",
+    "avgPricePerM2": "€/m² medio",
+    "comparables": "Comparables",
+    "comparablesFound": "Comparables encontrados ({{count}})",
+    "rooms": "{{count}} hab.",
+    "baths": "{{count}} baños",
+    "m2": "{{count}} m²",
+    "confidence": {
+      "high": "Confianza alta",
+      "medium": "Confianza media",
+      "low": "Confianza baja"
+    },
+    "stages": {
+      "same_street": "Misma calle",
+      "same_microzone": "Misma microzona",
+      "same_local_area": "Mismo barrio",
+      "municipality": "Municipio"
+    },
+    "hero": {
+      "breakdown": "{{m2}} m² × {{pricePerM2}} €/m²",
+      "analyzedIn": "Analizado en {{seconds}}s · {{count}} inmuebles en tiempo real"
+    },
+    "market": {
+      "title": "Realidad del mercado",
+      "headline": "En {{municipio}}, cierran a -{{gap}}% del anunciado",
+      "salePriceLabel": "Precio de venta real estimado",
+      "marginLabel": "Margen de negociación medio",
+      "asking": "Anunciado",
+      "closing": "Cerrado"
+    },
+    "howWeGotThere": {
+      "title": "Cómo llegamos a esta estimación",
+      "viewOnIdealista": "Ver en Idealista",
+      "listings": "{{count}} anuncios",
+      "areaRange": "{{min}}–{{max}} m²",
+      "duration": "{{ms}}ms",
+      "priceDistribution": "Distribución de precios",
+      "estimated": "Estimado"
+    },
+    "positioning": {
+      "title": "Posicionamiento",
+      "bedroomRefined": "Estimativa refinada para {{count}} habitaciones",
+      "spread": "Rango €/m² de comparables",
+      "vsGlobal": "vs. media global",
+      "min": "Mín",
+      "max": "Máx",
+      "avg": "Media"
+    },
+    "zone": {
+      "title": "Zona de búsqueda",
+      "radiusHint": "Radio: {{radius}}m ({{stage}})",
+      "nearbyTransactions": "Transacciones cercanas"
+    },
+    "time": {
+      "title": "Tiempo en el mercado",
+      "avgDays": "{{count}} días de media",
+      "urgency": "Quien vende con un advisor especializado cierra en menos tiempo",
+      "transactions": "transacciones"
+    },
+    "comparablesSection": {
+      "title": "Comparables ({{count}})",
+      "sort": {
+        "price": "Precio",
+        "ppm": "€/m²",
+        "sizeMatch": "Similitud m²"
+      },
+      "match": {
+        "exact": "Match exacto",
+        "relaxed": "Match ampliado"
+      },
+      "floor": "Planta {{floor}}",
+      "groupCount": "{{count}} anuncios"
+    },
+    "cta": {
+      "expiresIn": "Esta análisis caduca en 24h · te enviamos una copia a tu email",
+      "talkToAdvisor": "Hablar con un advisor PropHero",
+      "requestPdf": "Recibir PDF detallado",
+      "greeting": "Hola {{name}}, tu análisis de mercado está listo",
+      "basedOn": "Basado en {{count}} transacciones reales"
+    }
+  },
+  "lead": {
+    "title": "Último paso",
+    "description": "Déjanos tus datos para enviarte el informe de valoración.",
+    "name": "Nombre completo",
+    "namePlaceholder": "Juan García",
+    "nameError": "Introduce tu nombre",
+    "email": "Email",
+    "emailPlaceholder": "juan@ejemplo.com",
+    "emailError": "Introduce tu email",
+    "emailInvalid": "Email no válido",
+    "phone": "Teléfono",
+    "phonePlaceholder": "+34 612 345 678",
+    "phoneError": "Introduce tu teléfono",
+    "phoneInvalid": "Teléfono no válido",
+    "submit": "Obtener valoración",
+    "privacy": "No compartiremos tu información con terceros."
+  },
+  "chat": {
+    "agentName": "Tifany",
+    "agentRole": "Advisor PropHero",
+    "greeting": "¡Hola{{name}}! Soy Tifany, acabo de ver tu valoración y tengo info adicional sobre tu zona. ¿Te gustaría que lo comentemos?",
+    "cta": "Responder por WhatsApp",
+    "close": "Cerrar chat",
+    "typing": "escribiendo…"
+  },
+  "language": {
+    "es": "Español",
+    "en": "English"
+  }
+}
