@@ -135,3 +135,39 @@ class ValuationResponse(BaseModel):
     search_url: str
     search_metadata: SearchMetadata
     market_transactions: Optional[MarketTransactions] = None
+
+
+class SimpleValuationResponse(BaseModel):
+    """
+    Slim contract designed for external integrations (Apps Script, Sheets, Zapier, etc.).
+    Stable on purpose: do not break existing callers when the internal /api/valuation
+    response shape evolves.
+    """
+
+    address: str
+    price: Optional[int] = Field(
+        None, description="Estimated sale price in EUR (currently from Idealista listings)"
+    )
+    asking_price: Optional[int] = Field(
+        None, description="Average asking price of recent comparables in EUR"
+    )
+    closing_price: Optional[int] = Field(
+        None, description="Average closing price of recent comparables in EUR"
+    )
+    negotiation_factor: Optional[float] = Field(
+        None,
+        description=(
+            "(asking - closing) / asking, expressed as a decimal (e.g. 0.063 = 6.3%). "
+            "Higher means buyers are negotiating bigger discounts off asking."
+        ),
+    )
+    comparables_used: int = Field(
+        0, description="Number of Idealista listings used to compute `price`"
+    )
+    is_mock: bool = Field(
+        False,
+        description=(
+            "True when asking_price / closing_price / negotiation_factor come from "
+            "the mocked market-transactions layer (Phase 2 will replace with real data)."
+        ),
+    )
