@@ -31,6 +31,14 @@ function fmtPct(n) {
   }).format(n)}%`;
 }
 
+function fmtRatio(n) {
+  if (n == null) return "—";
+  return new Intl.NumberFormat("es-ES", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(n);
+}
+
 function fmtDate(value) {
   if (!value) return "Fecha no disponible";
   const parsed = new Date(value);
@@ -318,6 +326,8 @@ function renderMarketChart(chartSeries) {
 const DATASET_NUMERIC_COLS = [
   { key: "metros", label: "metros" },
   { key: "precio", label: "precio" },
+  { key: "closing_value", label: "closing" },
+  { key: "negotiation_factor", label: "neg.", formatter: fmtRatio },
   { key: "habitaciones", label: "habitaciones" },
   { key: "banos", label: "baños" },
   { key: "planta", label: "planta" },
@@ -366,9 +376,10 @@ function renderDataset(dataset) {
     .map((row, index) => {
       const numericCells = DATASET_NUMERIC_COLS.map((col) => {
         const value = row[col.key];
+        const format = col.formatter || fmtNumber;
         const cell = value == null
           ? '<span class="text-gray-300">-</span>'
-          : escapeHtml(fmtNumber(value));
+          : escapeHtml(format(value));
         return `<td class="text-right px-3 py-2 text-gray-800 tabular-nums">${cell}</td>`;
       }).join("");
       const categoricalCells = DATASET_CATEGORICAL_COLS.map((col) => {

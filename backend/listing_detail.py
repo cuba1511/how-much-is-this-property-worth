@@ -296,7 +296,7 @@ async def enrich_listings_with_details(
     browser: Browser,
     listings: list[Listing],
     *,
-    max_concurrent: int = 3,
+    max_concurrent: int = 6,
     per_listing_timeout_ms: int = 15_000,
 ) -> list[Listing]:
     """Open each top-N listing detail page in parallel and merge structured signals."""

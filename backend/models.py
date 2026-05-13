@@ -78,6 +78,8 @@ class DatasetRow(BaseModel):
     jardin: int = 0
     garaje: int = 0
     trastero: int = 0
+    closing_value: Optional[int] = None
+    negotiation_factor: Optional[float] = None
 
 
 class ComparablesDataset(BaseModel):
@@ -85,6 +87,8 @@ class ComparablesDataset(BaseModel):
         default_factory=lambda: [
             "metros",
             "precio",
+            "closing_value",
+            "negotiation_factor",
             "habitaciones",
             "banos",
             "planta",
@@ -98,7 +102,7 @@ class ComparablesDataset(BaseModel):
     rows: list[DatasetRow] = Field(default_factory=list)
     row_count: int = 0
     min_required: int = 3
-    max_allowed: int = 10
+    max_allowed: int = 6
 
 
 class ValuationStats(BaseModel):

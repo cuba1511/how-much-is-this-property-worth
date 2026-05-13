@@ -39,7 +39,7 @@ SBR_WS_CDP = os.getenv("BRIGHT_DATA_CDP")
 
 IDEALISTA_BASE = "https://www.idealista.com"
 IDEALISTA_HOME = f"{IDEALISTA_BASE}/"
-TARGET_COMPARABLES = 10
+TARGET_COMPARABLES = 6
 STOP_RULES_BY_STAGE = {
     "same_street": 3,
     "same_microzone": 5,
@@ -86,10 +86,25 @@ NO_ELEVATOR_PHRASES = (
 
 # Idealista's SERP does not expose bathrooms as a structured detail, but the
 # truncated description often mentions them ("3 dormitorios y 2 baños",
-# "2 cuartos de baño", "1 aseo"). This regex covers the common forms so the
-# scraper can keep a bathrooms signal even when detail enrichment fails.
+# "2 cuartos de baño", "1 aseo", "con un baño"). This regex covers the common
+# forms (digits or Spanish number words) so the scraper can keep a bathrooms
+# signal even when detail enrichment fails.
+NUMBER_WORDS: dict[str, int] = {
+    "un": 1, "uno": 1, "una": 1,
+    "dos": 2,
+    "tres": 3,
+    "cuatro": 4,
+    "cinco": 5,
+    "seis": 6,
+    "siete": 7,
+    "ocho": 8,
+    "nueve": 9,
+    "diez": 10,
+}
+
 BATHROOM_DESCRIPTION_REGEX = re.compile(
-    r"(\d+)\s+(?:cuartos?\s+de\s+)?(?:banos?|aseos?|wc)\b",
+    r"\b(\d+|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)"
+    r"\s+(?:cuartos?\s+de\s+)?(?:banos?|aseos?|wc)\b",
     re.IGNORECASE,
 )
 
@@ -100,7 +115,12 @@ def extract_bathrooms_from_description(description: Optional[str]) -> Optional[i
         return None
     description_ascii = strip_accents(description.lower())
     match = BATHROOM_DESCRIPTION_REGEX.search(description_ascii)
-    return int(match.group(1)) if match else None
+    if not match:
+        return None
+    token = match.group(1)
+    if token.isdigit():
+        return int(token)
+    return NUMBER_WORDS.get(token)
 
 
 @dataclass(frozen=True)
