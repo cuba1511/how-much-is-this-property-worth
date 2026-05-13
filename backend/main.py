@@ -15,7 +15,13 @@ from geocoder import (
     suggest_addresses,
 )
 from market_transactions import build_market_transactions_mock
-from models import ResolvedAddress, ValuationRequest, ValuationResponse, ValuationStats
+from models import (
+    ResolvedAddress,
+    SimpleValuationResponse,
+    ValuationRequest,
+    ValuationResponse,
+    ValuationStats,
+)
 from scraper import scrape_idealista_listings
 
 logging.basicConfig(level=logging.INFO)
@@ -44,7 +50,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve the frontend from ../frontend/
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
 
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
@@ -173,6 +178,36 @@ async def get_valuation(request: ValuationRequest):
         search_url=search_url,
         search_metadata=search_metadata,
         market_transactions=market_transactions,
+    )
+
+
+@app.post(
+    "/api/valuation/simple",
+    response_model=SimpleValuationResponse,
+    summary="Slim valuation contract for external integrations (Apps Script, Sheets, Zapier)",
+)
+async def get_valuation_simple(request: ValuationRequest) -> SimpleValuationResponse:
+    """
+    Stable, slim wrapper over /api/valuation. Returns only the four fields most
+    integrations care about: price, asking_price, closing_price, negotiation_factor.
+
+    NOTE: asking_price / closing_price / negotiation_factor currently come from the
+    mocked market-transactions layer and are flagged with `is_mock: true`. The
+    contract will not change when real data replaces the mock.
+    """
+    full = await get_valuation(request)
+
+    summary = full.market_transactions.summary if full.market_transactions else None
+    margin_pct = summary.negotiation_margin_pct if summary else None
+
+    return SimpleValuationResponse(
+        address=full.municipio.road or request.address,
+        price=full.stats.estimated_value,
+        asking_price=summary.avg_asking_price if summary else None,
+        closing_price=summary.avg_closing_price if summary else None,
+        negotiation_factor=round(margin_pct / 100, 4) if margin_pct is not None else None,
+        comparables_used=full.stats.total_comparables,
+        is_mock=summary is not None,
     )
 
 
