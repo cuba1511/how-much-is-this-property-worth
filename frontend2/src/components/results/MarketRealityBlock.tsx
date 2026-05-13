@@ -13,8 +13,8 @@ import {
 } from '@/components/ui/chart'
 
 const chartConfig = {
-  asking_price: { label: '', color: 'hsl(var(--chart-1))' },
-  closing_price: { label: '', color: 'hsl(var(--chart-2))' },
+  asking_price: { label: '', color: 'var(--chart-1)' },
+  closing_price: { label: '', color: 'var(--chart-2)' },
 } satisfies ChartConfig
 
 interface MarketRealityBlockProps {
@@ -35,23 +35,23 @@ export function MarketRealityBlock({ marketTransactions, estimatedValue, municip
   const salePrice = estimateSalePrice(estimatedValue, summary.asking_vs_closing_gap_pct)
 
   return (
-    <div className="rounded-2xl border border-line bg-surface p-lg shadow-card">
-      <h2 className="text-base font-semibold text-ink mb-xs">{t('results.market.title')}</h2>
-      <p className="text-lg font-bold text-ink mb-md">
+    <div className="card-surface p-lg">
+      <h2 className="text-header-sm mb-xs">{t('results.market.title')}</h2>
+      <p className="mb-md text-header-md font-semibold text-ink">
         {t('results.market.headline', {
           municipio: municipioName,
           gap: summary.asking_vs_closing_gap_pct.toFixed(1),
         })}
       </p>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-md mb-md">
-        <div className="rounded-xl bg-surface-muted p-md">
-          <p className="text-xs text-ink-secondary mb-1">{t('results.market.salePriceLabel')}</p>
-          <p className="text-2xl font-bold text-ink">{formatPrice(salePrice)}</p>
+      <div className="mb-md grid grid-cols-1 gap-md sm:grid-cols-2">
+        <div className="rounded-md bg-surface-muted p-md">
+          <p className="mb-xs text-text-sm text-ink-secondary">{t('results.market.salePriceLabel')}</p>
+          <p className="text-header-lg font-semibold text-ink">{formatPrice(salePrice)}</p>
         </div>
-        <div className="rounded-xl bg-surface-muted p-md">
-          <p className="text-xs text-ink-secondary mb-1">{t('results.market.marginLabel')}</p>
-          <p className="text-2xl font-bold text-ink">{formatPct(summary.negotiation_margin_pct)}</p>
+        <div className="rounded-md bg-surface-muted p-md">
+          <p className="mb-xs text-text-sm text-ink-secondary">{t('results.market.marginLabel')}</p>
+          <p className="text-header-lg font-semibold text-ink">{formatPct(summary.negotiation_margin_pct)}</p>
         </div>
       </div>
 

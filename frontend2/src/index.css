@@ -1,218 +1,234 @@
+@import './styles/tokens.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================================
+ * GLOBAL BASE
+ * ========================================================================== */
 @layer base {
   :root {
-    /* PropHero tokens (from live site colour palette) */
-    --ph-white: #ffffff;
-    --ph-light-bg: #f5f7f9;
-    --ph-blue-bg: #f3f5fe;
-    --ph-text: #1e252d;
-    --ph-text-secondary: #596b7d;
-    --ph-text-muted: #abb8c7;
-    --ph-blue: #2050f6;
-    --ph-blue-dark: #162eb7;
-    --ph-cyan: #65c6eb;
-    --ph-orange: #f45504;
-    --ph-orange-light: #ff7a40;
-    --ph-pink: #ea4ac0;
-    --ph-line: rgba(32, 80, 246, 0.18);
-    --ph-line-strong: #4d4d4d;
-
-    /* shadcn/ui CSS variables — mapped to PropHero palette */
-    --background: 0 0% 100%;
-    --foreground: 215 20% 15%;
-    --card: 0 0% 100%;
-    --card-foreground: 215 20% 15%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 215 20% 15%;
-    --primary: 225 93% 54%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 195 76% 66%;
-    --secondary-foreground: 215 20% 15%;
-    --muted: 214 20% 96%;
-    --muted-foreground: 210 14% 42%;
-    --accent: 20 95% 49%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 225 86% 54% / 0.18;
-    --input: 225 86% 54% / 0.18;
-    --ring: 225 93% 54%;
-    --radius: 0.5rem;
-
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 225 93% 54%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.3% 26.1%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 225 93% 54%;
-
-    --chart-1: 225 93% 54%;
-    --chart-2: 20 95% 49%;
-    --chart-3: 195 76% 66%;
-    --chart-4: 300 65% 55%;
-    --chart-5: 150 60% 45%;
-
-    /* Legacy PropHero custom properties */
-    --text: var(--ph-text-secondary);
-    --text-h: var(--ph-text);
-    --bg: var(--ph-white);
-    --bg-section: var(--ph-light-bg);
-    --bg-tint: var(--ph-blue-bg);
-    --code-bg: var(--ph-blue-bg);
-    --accent-bg: color-mix(in srgb, var(--ph-orange) 12%, transparent);
-    --accent-border: color-mix(in srgb, var(--ph-orange) 45%, transparent);
-    --primary-bg: color-mix(in srgb, var(--ph-blue) 10%, transparent);
-    --primary-border: color-mix(in srgb, var(--ph-blue) 35%, transparent);
-    --social-bg: var(--ph-light-bg);
-    --shadow: 0 10px 40px rgba(32, 80, 246, 0.08);
-
-    --sans: Inter, system-ui, 'Segoe UI', Roboto, sans-serif;
-    --heading: Inter, system-ui, 'Segoe UI', Roboto, sans-serif;
-    --mono: ui-monospace, Consolas, monospace;
-
-    font: 18px/1.45 var(--sans);
-    letter-spacing: 0.01em;
+    font-family: var(--font-family-sans);
+    font-size: 16px;
+    line-height: 1.5;
+    color: var(--color-fg-primary);
+    background-color: var(--color-bg-page);
     color-scheme: light;
-    color: hsl(var(--foreground));
-    background: hsl(var(--background));
     font-synthesis: none;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-
-    @media (max-width: 1024px) {
-      font-size: 16px;
-    }
   }
 
   .dark {
-    --background: 224 50% 8%;
-    --foreground: 214 20% 82%;
-    --card: 222 47% 11%;
-    --card-foreground: 214 20% 96%;
-    --popover: 222 47% 11%;
-    --popover-foreground: 214 20% 96%;
-    --primary: 228 92% 72%;
-    --primary-foreground: 224 50% 8%;
-    --secondary: 195 76% 66%;
-    --secondary-foreground: 214 20% 96%;
-    --muted: 223 47% 13%;
-    --muted-foreground: 214 20% 73%;
-    --accent: 20 100% 63%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 63% 31%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 195 76% 66% / 0.15;
-    --input: 195 76% 66% / 0.15;
-    --ring: 228 92% 72%;
+    color-scheme: dark;
+  }
 
-    --sidebar-background: 224 50% 8%;
-    --sidebar-foreground: 214 20% 82%;
-    --sidebar-primary: 228 92% 72%;
-    --sidebar-primary-foreground: 224 50% 8%;
-    --sidebar-accent: 223 47% 13%;
-    --sidebar-accent-foreground: 214 20% 82%;
-    --sidebar-border: 195 76% 66% / 0.15;
-    --sidebar-ring: 228 92% 72%;
+  body {
+    margin: 0;
+    min-height: 100svh;
+    background-color: var(--color-bg-page);
+    color: var(--color-fg-primary);
+  }
 
-    --chart-1: 228 92% 72%;
-    --chart-2: 20 100% 63%;
-    --chart-3: 195 76% 66%;
-    --chart-4: 300 65% 65%;
-    --chart-5: 150 60% 55%;
+  /* Typography defaults — built on the W3C text styles */
+  h1, .typo-header-3xl {
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-header-3xl);     /* 48px */
+    font-weight: var(--font-weight-semibold);
+    line-height: 58px;
+    letter-spacing: -0.06em;
+    color: var(--color-fg-primary);
+    margin: 0;
+  }
 
-    --text: #abb8c7;
-    --text-h: #f5f7f9;
-    --bg: #0a0f1e;
-    --bg-section: #111827;
-    --bg-tint: #141c2e;
-    --code-bg: #141c2e;
-    --accent-bg: color-mix(in srgb, #ff7a40 18%, transparent);
-    --accent-border: color-mix(in srgb, #ff7a40 45%, transparent);
-    --primary-bg: color-mix(in srgb, #5578f8 15%, transparent);
-    --primary-border: color-mix(in srgb, #5578f8 40%, transparent);
-    --social-bg: rgba(26, 34, 52, 0.85);
-    --shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  h2, .typo-header-xl {
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-header-xl);      /* 32px */
+    font-weight: var(--font-weight-semibold);
+    line-height: 38px;
+    letter-spacing: -0.04em;
+    color: var(--color-fg-primary);
+    margin: 0;
+  }
 
-    #social .button-icon {
-      filter: invert(1) brightness(2);
+  h3, .typo-header-lg {
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-header-lg);      /* 24px */
+    font-weight: var(--font-weight-semibold);
+    line-height: 32px;
+    letter-spacing: -0.04em;
+    color: var(--color-fg-primary);
+    margin: 0;
+  }
+
+  h4, .typo-header-md {
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-header-md);      /* 20px */
+    font-weight: var(--font-weight-semibold);
+    line-height: 28px;
+    letter-spacing: -0.03em;
+    color: var(--color-fg-primary);
+    margin: 0;
+  }
+
+  h5, .typo-header-sm {
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-header-sm);      /* 18px */
+    font-weight: var(--font-weight-semibold);
+    line-height: 26px;
+    letter-spacing: -0.03em;
+    color: var(--color-fg-primary);
+    margin: 0;
+  }
+
+  p {
+    margin: 0;
+  }
+
+  /* Body text helpers */
+  .typo-text-lg {
+    font-size: var(--font-size-text-lg);
+    line-height: 24px;
+    letter-spacing: -0.01em;
+  }
+  .typo-text-md {
+    font-size: var(--font-size-text-md);
+    line-height: 20px;
+    letter-spacing: -0.005em;
+  }
+  .typo-text-sm {
+    font-size: var(--font-size-text-sm);
+    line-height: 16px;
+  }
+  .typo-text-xs {
+    font-size: var(--font-size-text-xs);
+    line-height: 12px;
+  }
+
+  /* Responsive heading scaling */
+  @media (max-width: 768px) {
+    h1 {
+      font-size: var(--font-size-header-2xl);   /* 36px */
+      line-height: 44px;
+      letter-spacing: -0.04em;
+    }
+    h2 {
+      font-size: var(--font-size-header-lg);    /* 24px */
+      line-height: 32px;
     }
   }
 }
 
+/* ============================================================================
+ * COMPONENT LAYER — reusable token-driven utilities
+ * ========================================================================== */
 @layer components {
+  /* --- Buttons ----------------------------------------------------------- */
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-pill bg-primary px-6 py-3 text-center font-semibold text-primary-foreground shadow-card transition hover:bg-primary-dark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary;
+    @apply inline-flex items-center justify-center gap-2 font-semibold transition-colors
+           focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2;
+    background-color: var(--btn-primary-bg);
+    color: var(--btn-primary-fg);
+    padding: var(--space-3) var(--space-6);
+    border-radius: var(--radius-button);
+    outline-color: var(--color-action-primary-bg);
+    box-shadow: var(--shadow-card);
+  }
+  .btn-primary:hover  { background-color: var(--btn-primary-bg-hover); }
+  .btn-primary:active { background-color: var(--btn-primary-bg-active); }
+  .btn-primary:disabled {
+    background-color: var(--btn-disabled-bg);
+    color: var(--btn-disabled-fg);
+    box-shadow: none;
+    cursor: not-allowed;
   }
 
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 rounded-pill border-2 border-primary bg-surface px-6 py-3 text-center font-semibold text-primary transition hover:bg-surface-tint focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary;
+    @apply inline-flex items-center justify-center gap-2 font-semibold transition-colors
+           focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2;
+    background-color: var(--btn-secondary-bg);
+    color: var(--btn-secondary-fg);
+    padding: var(--space-3) var(--space-6);
+    border-radius: var(--radius-button);
+    outline-color: var(--color-action-primary-bg);
+  }
+  .btn-secondary:hover  { background-color: var(--btn-secondary-bg-hover); }
+  .btn-secondary:active {
+    background-color: var(--btn-secondary-bg-active);
+    color: var(--btn-secondary-fg-active);
   }
 
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 rounded-pill border border-transparent px-4 py-2 text-sm font-medium text-ink-secondary transition hover:border-line hover:bg-surface-muted hover:text-ink;
+    @apply inline-flex items-center justify-center gap-2 text-sm font-medium transition-colors;
+    color: var(--btn-ghost-fg);
+    padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius-button);
+    background-color: transparent;
+    border: 1px solid transparent;
+  }
+  .btn-ghost:hover  { background-color: var(--btn-ghost-bg-hover); }
+  .btn-ghost:active { background-color: var(--btn-ghost-bg-active); }
+
+  /* --- Cards ------------------------------------------------------------- */
+  .card-surface {
+    background-color: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-level-1);
+  }
+
+  /* --- Inputs ------------------------------------------------------------ */
+  .input-shell {
+    background-color: var(--input-bg);
+    color: var(--input-fg);
+    border: 1px solid var(--input-border);
+    border-radius: var(--radius-input);
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+  }
+  .input-shell::placeholder { color: var(--input-fg-placeholder); }
+  .input-shell:hover        { background-color: var(--input-bg-hover); }
+  .input-shell:focus-within {
+    border-color: var(--input-border-primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--input-border-primary) 18%, transparent);
+  }
+  .input-shell[data-error="true"] {
+    border-color: var(--input-border-error);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--input-border-error) 18%, transparent);
+  }
+  .input-shell[data-disabled="true"] {
+    background-color: var(--input-bg-disabled);
+    color: var(--input-fg-disabled);
+    cursor: not-allowed;
+  }
+
+  /* --- Alerts ------------------------------------------------------------ */
+  .alert-success {
+    background-color: var(--alert-success-bg);
+    color: var(--alert-success-fg);
+  }
+  .alert-error {
+    background-color: var(--alert-error-bg);
+    color: var(--alert-error-fg);
+  }
+  .alert-warning {
+    background-color: var(--alert-warning-bg);
+    color: var(--alert-warning-fg);
+  }
+  .alert-info {
+    background-color: var(--alert-info-bg);
+    color: var(--alert-info-fg);
   }
 }
 
-body {
-  margin: 0;
-}
-
+/* ============================================================================
+ * APP SHELL LAYOUT
+ *   #root is the full-page container — no more rigid 1126px box.
+ *   Inner sections constrain themselves with a centered max-width.
+ * ========================================================================== */
 #root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  border-inline: 1px solid var(--border);
   min-height: 100svh;
   display: flex;
   flex-direction: column;
-  box-sizing: border-box;
-}
-
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 600;
-  color: var(--text-h);
-}
-
-h1 {
-  font-size: clamp(2rem, 4vw + 1rem, 3.25rem);
-  letter-spacing: -0.03em;
-  line-height: 1.1;
-  margin: 24px 0 12px;
-}
-
-h2 {
-  font-size: 1.35rem;
-  line-height: 1.2;
-  letter-spacing: -0.02em;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 1.2rem;
-  }
-}
-
-p {
-  margin: 0;
-}
-
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 6px;
-  color: var(--text-h);
-}
-
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+  background-color: var(--color-bg-page);
 }

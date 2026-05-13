@@ -3,7 +3,16 @@
     "title": "¿Cuánto vale ",
     "titleHighlight": "mi casa",
     "titleEnd": "?",
-    "subtitle": "Introduce los datos de tu propiedad y te mostramos comparables reales para estimar su valor de mercado."
+    "subtitle": "Introduce los datos de tu propiedad y te mostramos comparables reales para estimar su valor de mercado.",
+    "toolTag": "Valoración inteligente",
+    "imageAlt": "Edificio clásico al atardecer — referencia de mercado residencial"
+  },
+  "landing": {
+    "cta": "Valorar mi propiedad",
+    "ctaHint": "Gratis · resultado en menos de 60s"
+  },
+  "nav": {
+    "backHome": "Volver al inicio"
   },
   "steps": {
     "property": "Propiedad",

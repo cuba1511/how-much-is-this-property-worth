@@ -20,24 +20,24 @@ const STAGE_ORDER = ['same_street', 'same_microzone', 'same_local_area', 'munici
 
 const STAGE_STYLES: Record<string, { accent: string; badge: string; icon: typeof MapPin }> = {
   same_street: {
-    accent: 'border-emerald-200 dark:border-emerald-800/60',
-    badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400',
-    icon: MapPin,
+    accent: 'border-line-success/40',
+    badge:  'alert-success',
+    icon:   MapPin,
   },
   same_microzone: {
-    accent: 'border-sky-200 dark:border-sky-800/60',
-    badge: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-400',
-    icon: Grid3X3,
+    accent: 'border-line-brand/30',
+    badge:  'alert-info',
+    icon:   Grid3X3,
   },
   same_local_area: {
-    accent: 'border-amber-200 dark:border-amber-800/60',
-    badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400',
-    icon: MapPinned,
+    accent: 'border-line-warning/40',
+    badge:  'alert-warning',
+    icon:   MapPinned,
   },
   municipality: {
-    accent: 'border-slate-200 dark:border-slate-700',
-    badge: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
-    icon: MapPinned,
+    accent: 'border-line-subtle',
+    badge:  'bg-surface-muted text-ink-secondary',
+    icon:   MapPinned,
   },
 }
 
@@ -82,21 +82,22 @@ export function ComparablesBlock({ listings, requestM2 }: ComparablesBlockProps)
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-md flex-wrap gap-sm">
-        <h2 className="text-base font-semibold text-ink">
+      <div className="mb-md flex flex-wrap items-center justify-between gap-sm">
+        <h2 className="text-header-sm">
           {t('results.comparablesSection.title', { count: listings.length })}
         </h2>
-        <div className="flex gap-1">
+        <div className="flex gap-xs">
           {(['price', 'ppm', 'sizeMatch'] as const).map((key) => (
             <button
               key={key}
               type="button"
               onClick={() => setSortBy(key)}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+              className={[
+                'rounded-pill px-md py-xs text-text-sm font-medium transition-colors',
                 sortBy === key
                   ? 'bg-primary text-primary-foreground'
-                  : 'bg-surface-muted text-ink-secondary hover:bg-surface-tint'
-              }`}
+                  : 'bg-surface-muted text-ink-secondary hover:bg-surface-tint',
+              ].join(' ')}
             >
               {t(`results.comparablesSection.sort.${key}`)}
             </button>
@@ -112,12 +113,12 @@ export function ComparablesBlock({ listings, requestM2 }: ComparablesBlockProps)
 
           return (
             <section key={group.key}>
-              <div className="flex items-center gap-2 mb-sm">
-                <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${style.badge}`}>
+              <div className="mb-sm flex items-center gap-sm">
+                <span className={`inline-flex items-center gap-xs rounded-pill px-md py-xs text-text-sm font-semibold ${style.badge}`}>
                   <Icon className="h-3 w-3" />
                   {t(`results.stages.${group.key}`, group.key)}
                 </span>
-                <span className="text-xs text-ink-muted">
+                <span className="text-text-sm text-ink-muted">
                   {t('results.comparablesSection.groupCount', { count: group.listings.length })}
                 </span>
               </div>
@@ -129,57 +130,57 @@ export function ComparablesBlock({ listings, requestM2 }: ComparablesBlockProps)
                     href={listing.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className={`group flex flex-col rounded-xl border-2 bg-surface shadow-card transition hover:shadow-lift overflow-hidden ${style.accent}`}
+                    className={`group flex flex-col overflow-hidden rounded-lg border-2 bg-card shadow-level-1 transition-shadow hover:shadow-level-3 ${style.accent}`}
                   >
                     {listing.image_url && (
                       <div className="h-36 overflow-hidden bg-surface-muted">
                         <img
                           src={listing.image_url}
                           alt={listing.title}
-                          className="h-full w-full object-cover transition group-hover:scale-105"
+                          className="h-full w-full object-cover transition-transform duration-normal group-hover:scale-105"
                           loading="lazy"
                         />
                       </div>
                     )}
-                    <div className="flex flex-col gap-xs p-md flex-1">
-                      <p className="text-sm font-semibold text-ink line-clamp-2 leading-snug">
+                    <div className="flex flex-1 flex-col gap-xs p-md">
+                      <p className="line-clamp-2 text-text-md font-semibold leading-snug text-ink">
                         {listing.title}
                       </p>
                       {listing.address && (
-                        <p className="text-xs text-ink-muted line-clamp-1">{listing.address}</p>
+                        <p className="line-clamp-1 text-text-sm text-ink-muted">{listing.address}</p>
                       )}
 
-                      <div className="flex flex-wrap gap-1 mt-1">
+                      <div className="mt-xs flex flex-wrap gap-xs">
                         {listing.price_per_m2 != null && (
-                          <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                          <span className="inline-flex items-center rounded-pill bg-primary/10 px-sm py-0-5 text-text-xs font-medium text-brand">
                             {formatPricePerM2(listing.price_per_m2)}
                           </span>
                         )}
                         {listing.floor && (
-                          <span className="inline-flex items-center rounded-full bg-surface-muted px-2 py-0.5 text-[10px] font-medium text-ink-secondary">
+                          <span className="inline-flex items-center rounded-pill bg-surface-muted px-sm py-0-5 text-text-xs font-medium text-ink-secondary">
                             {t('results.comparablesSection.floor', { floor: listing.floor })}
                           </span>
                         )}
                       </div>
 
-                      <div className="mt-auto pt-sm flex items-center justify-between gap-sm">
+                      <div className="mt-auto flex items-center justify-between gap-sm pt-sm">
                         <div>
                           {listing.price != null && (
-                            <p className="text-base font-bold text-ink">{formatPrice(listing.price)}</p>
+                            <p className="text-text-lg font-semibold text-ink">{formatPrice(listing.price)}</p>
                           )}
-                          <div className="flex gap-sm flex-wrap">
+                          <div className="flex flex-wrap gap-sm">
                             {listing.m2 != null && (
-                              <span className="text-xs text-ink-secondary">{t('results.m2', { count: listing.m2 })}</span>
+                              <span className="text-text-sm text-ink-secondary">{t('results.m2', { count: listing.m2 })}</span>
                             )}
                             {listing.bedrooms != null && (
-                              <span className="text-xs text-ink-secondary">{t('results.rooms', { count: listing.bedrooms })}</span>
+                              <span className="text-text-sm text-ink-secondary">{t('results.rooms', { count: listing.bedrooms })}</span>
                             )}
                             {listing.bathrooms != null && (
-                              <span className="text-xs text-ink-secondary">{t('results.baths', { count: listing.bathrooms })}</span>
+                              <span className="text-text-sm text-ink-secondary">{t('results.baths', { count: listing.bathrooms })}</span>
                             )}
                           </div>
                         </div>
-                        <ExternalLink className="h-3.5 w-3.5 shrink-0 text-ink-muted group-hover:text-primary transition-colors" />
+                        <ExternalLink className="h-3.5 w-3.5 shrink-0 text-ink-muted transition-colors group-hover:text-brand" />
                       </div>
                     </div>
                   </a>

@@ -21,6 +21,7 @@ export function Stepper({
   disabled = false,
 }: StepperProps) {
   const { t } = useTranslation()
+
   function decrement() {
     if (value > min) onChange(value - 1)
   }
@@ -29,24 +30,28 @@ export function Stepper({
     if (value < max) onChange(value + 1)
   }
 
+  const btn =
+    'flex h-10 w-10 items-center justify-center rounded-full bg-secondary text-secondary-foreground ' +
+    'transition-colors hover:bg-secondary-hover active:bg-primary/15 ' +
+    'disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-ink-disabled'
+
   return (
     <div className="flex flex-col gap-xs">
       {label && (
-        <label className="text-sm font-medium text-ink">{label}</label>
+        <label className="text-text-md font-medium text-ink">{label}</label>
       )}
-      <div className="inline-flex items-center gap-sm">
+      <div className="inline-flex items-center gap-md rounded-input bg-page px-md py-xs">
         <button
           type="button"
           onClick={decrement}
           disabled={disabled || value <= min}
           aria-label={label ? t('stepper.decrease', { label }) : t('stepper.decreaseDefault')}
-          className="flex h-9 w-9 items-center justify-center rounded-full text-primary transition-colors disabled:cursor-not-allowed disabled:opacity-30"
-          style={{ backgroundColor: 'rgba(32, 80, 246, 0.1)' }}
+          className={btn}
         >
           <Minus className="h-4 w-4" />
         </button>
         <span
-          className="min-w-[2rem] select-none text-center text-base font-semibold text-ink tabular-nums"
+          className="min-w-[2.5rem] select-none text-center text-header-md font-semibold tabular-nums text-ink"
           aria-live="polite"
         >
           {value}
@@ -56,13 +61,12 @@ export function Stepper({
           onClick={increment}
           disabled={disabled || value >= max}
           aria-label={label ? t('stepper.increase', { label }) : t('stepper.increaseDefault')}
-          className="flex h-9 w-9 items-center justify-center rounded-full text-primary transition-colors disabled:cursor-not-allowed disabled:opacity-30"
-          style={{ backgroundColor: 'rgba(32, 80, 246, 0.1)' }}
+          className={btn}
         >
           <Plus className="h-4 w-4" />
         </button>
       </div>
-      {error && <p className="text-xs text-destructive">{error}</p>}
+      {error && <p className="text-text-sm text-destructive">{error}</p>}
     </div>
   )
 }

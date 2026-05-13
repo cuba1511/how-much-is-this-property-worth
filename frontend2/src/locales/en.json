@@ -3,7 +3,16 @@
     "title": "How much is ",
     "titleHighlight": "my property",
     "titleEnd": " worth?",
-    "subtitle": "Enter your property details and we'll show you real comparables to estimate its market value."
+    "subtitle": "Enter your property details and we'll show you real comparables to estimate its market value.",
+    "toolTag": "Smart valuation",
+    "imageAlt": "Classical building at golden hour — residential market reference"
+  },
+  "landing": {
+    "cta": "Valuate my property",
+    "ctaHint": "Free · results in under 60s"
+  },
+  "nav": {
+    "backHome": "Back to home"
   },
   "steps": {
     "property": "Property",

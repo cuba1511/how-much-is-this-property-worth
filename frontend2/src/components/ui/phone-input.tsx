@@ -1,4 +1,3 @@
-import * as React from 'react'
 import PhoneInput, {
   type Country,
   type Value,
@@ -31,11 +30,11 @@ export function PhoneInputField({
   return (
     <div
       className={cn(
-        'flex h-9 w-full rounded-md border border-input bg-transparent text-base shadow-sm transition-colors',
-        'focus-within:ring-1 focus-within:ring-ring',
-        'placeholder:text-muted-foreground',
+        'flex h-10 w-full rounded-input border border-line bg-page text-text-md transition-colors duration-fast',
+        'focus-within:border-line-brand focus-within:ring-2 focus-within:ring-primary/20',
+        'placeholder:text-ink-muted',
         'disabled:cursor-not-allowed disabled:opacity-50',
-        error && 'border-destructive focus-within:ring-destructive',
+        error && 'border-line-error focus-within:border-line-error focus-within:ring-destructive/20',
         '[&_.PhoneInput]:flex [&_.PhoneInput]:w-full [&_.PhoneInput]:items-center',
         // Country select button
         '[&_.PhoneInputCountry]:flex [&_.PhoneInputCountry]:items-center [&_.PhoneInputCountry]:gap-1 [&_.PhoneInputCountry]:pl-3 [&_.PhoneInputCountry]:pr-2',
@@ -45,9 +44,9 @@ export function PhoneInputField({
         '[&_.PhoneInputCountryIcon>svg]:w-5 [&_.PhoneInputCountryIcon>svg]:h-auto',
         '[&_.PhoneInputCountrySelectArrow]:ml-0 [&_.PhoneInputCountrySelectArrow]:w-2 [&_.PhoneInputCountrySelectArrow]:h-2 [&_.PhoneInputCountrySelectArrow]:border-current [&_.PhoneInputCountrySelectArrow]:opacity-50',
         // Number input
-        '[&_.PhoneInputInput]:flex-1 [&_.PhoneInputInput]:bg-transparent [&_.PhoneInputInput]:outline-none [&_.PhoneInputInput]:border-none [&_.PhoneInputInput]:py-1 [&_.PhoneInputInput]:pr-3 [&_.PhoneInputInput]:text-sm [&_.PhoneInputInput]:text-foreground [&_.PhoneInputInput]:placeholder-muted-foreground',
+        '[&_.PhoneInputInput]:flex-1 [&_.PhoneInputInput]:bg-transparent [&_.PhoneInputInput]:outline-none [&_.PhoneInputInput]:border-none [&_.PhoneInputInput]:py-1 [&_.PhoneInputInput]:pr-3 [&_.PhoneInputInput]:text-text-md [&_.PhoneInputInput]:text-ink [&_.PhoneInputInput]:placeholder-ink-muted',
         // Divider between flag selector and number
-        '[&_.PhoneInputCountry]:border-r [&_.PhoneInputCountry]:border-input',
+        '[&_.PhoneInputCountry]:border-r [&_.PhoneInputCountry]:border-line-subtle',
         className,
       )}
     >

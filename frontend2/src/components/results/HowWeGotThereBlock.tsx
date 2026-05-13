@@ -3,7 +3,6 @@ import { ExternalLink, CheckCircle2 } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, ReferenceLine } from 'recharts'
 import type { SearchMetadata, ValuationStats, Listing } from '@/lib/types'
 import { priceDistribution } from '@/lib/results'
-import { formatPrice } from './shared/formatters'
 import {
   ChartContainer,
   ChartTooltip,
@@ -12,7 +11,7 @@ import {
 } from '@/components/ui/chart'
 
 const chartConfig = {
-  count: { label: 'Count', color: 'hsl(var(--chart-3))' },
+  count: { label: 'Count', color: 'var(--chart-3)' },
 } satisfies ChartConfig
 
 interface HowWeGotThereBlockProps {
@@ -31,24 +30,25 @@ export function HowWeGotThereBlock({ searchMetadata, searchUrl, stats, listings 
   const distribution = priceDistribution(listings)
 
   return (
-    <div className="rounded-2xl border border-line bg-surface p-lg shadow-card">
-      <h2 className="text-base font-semibold text-ink mb-md">{t('results.howWeGotThere.title')}</h2>
+    <div className="card-surface p-lg">
+      <h2 className="text-header-sm mb-md">{t('results.howWeGotThere.title')}</h2>
 
       {/* Stage timeline */}
-      <div className="flex flex-wrap gap-sm mb-md">
+      <div className="mb-md flex flex-wrap gap-sm">
         {stages.map((stage, i) => {
           const isFinal = stage.name === searchMetadata.final_stage
           return (
             <div
               key={i}
-              className={`flex flex-col gap-1 rounded-xl border p-sm text-xs ${
+              className={[
+                'flex flex-col gap-xs rounded-md border p-sm text-text-sm',
                 isFinal
-                  ? 'border-primary bg-primary/5 ring-1 ring-primary/20'
-                  : 'border-line bg-surface-muted'
-              }`}
+                  ? 'border-line-brand bg-primary/5 ring-2 ring-primary/15'
+                  : 'border-line-subtle bg-surface-muted',
+              ].join(' ')}
             >
-              <div className="flex items-center gap-1 font-semibold text-ink">
-                {isFinal && <CheckCircle2 className="h-3.5 w-3.5 text-primary" />}
+              <div className="flex items-center gap-xs font-semibold text-ink">
+                {isFinal && <CheckCircle2 className="h-3.5 w-3.5 text-brand" />}
                 {t(`results.stages.${stage.name}`, { defaultValue: stage.label })}
               </div>
               <span className="text-ink-muted">
@@ -70,7 +70,7 @@ export function HowWeGotThereBlock({ searchMetadata, searchUrl, stats, listings 
       {/* Price distribution chart */}
       {distribution.length > 0 && (
         <div className="mb-md">
-          <p className="text-xs font-medium text-ink-secondary mb-sm">{t('results.howWeGotThere.priceDistribution')}</p>
+          <p className="mb-sm text-text-sm font-medium text-ink-secondary">{t('results.howWeGotThere.priceDistribution')}</p>
           <ChartContainer config={chartConfig} className="h-[180px] w-full">
             <BarChart data={distribution}>
               <CartesianGrid vertical={false} strokeDasharray="3 3" />
@@ -81,7 +81,7 @@ export function HowWeGotThereBlock({ searchMetadata, searchUrl, stats, listings 
               {stats.estimated_value != null && (
                 <ReferenceLine
                   x={distribution.find((b) => stats.estimated_value! >= b.rangeMin && stats.estimated_value! <= b.rangeMax)?.label}
-                  stroke="hsl(var(--chart-2))"
+                  stroke="var(--chart-2)"
                   strokeDasharray="4 4"
                   label={{ value: t('results.howWeGotThere.estimated'), position: 'top', fontSize: 10 }}
                 />
@@ -95,7 +95,7 @@ export function HowWeGotThereBlock({ searchMetadata, searchUrl, stats, listings 
         href={searchUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+        className="inline-flex items-center gap-xs text-text-md font-medium text-brand hover:text-brand-hover hover:underline"
       >
         {t('results.howWeGotThere.viewOnIdealista')}
         <ExternalLink className="h-3.5 w-3.5" />

@@ -23,34 +23,36 @@ export function ZoneMapBlock({ municipio, selectedAddress, transactions, finalSt
   const sortedTx = [...transactions].sort((a, b) => (a.distance_m ?? Infinity) - (b.distance_m ?? Infinity))
 
   return (
-    <div className="rounded-2xl border border-line bg-surface p-lg shadow-card">
-      <h2 className="text-base font-semibold text-ink mb-xs">{t('results.zone.title')}</h2>
-      <p className="text-xs text-ink-muted mb-md">
+    <div className="card-surface p-lg">
+      <h2 className="text-header-sm mb-xs">{t('results.zone.title')}</h2>
+      <p className="mb-md text-text-sm text-ink-muted">
         {t('results.zone.radiusHint', {
           radius,
           stage: t(`results.stages.${finalStage}`, { defaultValue: finalStage }),
         })}
       </p>
 
-      <MapView
-        propertyPosition={position}
-        radiusMeters={radius}
-        height="280px"
-      />
+      <div className="overflow-hidden rounded-md border border-line-subtle">
+        <MapView
+          propertyPosition={position}
+          radiusMeters={radius}
+          height="280px"
+        />
+      </div>
 
       {sortedTx.length > 0 && (
         <div className="mt-md">
-          <p className="text-xs font-medium text-ink-secondary mb-sm">{t('results.zone.nearbyTransactions')}</p>
-          <div className="max-h-48 overflow-y-auto divide-y divide-line">
+          <p className="mb-sm text-text-sm font-medium text-ink-secondary">{t('results.zone.nearbyTransactions')}</p>
+          <div className="max-h-48 divide-y divide-line-subtle overflow-y-auto">
             {sortedTx.slice(0, 10).map((tx) => (
-              <div key={tx.id} className="flex items-center justify-between py-2 text-xs">
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-ink font-medium line-clamp-1">{tx.address ?? '—'}</span>
+              <div key={tx.id} className="flex items-center justify-between py-sm text-text-sm">
+                <div className="flex flex-col gap-0-5">
+                  <span className="line-clamp-1 font-medium text-ink">{tx.address ?? '—'}</span>
                   {tx.distance_m != null && (
                     <span className="text-ink-muted">{tx.distance_m}m</span>
                   )}
                 </div>
-                <div className="text-right shrink-0 ml-sm">
+                <div className="ml-sm shrink-0 text-right">
                   {tx.closing_price != null ? (
                     <span className="font-semibold text-ink">{formatPrice(tx.closing_price)}</span>
                   ) : tx.asking_price != null ? (

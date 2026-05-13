@@ -85,10 +85,11 @@ export function LeadDialog({ open, onOpenChange, onSubmit, submitting }: LeadDia
                 value={lead.fullName}
                 onChange={(e) => update('fullName', e.target.value)}
                 className="pl-9"
+                aria-invalid={!!errors.fullName}
                 autoFocus
               />
             </div>
-            {errors.fullName && <p className="text-xs text-destructive">{errors.fullName}</p>}
+            {errors.fullName && <p className="text-text-sm text-destructive">{errors.fullName}</p>}
           </div>
 
           <div className="flex flex-col gap-xs">
@@ -102,9 +103,10 @@ export function LeadDialog({ open, onOpenChange, onSubmit, submitting }: LeadDia
                 value={lead.email}
                 onChange={(e) => update('email', e.target.value)}
                 className="pl-9"
+                aria-invalid={!!errors.email}
               />
             </div>
-            {errors.email && <p className="text-xs text-destructive">{errors.email}</p>}
+            {errors.email && <p className="text-text-sm text-destructive">{errors.email}</p>}
           </div>
 
           <div className="flex flex-col gap-xs">
@@ -117,13 +119,13 @@ export function LeadDialog({ open, onOpenChange, onSubmit, submitting }: LeadDia
               placeholder={t('lead.phonePlaceholder')}
               error={!!errors.phone}
             />
-            {errors.phone && <p className="text-xs text-destructive">{errors.phone}</p>}
+            {errors.phone && <p className="text-text-sm text-destructive">{errors.phone}</p>}
           </div>
 
           <button
             type="submit"
             disabled={submitting}
-            className="btn-primary mt-sm w-full disabled:cursor-not-allowed disabled:opacity-60"
+            className="btn-primary mt-sm w-full"
           >
             {submitting ? (
               <>
@@ -135,7 +137,7 @@ export function LeadDialog({ open, onOpenChange, onSubmit, submitting }: LeadDia
             )}
           </button>
 
-          <p className="text-center text-xs text-ink-muted">
+          <p className="text-center text-text-sm text-ink-muted">
             {t('lead.privacy')}
           </p>
         </form>

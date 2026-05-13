@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { Navbar } from '@/components/Navbar'
-import { HeroSection } from '@/components/HeroSection'
+import { LandingHero } from '@/components/LandingHero'
 import { ValuationForm } from '@/components/ValuationForm'
 import { ValuationResults } from '@/components/ValuationResults'
 import type { ValuationResponse, ValuationRequest, LeadInfo } from '@/lib/types'
+
+type View = 'landing' | 'form' | 'results'
 
 interface ValuationData {
   result: ValuationResponse
@@ -12,56 +14,75 @@ interface ValuationData {
 }
 
 function App() {
+  const [view, setView] = useState<View>('landing')
   const [data, setData] = useState<ValuationData | null>(null)
   const [apiError, setApiError] = useState<string | null>(null)
+
+  function startForm() {
+    setApiError(null)
+    setView('form')
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    })
+  }
 
   function handleResult(result: ValuationResponse, request: ValuationRequest, lead?: LeadInfo) {
     setApiError(null)
     setData({ result, request, lead })
-    setTimeout(() => {
-      document.getElementById('results')?.scrollIntoView({ behavior: 'smooth' })
-    }, 100)
+    setView('results')
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    })
   }
 
   function handleReset() {
     setData(null)
     setApiError(null)
-    setTimeout(() => {
-      document.getElementById('form-area')?.scrollIntoView({ behavior: 'smooth' })
-    }, 100)
+    setView('landing')
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    })
   }
 
   return (
     <>
-      <Navbar />
-      <HeroSection />
+      <Navbar onHome={view !== 'landing' ? handleReset : undefined} />
 
-      <div
-        id="form-area"
-        className="mt-xl mx-xl pb-3xl"
-      >
-        {!data && (
-          <>
-            {apiError && (
-              <div className="mb-md rounded-xl border border-destructive/30 bg-destructive/5 px-md py-sm text-sm text-destructive">
-                {apiError}
-              </div>
-            )}
-            <ValuationForm onResult={handleResult} onError={setApiError} />
-          </>
+      <main className="flex-1">
+        {view === 'landing' && <LandingHero onStart={startForm} />}
+
+        {view === 'form' && (
+          <section id="form-area" className="container mx-auto py-2xl md:py-3xl">
+            <div className="relative mx-auto w-full max-w-3xl">
+              <div
+                aria-hidden
+                className="pointer-events-none absolute -inset-md -z-10 rounded-card bg-gradient-to-br from-primary/10 via-transparent to-primary/5 blur-3xl"
+              />
+              {apiError && (
+                <div className="alert-error mb-md rounded-lg border border-line-error px-md py-sm text-text-md">
+                  {apiError}
+                </div>
+              )}
+              <ValuationForm
+                onResult={handleResult}
+                onError={setApiError}
+                onBackToLanding={handleReset}
+              />
+            </div>
+          </section>
         )}
-      </div>
 
-      {data && (
-        <div id="results" className="mx-xl mt-xl mb-3xl">
-          <ValuationResults
-            result={data.result}
-            request={data.request}
-            lead={data.lead}
-            onReset={handleReset}
-          />
-        </div>
-      )}
+        {view === 'results' && data && (
+          <section id="results" className="container mx-auto py-xl md:py-2xl">
+            <ValuationResults
+              result={data.result}
+              request={data.request}
+              lead={data.lead}
+              onReset={handleReset}
+            />
+          </section>
+        )}
+      </main>
     </>
   )
 }

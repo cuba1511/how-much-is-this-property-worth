@@ -88,8 +88,8 @@ export function MapView({
             center={mainPos}
             radius={radiusMeters}
             pathOptions={{
-              color: 'hsl(225, 93%, 54%)',
-              fillColor: 'hsl(225, 93%, 54%)',
+              color: 'var(--color-spaceblue-600)',
+              fillColor: 'var(--color-spaceblue-600)',
               fillOpacity: 0.08,
               weight: 1.5,
             }}

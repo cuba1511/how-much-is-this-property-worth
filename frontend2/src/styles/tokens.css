@@ -1,0 +1,501 @@
+/* ============================================================================
+ * DESIGN TOKENS
+ * Generated from /design-tokensLast version/
+ *   - 1. Primitives (Light + Dark)
+ *   - 2. Semantic   (Light + Dark)
+ *   - 3. Components (Light + Dark)
+ *   + text.styles + effect.styles
+ *
+ * Hierarchy:
+ *   primitives  → raw values (colors, spacing, radius, fonts)
+ *   semantic    → meaning  (bg.page, fg.primary, action.primary.bg)
+ *   components  → roles    (button.primary, card.bg, input.border)
+ *
+ * Tailwind utilities and shadcn variables read from these CSS variables,
+ * so toggling `.dark` on <html>/<body> swaps the entire theme.
+ * ========================================================================== */
+
+:root {
+  /* --------------------------------------------------------------------------
+   * PRIMITIVES — raw scale tokens (light mode)
+   * ----------------------------------------------------------------------- */
+
+  /* Brand — PropHero "spaceblue" */
+  --color-spaceblue-50: #eef4ff;
+  --color-spaceblue-100: #d9e7ff;
+  --color-spaceblue-200: #cfe1ff;
+  --color-spaceblue-300: #8dbbff;
+  --color-spaceblue-400: #5895ff;
+  --color-spaceblue-500: #316eff;
+  --color-spaceblue-600: #2050f6;
+  --color-spaceblue-700: #1337e2;
+  --color-spaceblue-800: #162eb7;
+  --color-spaceblue-900: #182c90;
+  --color-spaceblue-950: #141d57;
+
+  /* Neutrals */
+  --color-base-white: #ffffff;
+  --color-base-black: #000000;
+  --color-base-overlay: rgba(0, 0, 0, 0.4);
+
+  --color-zinc-50:  #fafafa;
+  --color-zinc-100: #f4f4f5;
+  --color-zinc-200: #e4e4e7;
+  --color-zinc-300: #d4d4d8;
+  --color-zinc-400: #a1a1aa;
+  --color-zinc-500: #71717a;
+  --color-zinc-600: #52525b;
+  --color-zinc-700: #3f3f46;
+  --color-zinc-800: #27272a;
+  --color-zinc-900: #18181b;
+  --color-zinc-950: #09090b;
+
+  --color-slate-50:  #f8fafc;
+  --color-slate-100: #f1f5f9;
+  --color-slate-200: #e2e8f0;
+  --color-slate-300: #cbd5e1;
+  --color-slate-400: #94a3b8;
+  --color-slate-500: #64748b;
+  --color-slate-600: #475569;
+  --color-slate-700: #334155;
+  --color-slate-800: #1e293b;
+  --color-slate-900: #0f172a;
+  --color-slate-950: #020617;
+
+  --color-neutral-50:  #fafafa;
+  --color-neutral-100: #f5f5f5;
+  --color-neutral-200: #e5e5e5;
+  --color-neutral-300: #d4d4d4;
+  --color-neutral-400: #a3a3a3;
+  --color-neutral-500: #737373;
+
+  --color-black-50:  #f6f6f6;
+  --color-black-100: #e7e7e7;
+  --color-black-200: #d1d1d1;
+  --color-black-300: #b0b0b0;
+  --color-black-500: #6d6d6d;
+  --color-black-700: #4f4f4f;
+  --color-black-900: #3d3d3d;
+  --color-black-950: #212121;
+
+  /* Status palettes */
+  --color-red-50:  #fef2f2;
+  --color-red-100: #fee2e2;
+  --color-red-200: #fecaca;
+  --color-red-300: #fca5a5;
+  --color-red-400: #f87171;
+  --color-red-500: #ef4444;
+  --color-red-600: #dc2626;
+  --color-red-700: #b91c1c;
+  --color-red-800: #991b1b;
+  --color-red-900: #7f1d1d;
+  --color-red-950: #450a0a;
+
+  --color-orange-50:  #fff7ed;
+  --color-orange-100: #ffedd5;
+  --color-orange-200: #fed7aa;
+  --color-orange-300: #fdba74;
+  --color-orange-400: #fb923c;
+  --color-orange-500: #f97316;
+  --color-orange-600: #ea580c;
+  --color-orange-700: #c2410c;
+  --color-orange-800: #9a3412;
+  --color-orange-950: #431407;
+
+  --color-green-50:  #f0fdf4;
+  --color-green-100: #dcfce7;
+  --color-green-200: #bbf7d0;
+  --color-green-300: #86efac;
+  --color-green-400: #4ade80;
+  --color-green-500: #22c55e;
+  --color-green-600: #16a34a;
+  --color-green-700: #15803d;
+  --color-green-800: #166534;
+  --color-green-950: #052e16;
+
+  /* Alpha overlays */
+  --color-alpha-black-10: rgba(0, 0, 0, 0.04);
+  --color-alpha-black-20: rgba(0, 0, 0, 0.08);
+  --color-alpha-black-40: rgba(0, 0, 0, 0.16);
+  --color-alpha-black-60: rgba(0, 0, 0, 0.32);
+  --color-alpha-black-80: rgba(0, 0, 0, 0.64);
+  --color-alpha-gray-80: rgba(246, 246, 246, 0.64);
+
+  /* --------------------------------------------------------------------------
+   * SPACING — 4px-based scale (primitives.spacing)
+   * ----------------------------------------------------------------------- */
+  --space-0:    0px;
+  --space-0-5:  2px;
+  --space-1:    4px;
+  --space-2:    8px;
+  --space-3:    12px;
+  --space-4:    16px;
+  --space-5:    20px;
+  --space-6:    24px;
+  --space-7:    28px;
+  --space-8:    32px;
+  --space-9:    36px;
+  --space-10:   40px;
+  --space-11:   44px;
+  --space-12:   48px;
+  --space-14:   56px;
+  --space-16:   64px;
+  --space-20:   80px;
+  --space-24:   96px;
+  --space-25:   100px;
+  --space-28:   112px;
+  --space-32:   128px;
+  --space-40:   160px;
+
+  /* Layout padding (primitives.layout) */
+  --layout-padding-xs:  16px;
+  --layout-padding-sm:  32px;
+  --layout-padding-md:  40px;
+  --layout-padding-lg:  80px;
+  --layout-padding-xl:  100px;
+  --layout-padding-xxl: 112px;
+
+  /* --------------------------------------------------------------------------
+   * RADII — primitives.radius
+   * ----------------------------------------------------------------------- */
+  --radius-0:    0px;
+  --radius-0-5:  2px;
+  --radius-1:    4px;
+  --radius-1-5:  6px;
+  --radius-2:    8px;
+  --radius-2-5:  10px;
+  --radius-3:    12px;
+  --radius-4:    16px;
+  --radius-5:    20px;
+  --radius-6:    24px;
+  --radius-8:    32px;
+  --radius-10:   40px;
+  --radius-12:   48px;
+  --radius-full: 9999px;
+
+  /* --------------------------------------------------------------------------
+   * BORDER WIDTHS
+   * ----------------------------------------------------------------------- */
+  --border-w-0: 0px;
+  --border-w-1: 1px;
+  --border-w-2: 2px;
+  --border-w-4: 4px;
+  --border-w-8: 8px;
+
+  /* --------------------------------------------------------------------------
+   * TYPOGRAPHY — primitives.font
+   * ----------------------------------------------------------------------- */
+  --font-family-sans: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  --font-weight-regular:  400;
+  --font-weight-medium:   500;
+  --font-weight-semibold: 600;
+
+  --font-size-text-xs:    10px;
+  --font-size-text-sm:    12px;
+  --font-size-text-md:    14px;
+  --font-size-text-lg:    16px;
+  --font-size-header-sm:  18px;
+  --font-size-header-md:  20px;
+  --font-size-header-lg:  24px;
+  --font-size-header-xl:  32px;
+  --font-size-header-2xl: 36px;
+  --font-size-header-3xl: 48px;
+  --font-size-header-4xl: 60px;
+  --font-size-header-5xl: 72px;
+
+  /* --------------------------------------------------------------------------
+   * BLUR — primitives.blur
+   * ----------------------------------------------------------------------- */
+  --blur-8:  8px;
+  --blur-12: 12px;
+  --blur-16: 16px;
+  --blur-24: 24px;
+  --blur-32: 32px;
+  --blur-40: 40px;
+  --blur-56: 56px;
+  --blur-64: 64px;
+
+  /* --------------------------------------------------------------------------
+   * SEMANTIC — meaning layer (light)
+   * ----------------------------------------------------------------------- */
+
+  /* Backgrounds */
+  --color-bg-page:          var(--color-black-50);      /* #f6f6f6 */
+  --color-bg-card:          var(--color-base-white);
+  --color-bg-disabled:      var(--color-neutral-100);
+  --color-bg-elevated:      var(--color-zinc-300);
+  --color-bg-elevated-alt:  var(--color-zinc-50);
+  --color-bg-primary:       var(--color-spaceblue-600);
+  --color-bg-primary-alt:   var(--color-spaceblue-50);
+  --color-bg-secondary:     var(--color-black-950);
+  --color-bg-secondary-alt: var(--color-zinc-200);
+  --color-bg-error:         var(--color-red-500);
+  --color-bg-error-alt:     var(--color-red-100);
+  --color-bg-warning:       var(--color-orange-500);
+  --color-bg-warning-alt:   var(--color-orange-100);
+  --color-bg-success:       var(--color-green-500);
+  --color-bg-success-alt:   var(--color-green-100);
+  --color-bg-page-scroll:   var(--color-alpha-gray-80);
+
+  /* Foregrounds */
+  --color-fg-primary:        var(--color-black-950);
+  --color-fg-secondary:      var(--color-zinc-500);
+  --color-fg-tertiary:       var(--color-zinc-400);
+  --color-fg-disabled:       var(--color-neutral-400);
+  --color-fg-contrast:       var(--color-base-white);
+  --color-fg-error:          var(--color-red-700);
+  --color-fg-warning:        var(--color-orange-700);
+  --color-fg-success:        var(--color-green-700);
+  --color-fg-info:           var(--color-spaceblue-800);
+  --color-fg-brand:          var(--color-spaceblue-600);
+  --color-fg-brand-hover:    var(--color-spaceblue-700);
+  --color-fg-brand-disabled: var(--color-spaceblue-200);
+  --color-fg-divider:        var(--color-zinc-200);
+
+  /* Borders */
+  --color-border-default:      var(--color-zinc-300);
+  --color-border-elevated:     var(--color-zinc-200);
+  --color-border-elevated-alt: var(--color-zinc-50);
+  --color-border-disabled:     var(--color-neutral-300);
+  --color-border-contrast:     var(--color-base-white);
+  --color-border-brand:        var(--color-spaceblue-600);
+  --color-border-secondary:    var(--color-zinc-900);
+  --color-border-focus:        var(--color-zinc-500);
+  --color-border-error:        var(--color-red-600);
+  --color-border-warning:      var(--color-orange-600);
+  --color-border-success:      var(--color-green-600);
+
+  /* Actions */
+  --color-action-primary-bg:        var(--color-spaceblue-600);
+  --color-action-primary-bg-hover:  var(--color-spaceblue-700);
+  --color-action-primary-bg-active: var(--color-spaceblue-800);
+  --color-action-primary-fg:        var(--color-base-white);
+
+  --color-action-secondary-bg:        var(--color-spaceblue-100);
+  --color-action-secondary-bg-hover:  var(--color-spaceblue-50);
+  --color-action-secondary-bg-active: var(--color-spaceblue-200);
+  --color-action-secondary-fg:        var(--color-spaceblue-800);
+  --color-action-secondary-fg-active: var(--color-spaceblue-900);
+
+  --color-action-destructive-bg:               var(--color-red-600);
+  --color-action-destructive-bg-hover:         var(--color-red-700);
+  --color-action-destructive-bg-active:        var(--color-red-800);
+  --color-action-destructive-fg:               var(--color-base-white);
+  --color-action-destructive-ghost-bg-hover:   var(--color-red-50);
+  --color-action-destructive-ghost-bg-active:  var(--color-red-100);
+  --color-action-destructive-ghost-fg:         var(--color-red-700);
+
+  --color-action-disabled-bg:        var(--color-neutral-200);
+  --color-action-disabled-bg-active: var(--color-neutral-300);
+  --color-action-disabled-fg:        var(--color-neutral-500);
+
+  /* --------------------------------------------------------------------------
+   * COMPONENT — role tokens (resolve to semantic)
+   * ----------------------------------------------------------------------- */
+
+  /* Radii by role */
+  --radius-input:  var(--radius-2);   /* 8px  */
+  --radius-button: var(--radius-full);/* pill */
+  --radius-card:   var(--radius-6);   /* 24px */
+
+  /* Button */
+  --btn-primary-bg:        var(--color-action-primary-bg);
+  --btn-primary-bg-hover:  var(--color-action-primary-bg-hover);
+  --btn-primary-bg-active: var(--color-action-primary-bg-active);
+  --btn-primary-fg:        var(--color-action-primary-fg);
+
+  --btn-secondary-bg:        var(--color-action-secondary-bg);
+  --btn-secondary-bg-hover:  var(--color-action-secondary-bg-hover);
+  --btn-secondary-bg-active: var(--color-action-secondary-bg-active);
+  --btn-secondary-fg:        var(--color-action-secondary-fg);
+  --btn-secondary-fg-active: var(--color-action-secondary-fg-active);
+
+  --btn-ghost-bg-hover:  var(--color-action-secondary-bg-hover);
+  --btn-ghost-bg-active: var(--color-action-secondary-bg-active);
+  --btn-ghost-fg:        var(--color-action-secondary-fg);
+
+  --btn-destructive-bg:        var(--color-action-destructive-bg);
+  --btn-destructive-bg-hover:  var(--color-action-destructive-bg-hover);
+  --btn-destructive-bg-active: var(--color-action-destructive-bg-active);
+  --btn-destructive-fg:        var(--color-action-destructive-fg);
+
+  --btn-disabled-bg: var(--color-action-disabled-bg);
+  --btn-disabled-fg: var(--color-action-disabled-fg);
+
+  /* Card */
+  --card-bg:     var(--color-bg-card);
+  --card-border: var(--color-border-elevated-alt);
+
+  /* Input */
+  --input-bg:             var(--color-bg-page);
+  --input-bg-hover:       var(--color-bg-disabled);
+  --input-bg-active:      var(--color-bg-elevated);
+  --input-bg-disabled:    var(--color-bg-elevated-alt);
+  --input-border:         var(--color-border-default);
+  --input-border-primary: var(--color-border-brand);
+  --input-border-focus:   var(--color-border-focus);
+  --input-border-error:   var(--color-border-error);
+  --input-fg:             var(--color-fg-primary);
+  --input-fg-placeholder: var(--color-fg-tertiary);
+  --input-fg-disabled:    var(--color-fg-disabled);
+
+  /* Alert */
+  --alert-success-bg: var(--color-bg-success-alt);
+  --alert-success-fg: var(--color-fg-success);
+  --alert-error-bg:   var(--color-bg-error-alt);
+  --alert-error-fg:   var(--color-fg-error);
+  --alert-warning-bg: var(--color-bg-warning-alt);
+  --alert-warning-fg: var(--color-fg-warning);
+  --alert-info-bg:    var(--color-bg-primary-alt);
+  --alert-info-fg:    var(--color-fg-info);
+
+  /* --------------------------------------------------------------------------
+   * EFFECTS — shadows & focus rings
+   * ----------------------------------------------------------------------- */
+  --shadow-level-1: 0 0 16px rgba(0, 0, 0, 0.04);
+  --shadow-level-2: 0 0 16px rgba(0, 0, 0, 0.1);
+  --shadow-level-3: 0 0 24px rgba(0, 0, 0, 0.16);
+  --shadow-level-4: 0 0 32px rgba(0, 0, 0, 0.2);
+  --shadow-focus:   0 0 0 2px var(--color-alpha-black-60);
+
+  /* Legacy aliases (back-compat with existing components) */
+  --shadow-card: 0 10px 40px rgba(32, 80, 246, 0.08);
+  --shadow-lift: 0 12px 32px rgba(30, 37, 45, 0.12);
+
+  /* --------------------------------------------------------------------------
+   * SHADCN COMPAT — map shadcn's named variables onto the semantic layer
+   *   shadcn classes (bg-card, text-foreground, etc.) keep working unchanged.
+   *   We use raw color values (not hsl channels) so radix/recharts pick them
+   *   up directly.
+   * ----------------------------------------------------------------------- */
+  --background:           var(--color-bg-page);
+  --foreground:           var(--color-fg-primary);
+  --card:                 var(--color-bg-card);
+  --card-foreground:      var(--color-fg-primary);
+  --popover:              var(--color-bg-card);
+  --popover-foreground:   var(--color-fg-primary);
+  --primary:              var(--color-action-primary-bg);
+  --primary-foreground:   var(--color-action-primary-fg);
+  --secondary:            var(--color-action-secondary-bg);
+  --secondary-foreground: var(--color-action-secondary-fg);
+  --muted:                var(--color-bg-elevated-alt);
+  --muted-foreground:     var(--color-fg-secondary);
+  --accent:               var(--color-bg-primary-alt);
+  --accent-foreground:    var(--color-fg-brand);
+  --destructive:          var(--color-action-destructive-bg);
+  --destructive-foreground: var(--color-action-destructive-fg);
+  --border:               var(--color-border-elevated);
+  --input:                var(--input-border);
+  --ring:                 var(--color-border-brand);
+  --radius:               var(--radius-input);
+
+  --chart-1: var(--color-spaceblue-600);
+  --chart-2: var(--color-orange-500);
+  --chart-3: var(--color-spaceblue-300);
+  --chart-4: var(--color-red-500);
+  --chart-5: var(--color-green-500);
+
+  /* --------------------------------------------------------------------------
+   * RGB CHANNELS — required for Tailwind's `bg-primary/40` alpha modifier.
+   *   Format: space-separated R G B (no commas, no rgb()).
+   *   Only declared for tokens that are actually used with /<opacity>.
+   * ----------------------------------------------------------------------- */
+  --primary-rgb:              32 80 246;   /* spaceblue-600 */
+  --primary-foreground-rgb:   255 255 255;
+  --secondary-rgb:            217 231 255; /* spaceblue-100 */
+  --secondary-foreground-rgb: 22 46 183;   /* spaceblue-800 */
+  --destructive-rgb:          220 38 38;   /* red-600 */
+  --destructive-foreground-rgb: 255 255 255;
+}
+
+/* ============================================================================
+ * DARK MODE OVERRIDES — toggle via `.dark` class on <html> or <body>
+ * ========================================================================== */
+.dark {
+  /* Semantic — backgrounds */
+  --color-bg-page:          var(--color-slate-900);
+  --color-bg-card:          var(--color-slate-800);
+  --color-bg-disabled:      var(--color-slate-950);
+  --color-bg-elevated:      var(--color-slate-600);
+  --color-bg-elevated-alt:  var(--color-slate-700);
+  --color-bg-primary:       var(--color-spaceblue-200);
+  --color-bg-primary-alt:   var(--color-spaceblue-950);
+  --color-bg-secondary:     var(--color-black-50);
+  --color-bg-secondary-alt: var(--color-black-200);
+  --color-bg-error:         var(--color-red-300);
+  --color-bg-error-alt:     var(--color-red-950);
+  --color-bg-warning:       var(--color-orange-300);
+  --color-bg-warning-alt:   var(--color-orange-950);
+  --color-bg-success:       var(--color-green-300);
+  --color-bg-success-alt:   var(--color-green-950);
+  --color-bg-page-scroll:   var(--color-alpha-black-80);
+
+  /* Semantic — foregrounds */
+  --color-fg-primary:        var(--color-base-white);
+  --color-fg-secondary:      var(--color-zinc-300);
+  --color-fg-tertiary:       var(--color-zinc-400);
+  --color-fg-disabled:       var(--color-neutral-500);
+  --color-fg-contrast:       var(--color-base-black);
+  --color-fg-error:          var(--color-red-400);
+  --color-fg-warning:        var(--color-orange-400);
+  --color-fg-success:        var(--color-green-400);
+  --color-fg-info:           var(--color-spaceblue-400);
+  --color-fg-brand:          var(--color-spaceblue-200);
+  --color-fg-brand-hover:    var(--color-spaceblue-300);
+  --color-fg-brand-disabled: var(--color-spaceblue-600);
+  --color-fg-divider:        var(--color-zinc-500);
+
+  /* Semantic — borders */
+  --color-border-default:      var(--color-slate-700);
+  --color-border-elevated:     var(--color-slate-800);
+  --color-border-elevated-alt: var(--color-slate-900);
+  --color-border-disabled:     var(--color-slate-950);
+  --color-border-contrast:     var(--color-slate-600);
+  --color-border-brand:        var(--color-spaceblue-300);
+  --color-border-secondary:    var(--color-zinc-50);
+  --color-border-focus:        var(--color-zinc-300);
+  --color-border-error:        var(--color-red-800);
+  --color-border-warning:      var(--color-orange-800);
+  --color-border-success:      var(--color-green-800);
+
+  /* Semantic — actions */
+  --color-action-primary-bg:        var(--color-spaceblue-200);
+  --color-action-primary-bg-hover:  var(--color-spaceblue-100);
+  --color-action-primary-bg-active: var(--color-spaceblue-50);
+  --color-action-primary-fg:        var(--color-spaceblue-900);
+
+  --color-action-secondary-bg:        var(--color-slate-600);
+  --color-action-secondary-bg-hover:  var(--color-slate-700);
+  --color-action-secondary-bg-active: var(--color-slate-800);
+  --color-action-secondary-fg:        var(--color-base-white);
+  --color-action-secondary-fg-active: var(--color-base-white);
+
+  --color-action-destructive-bg:               var(--color-red-700);
+  --color-action-destructive-bg-hover:         var(--color-red-800);
+  --color-action-destructive-bg-active:        var(--color-red-900);
+  --color-action-destructive-fg:               var(--color-base-white);
+  --color-action-destructive-ghost-bg-hover:   var(--color-red-900);
+  --color-action-destructive-ghost-bg-active:  var(--color-red-900);
+  --color-action-destructive-ghost-fg:         var(--color-red-400);
+
+  --color-action-disabled-bg:        var(--color-neutral-500);
+  --color-action-disabled-bg-active: var(--color-neutral-400);
+  --color-action-disabled-fg:        var(--color-neutral-400);
+
+  /* Effects — adjust shadow contrast for dark surface */
+  --shadow-level-1: 0 0 16px rgba(0, 0, 0, 0.4);
+  --shadow-level-2: 0 0 16px rgba(0, 0, 0, 0.5);
+  --shadow-level-3: 0 0 24px rgba(0, 0, 0, 0.55);
+  --shadow-level-4: 0 0 32px rgba(0, 0, 0, 0.6);
+  --shadow-card:    0 12px 32px rgba(0, 0, 0, 0.35);
+  --shadow-lift:    0 16px 40px rgba(0, 0, 0, 0.45);
+
+  /* RGB channels — dark mode equivalents */
+  --primary-rgb:              207 225 255; /* spaceblue-200 */
+  --primary-foreground-rgb:   24 44 144;   /* spaceblue-900 */
+  --secondary-rgb:            71 85 105;   /* slate-600 */
+  --secondary-foreground-rgb: 255 255 255;
+  --destructive-rgb:          185 28 28;   /* red-700 */
+  --destructive-foreground-rgb: 255 255 255;
+}

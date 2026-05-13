@@ -11,25 +11,25 @@ export function ConversionSignalsBlock({ lead, totalTransactions }: ConversionSi
   const { t } = useTranslation()
 
   return (
-    <div className="rounded-2xl border border-line bg-surface p-lg shadow-card">
+    <div className="card-surface p-lg">
       {lead?.fullName && (
-        <p className="text-lg font-semibold text-ink mb-xs">
+        <p className="mb-xs text-header-md font-semibold text-ink">
           {t('results.cta.greeting', { name: lead.fullName.split(' ')[0] })}
         </p>
       )}
 
       {totalTransactions != null && totalTransactions > 0 && (
-        <p className="text-sm text-ink-secondary mb-md">
+        <p className="mb-md text-text-md text-ink-secondary">
           {t('results.cta.basedOn', { count: totalTransactions })}
         </p>
       )}
 
-      <div className="flex items-center gap-sm rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-md mb-md">
-        <Clock className="h-5 w-5 text-amber-600 shrink-0" />
-        <p className="text-sm text-amber-800 dark:text-amber-300">{t('results.cta.expiresIn')}</p>
+      <div className="alert-warning mb-md flex items-center gap-sm rounded-md border border-line-warning/40 p-md">
+        <Clock className="h-5 w-5 shrink-0 text-warning-fg" />
+        <p className="text-text-md">{t('results.cta.expiresIn')}</p>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-sm">
+      <div className="flex flex-col gap-sm sm:flex-row">
         <button type="button" className="btn-primary flex-1">
           <PhoneCall className="h-4 w-4" />
           {t('results.cta.talkToAdvisor')}

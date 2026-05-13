@@ -27,16 +27,16 @@ export function AddressStep({ onResolvedAddress, resolvedAddress, submitting = f
 
   return (
     <div className="flex flex-col gap-sm">
-      <label className="text-sm font-medium text-ink">{t('address.label')}</label>
+      <label className="text-text-md font-medium text-ink">{t('address.label')}</label>
       <AddressSearch onSelect={handleAddressSelect} disabled={submitting} />
       {errors.address && (
-        <p className="text-xs text-destructive">
+        <p className="text-text-sm text-destructive">
           {errors.address.message === 'Required'
             ? t('address.error')
             : errors.address.message}
         </p>
       )}
-      <div className="bg-surface-tint rounded-2xl shadow-card overflow-hidden mt-xs">
+      <div className="mt-xs overflow-hidden rounded-lg border border-line-subtle bg-surface-tint shadow-level-1">
         <MapView position={mapPosition} height="300px" />
       </div>
     </div>

@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/chart'
 
 const chartConfig = {
-  count: { label: '', color: 'hsl(var(--chart-1))' },
+  count: { label: '', color: 'var(--chart-1)' },
 } satisfies ChartConfig
 
 interface TimeOnMarketBlockProps {
@@ -33,14 +33,14 @@ export function TimeOnMarketBlock({ transactions }: TimeOnMarketBlockProps) {
   const buckets = daysOnMarketBuckets(daysArr)
 
   return (
-    <div className="rounded-2xl border border-line bg-surface p-lg shadow-card">
-      <h2 className="text-base font-semibold text-ink mb-md">{t('results.time.title')}</h2>
+    <div className="card-surface p-lg">
+      <h2 className="text-header-sm mb-md">{t('results.time.title')}</h2>
 
-      <div className="flex items-center gap-sm mb-md">
-        <div className="rounded-full bg-primary/10 p-2">
-          <Clock className="h-5 w-5 text-primary" />
+      <div className="mb-md flex items-center gap-sm">
+        <div className="rounded-full bg-primary/10 p-sm">
+          <Clock className="h-5 w-5 text-brand" />
         </div>
-        <p className="text-2xl font-bold text-ink">
+        <p className="text-header-lg font-semibold text-ink">
           {t('results.time.avgDays', { count: avgDays })}
         </p>
       </div>
@@ -55,7 +55,7 @@ export function TimeOnMarketBlock({ transactions }: TimeOnMarketBlockProps) {
         </BarChart>
       </ChartContainer>
 
-      <p className="text-xs text-ink-muted italic">{t('results.time.urgency')}</p>
+      <p className="text-text-sm italic text-ink-muted">{t('results.time.urgency')}</p>
     </div>
   )
 }

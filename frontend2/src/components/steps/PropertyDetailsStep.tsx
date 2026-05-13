@@ -1,13 +1,13 @@
 import { Controller, useFormContext } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
-import { Home, Loader2, Sparkles, Hammer } from 'lucide-react'
+import { Loader2, Sparkles, Home, Wrench, Ruler, type LucideIcon } from 'lucide-react'
 import { Stepper } from '@/components/Stepper'
 import type { ValuationRequestForm, PropertyCondition } from '@/lib/schemas'
 
-const CONDITIONS: { value: PropertyCondition; labelKey: string; icon: typeof Sparkles }[] = [
+const CONDITIONS: { value: PropertyCondition; labelKey: string; icon: LucideIcon }[] = [
   { value: 'obra_nueva', labelKey: 'condition.newBuild', icon: Sparkles },
   { value: 'buen_estado', labelKey: 'condition.good', icon: Home },
-  { value: 'a_reformar', labelKey: 'condition.toRenovate', icon: Hammer },
+  { value: 'a_reformar', labelKey: 'condition.toRenovate', icon: Wrench },
 ]
 
 interface PropertyDetailsStepProps {
@@ -22,8 +22,8 @@ export function PropertyDetailsStep({ submitting }: PropertyDetailsStepProps) {
   return (
     <div className="flex flex-col gap-lg">
       {/* Property condition */}
-      <div className="flex flex-col gap-sm">
-        <label className="text-sm font-medium text-ink">{t('condition.label')}</label>
+      <fieldset className="flex flex-col gap-sm">
+        <legend className="text-text-md font-medium text-ink">{t('condition.label')}</legend>
         <div className="grid grid-cols-3 gap-sm">
           {CONDITIONS.map(({ value, labelKey, icon: Icon }) => {
             const active = selectedCondition === value
@@ -33,19 +33,28 @@ export function PropertyDetailsStep({ submitting }: PropertyDetailsStepProps) {
                 type="button"
                 disabled={submitting}
                 onClick={() => setValue('propertyCondition', value, { shouldValidate: true })}
-                className={`flex flex-col items-center gap-xs rounded-xl border-2 px-sm py-md transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
+                aria-pressed={active}
+                className={[
+                  'group flex flex-col items-center gap-xs rounded-lg border-2 px-sm py-md transition-all',
+                  'disabled:cursor-not-allowed disabled:opacity-60',
                   active
-                    ? 'border-primary bg-primary/5 shadow-card'
-                    : 'border-line bg-surface hover:border-primary/40 hover:bg-surface-tint'
-                }`}
+                    ? 'border-line-brand bg-primary/5 shadow-card'
+                    : 'border-line bg-card hover:border-line-brand/40 hover:bg-surface-tint',
+                ].join(' ')}
               >
                 <Icon
-                  className={`h-5 w-5 ${active ? 'text-primary' : 'text-ink-muted'}`}
+                  aria-hidden
+                  strokeWidth={1.5}
+                  className={[
+                    'h-7 w-7 transition-all group-hover:scale-110',
+                    active ? 'text-brand' : 'text-ink-secondary',
+                  ].join(' ')}
                 />
                 <span
-                  className={`text-xs font-semibold text-center ${
-                    active ? 'text-primary' : 'text-ink-secondary'
-                  }`}
+                  className={[
+                    'text-center text-text-sm font-semibold',
+                    active ? 'text-brand' : 'text-ink-secondary',
+                  ].join(' ')}
                 >
                   {t(labelKey)}
                 </span>
@@ -54,13 +63,13 @@ export function PropertyDetailsStep({ submitting }: PropertyDetailsStepProps) {
           })}
         </div>
         {errors.propertyCondition && (
-          <p className="text-xs text-destructive">{t('condition.error')}</p>
+          <p className="text-text-sm text-destructive">{t('condition.error')}</p>
         )}
-      </div>
+      </fieldset>
 
       {/* m² */}
       <div className="flex flex-col gap-xs">
-        <label htmlFor="m2" className="text-sm font-medium text-ink">
+        <label htmlFor="m2" className="text-text-md font-medium text-ink">
           {t('details.area')}
         </label>
         <Controller
@@ -68,13 +77,14 @@ export function PropertyDetailsStep({ submitting }: PropertyDetailsStepProps) {
           control={control}
           render={({ field }) => (
             <div
-              className={`flex items-center gap-sm rounded-xl border bg-surface px-md py-sm transition-all ${
+              className={[
+                'flex items-center gap-sm rounded-input border bg-page px-md py-sm transition-all',
                 errors.m2
-                  ? 'border-destructive'
-                  : 'border-line focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/20'
-              }`}
+                  ? 'border-line-error ring-2 ring-destructive/15'
+                  : 'border-line focus-within:border-line-brand focus-within:ring-2 focus-within:ring-primary/20',
+              ].join(' ')}
             >
-              <Home className="h-4 w-4 shrink-0 text-ink-muted" />
+              <Ruler aria-hidden strokeWidth={1.5} className="h-[18px] w-[18px] shrink-0 text-ink-muted" />
               <input
                 {...field}
                 id="m2"
@@ -88,14 +98,15 @@ export function PropertyDetailsStep({ submitting }: PropertyDetailsStepProps) {
                   field.onChange(e.target.value === '' ? undefined : Number(e.target.value))
                 }
                 value={field.value ?? ''}
-                className="w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink-muted disabled:cursor-not-allowed"
+                className="w-full bg-transparent text-text-md text-ink outline-none placeholder:text-ink-muted disabled:cursor-not-allowed"
                 aria-describedby={errors.m2 ? 'm2-error' : undefined}
+                aria-invalid={!!errors.m2}
               />
             </div>
           )}
         />
         {errors.m2 && (
-          <p id="m2-error" className="text-xs text-destructive">
+          <p id="m2-error" className="text-text-sm text-destructive">
             {errors.m2.message?.includes('20')
               ? t('details.areaMin')
               : errors.m2.message?.includes('500')
@@ -143,7 +154,7 @@ export function PropertyDetailsStep({ submitting }: PropertyDetailsStepProps) {
       <button
         type="submit"
         disabled={submitting}
-        className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60"
+        className="btn-primary w-full"
       >
         {submitting ? (
           <>

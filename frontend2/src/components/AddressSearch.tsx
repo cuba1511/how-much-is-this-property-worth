@@ -143,19 +143,20 @@ export function AddressSearch({
   return (
     <div ref={containerRef} className="relative w-full">
       <div
-        className={`flex items-center gap-sm border rounded-xl bg-surface px-md py-sm transition-all ${
+        className={[
+          'flex items-center gap-sm rounded-input border bg-page px-md py-sm transition-all duration-fast',
           disabled
-            ? 'opacity-60 cursor-not-allowed border-line'
+            ? 'cursor-not-allowed border-line opacity-60'
             : selected
-              ? 'border-primary ring-1 ring-primary/20'
-              : 'border-line focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/20'
-        }`}
+              ? 'border-line-brand ring-2 ring-primary/20'
+              : 'border-line focus-within:border-line-brand focus-within:ring-2 focus-within:ring-primary/20',
+        ].join(' ')}
       >
         {selected ? (
-          <Check className="w-4 h-4 text-primary shrink-0" />
+          <Check className="h-4 w-4 shrink-0 text-brand" />
         ) : loading ? (
           <svg
-            className="w-4 h-4 shrink-0 text-primary animate-spin"
+            className="h-4 w-4 shrink-0 animate-spin text-brand"
             xmlns="http://www.w3.org/2000/svg"
             fill="none"
             viewBox="0 0 24 24"
@@ -165,7 +166,7 @@ export function AddressSearch({
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
         ) : (
-          <Search className="w-4 h-4 shrink-0 text-ink-muted" />
+          <Search className="h-4 w-4 shrink-0 text-ink-muted" />
         )}
         <input
           type="text"
@@ -173,7 +174,7 @@ export function AddressSearch({
           onChange={handleInputChange}
           placeholder={resolvedPlaceholder}
           disabled={disabled}
-          className="flex-1 bg-transparent outline-none text-ink placeholder:text-ink-muted text-sm disabled:cursor-not-allowed"
+          className="flex-1 bg-transparent text-text-md text-ink outline-none placeholder:text-ink-muted disabled:cursor-not-allowed"
           autoComplete="off"
           aria-label={t('address.searchLabel')}
           aria-expanded={open}
@@ -184,18 +185,18 @@ export function AddressSearch({
           <button
             type="button"
             onClick={handleClear}
-            className="text-ink-muted hover:text-ink transition-colors"
+            className="text-ink-muted transition-colors hover:text-ink"
             aria-label={t('address.clearSearch')}
           >
-            <X className="w-4 h-4" />
+            <X className="h-4 w-4" />
           </button>
         )}
       </div>
 
       {selected && (
-        <div className="flex items-center gap-xs mt-xs px-sm">
-          <MapPin className="w-3 h-3 text-primary" />
-          <span className="text-xs text-primary font-medium">{t('address.confirmed')}</span>
+        <div className="mt-xs flex items-center gap-xs px-sm">
+          <MapPin className="h-3 w-3 text-brand" />
+          <span className="text-text-sm font-medium text-brand">{t('address.confirmed')}</span>
         </div>
       )}
 
@@ -203,16 +204,16 @@ export function AddressSearch({
         <ul
           role="listbox"
           aria-label={t('address.suggestions')}
-          className="absolute z-[1001] mt-1 w-full bg-surface border border-line rounded-xl shadow-lift overflow-hidden"
+          className="absolute z-[1001] mt-xs w-full overflow-hidden rounded-lg border border-line-subtle bg-card shadow-level-3"
         >
           {suggestions.map((s) => (
             <li key={s.place_id} role="option" aria-selected={false}>
               <button
                 type="button"
-                className="w-full text-left px-md py-sm text-sm text-ink hover:bg-surface-tint transition-colors flex items-start gap-sm"
+                className="flex w-full items-start gap-sm px-md py-sm text-left text-text-md text-ink transition-colors hover:bg-surface-tint"
                 onClick={() => handleSelect(s)}
               >
-                <MapPin className="w-3.5 h-3.5 text-ink-muted shrink-0 mt-0.5" />
+                <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-muted" />
                 <span className="line-clamp-2">{s.display_name}</span>
               </button>
             </li>

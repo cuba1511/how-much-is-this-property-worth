@@ -2,15 +2,7 @@ import { useState } from 'react'
 import { useForm, FormProvider } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { zodResolver } from '@hookform/resolvers/zod'
-import {
-  ChevronLeft,
-  ChevronRight,
-  TrendingUp,
-  Clock,
-  MapPin,
-  BarChart3,
-  type LucideIcon,
-} from 'lucide-react'
+import { ChevronLeft, ChevronRight, TrendingUp, Clock, MapPin, BarChart3, type LucideIcon } from 'lucide-react'
 import { StepIndicator } from '@/components/StepIndicator'
 import { PropertyTypeStep } from '@/components/steps/PropertyTypeStep'
 import { AddressStep } from '@/components/steps/AddressStep'
@@ -35,14 +27,14 @@ const STEPS: StepConfig[] = [
     labelKey: 'steps.property',
     impacts: [
       { icon: TrendingUp, key: 'impacts.propertiesSold' },
-      { icon: Clock, key: 'impacts.avgSaleTime' },
+      { icon: Clock,      key: 'impacts.avgSaleTime' },
     ],
   },
   {
     labelKey: 'steps.location',
     impacts: [
-      { icon: MapPin, key: 'impacts.locationValue' },
-      { icon: BarChart3, key: 'impacts.realTimePrices' },
+      { icon: MapPin,     key: 'impacts.locationValue' },
+      { icon: BarChart3,  key: 'impacts.realTimePrices' },
     ],
   },
   {
@@ -54,9 +46,10 @@ const STEPS: StepConfig[] = [
 interface ValuationFormProps {
   onResult: (result: ValuationResponse, request: import('@/lib/types').ValuationRequest, lead?: import('@/lib/types').LeadInfo) => void
   onError: (message: string) => void
+  onBackToLanding?: () => void
 }
 
-export function ValuationForm({ onResult, onError }: ValuationFormProps) {
+export function ValuationForm({ onResult, onError, onBackToLanding }: ValuationFormProps) {
   const { t } = useTranslation()
   const [currentStep, setCurrentStep] = useState(0)
   const [resolvedAddress, setResolvedAddress] = useState<ResolvedAddress | null>(null)
@@ -149,7 +142,7 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
       <form
         onSubmit={methods.handleSubmit(onSubmit)}
         noValidate
-        className="flex flex-col gap-lg"
+        className="card-surface flex flex-col gap-xl p-lg shadow-level-3 md:p-2xl"
       >
         <StepIndicator steps={STEPS.map(s => ({ label: t(s.labelKey) }))} current={currentStep} />
 
@@ -165,13 +158,13 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
           {currentStep === 2 && <PropertyDetailsStep submitting={submitting} />}
         </div>
 
-        {/* Impact phrases */}
+        {/* Impact phrases — info alert */}
         {STEPS[currentStep].impacts.length > 0 && (
-          <div className="flex flex-col gap-sm rounded-2xl bg-primary/5 border border-primary/15 px-md py-md">
+          <div className="alert-info flex flex-col gap-sm rounded-lg border border-line-brand/30 px-md py-sm">
             {STEPS[currentStep].impacts.map(({ icon: Icon, key }, i) => (
               <div key={i} className="flex items-center gap-sm">
-                <Icon className="h-4 w-4 shrink-0 text-primary" />
-                <p className="text-xs font-medium text-ink-secondary leading-relaxed">{t(key)}</p>
+                <Icon aria-hidden strokeWidth={1.5} className="h-[18px] w-[18px] shrink-0 text-brand" />
+                <p className="text-text-sm font-medium leading-relaxed text-ink-secondary">{t(key)}</p>
               </div>
             ))}
           </div>
@@ -189,6 +182,16 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
               <ChevronLeft className="h-4 w-4" />
               {t('form.back')}
             </button>
+          ) : onBackToLanding ? (
+            <button
+              type="button"
+              onClick={onBackToLanding}
+              disabled={submitting}
+              className="btn-ghost disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              {t('nav.backHome')}
+            </button>
           ) : (
             <div />
           )}
@@ -198,7 +201,7 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
               type="button"
               onClick={handleNext}
               disabled={submitting}
-              className="btn-primary disabled:cursor-not-allowed disabled:opacity-60"
+              className="btn-primary"
             >
               {t('form.next')}
               <ChevronRight className="h-4 w-4" />
