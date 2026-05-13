@@ -66,6 +66,47 @@ class ValuationStats(BaseModel):
     price_range_high: Optional[int] = None
 
 
+class MarketTransactionChartPoint(BaseModel):
+    label: str
+    asking_price: Optional[int] = None
+    closing_price: Optional[int] = None
+    negotiation_margin_pct: Optional[float] = None
+
+
+class MarketTransaction(BaseModel):
+    id: str
+    address: Optional[str] = None
+    m2: Optional[int] = None
+    bedrooms: Optional[int] = None
+    bathrooms: Optional[int] = None
+    asking_price: Optional[int] = None
+    closing_price: Optional[int] = None
+    asking_price_per_m2: Optional[int] = None
+    closing_price_per_m2: Optional[int] = None
+    negotiation_margin_pct: Optional[float] = None
+    close_date: Optional[str] = None
+    days_on_market: Optional[int] = None
+    source: str
+    distance_m: Optional[int] = None
+
+
+class MarketTransactionsSummary(BaseModel):
+    total_transactions: int
+    avg_asking_price: Optional[int] = None
+    avg_closing_price: Optional[int] = None
+    avg_asking_price_per_m2: Optional[int] = None
+    avg_closing_price_per_m2: Optional[int] = None
+    asking_vs_closing_gap_pct: Optional[float] = None
+    negotiation_margin_pct: Optional[float] = None
+    sample_size: int
+    chart_series: list[MarketTransactionChartPoint] = Field(default_factory=list)
+
+
+class MarketTransactions(BaseModel):
+    summary: MarketTransactionsSummary
+    transactions: list[MarketTransaction] = Field(default_factory=list)
+
+
 class SearchStageResult(BaseModel):
     name: str
     label: str
@@ -93,3 +134,4 @@ class ValuationResponse(BaseModel):
     stats: ValuationStats
     search_url: str
     search_metadata: SearchMetadata
+    market_transactions: Optional[MarketTransactions] = None

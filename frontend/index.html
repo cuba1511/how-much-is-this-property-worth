@@ -59,9 +59,11 @@
       border-radius: 1rem;
     }
     .suggestion-panel {
-      position: absolute;
-      z-index: 20;
+      position: relative;
+      z-index: 30;
       width: 100%;
+      max-height: 16rem;
+      overflow-y: auto;
     }
   </style>
 </head>
@@ -237,6 +239,24 @@
       <p id="estimateValue" class="text-4xl font-extrabold tracking-tight"></p>
       <p id="estimateRange" class="text-blue-200 text-sm mt-1"></p>
       <p class="text-blue-100 text-xs mt-3">Basado en <span id="estimateCount"></span> comparables · precio medio/m² aplicado a tus <span id="estimateM2"></span> m²</p>
+    </div>
+
+    <!-- Market transactions -->
+    <div id="marketTransactionsSection" class="hidden mb-8">
+      <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-4">
+        <div>
+          <h2 class="text-xl font-bold text-gray-800">Mercado real</h2>
+          <p class="text-sm text-gray-500 mt-1">
+            Asking price vs closing price y margen de negociación en comparables recientes.
+          </p>
+        </div>
+        <div id="marketTransactionsBadge" class="hidden self-start text-xs rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 px-3 py-1.5 font-semibold"></div>
+      </div>
+
+      <div id="marketTransactionsStats" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4"></div>
+      <div id="marketTransactionsInsight" class="hidden bg-white border border-gray-100 rounded-2xl p-4 mb-4"></div>
+      <div id="marketTransactionsChart" class="hidden bg-white border border-gray-100 rounded-2xl p-4 mb-4"></div>
+      <div id="marketTransactionsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"></div>
     </div>
 
     <!-- Listings grid -->

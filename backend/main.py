@@ -14,6 +14,7 @@ from geocoder import (
     reverse_geocode,
     suggest_addresses,
 )
+from market_transactions import build_market_transactions_mock
 from models import ResolvedAddress, ValuationRequest, ValuationResponse, ValuationStats
 from scraper import scrape_idealista_listings
 
@@ -144,6 +145,14 @@ async def get_valuation(request: ValuationRequest):
         price_range_low=int(estimated * 0.90) if estimated else None,
         price_range_high=int(estimated * 1.10) if estimated else None,
     )
+    market_transactions = build_market_transactions_mock(
+        valuation_address,
+        municipio,
+        m2=request.m2,
+        bedrooms=request.bedrooms,
+        bathrooms=request.bathrooms,
+        listing_avg_price_per_m2=avg_ppm2,
+    )
 
     logger.info(
         "Valuation finished in %sms using stage %s",
@@ -157,6 +166,7 @@ async def get_valuation(request: ValuationRequest):
         stats=stats,
         search_url=search_url,
         search_metadata=search_metadata,
+        market_transactions=market_transactions,
     )
 
 

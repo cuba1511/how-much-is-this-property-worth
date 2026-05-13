@@ -16,6 +16,69 @@ function fmt(n) {
   }).format(n);
 }
 
+function fmtNumber(n) {
+  if (n == null) return "—";
+  return new Intl.NumberFormat("es-ES", {
+    maximumFractionDigits: 0,
+  }).format(n);
+}
+
+function fmtPct(n) {
+  if (n == null) return "—";
+  return `${new Intl.NumberFormat("es-ES", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(n)}%`;
+}
+
+function fmtDate(value) {
+  if (!value) return "Fecha no disponible";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return new Intl.DateTimeFormat("es-ES", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(parsed);
+}
+
+function relativeFromDate(value) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+
+  const diffMs = Date.now() - parsed.getTime();
+  const diffDays = Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+  if (diffDays === 0) return "hoy";
+  if (diffDays === 1) return "hace 1 día";
+  if (diffDays < 30) return `hace ${fmtNumber(diffDays)} días`;
+
+  const diffMonths = Math.round(diffDays / 30);
+  if (diffMonths <= 1) return "hace 1 mes";
+  if (diffMonths < 12) return `hace ${fmtNumber(diffMonths)} meses`;
+
+  const diffYears = Math.round(diffDays / 365);
+  if (diffYears <= 1) return "hace 1 año";
+  return `hace ${fmtNumber(diffYears)} años`;
+}
+
+function fmtDays(value) {
+  if (value == null) return "—";
+  if (value === 1) return "1 día";
+  return `${fmtNumber(value)} días`;
+}
+
+function fmtDistance(value) {
+  if (value == null) return null;
+  if (value >= 1000) {
+    return `${new Intl.NumberFormat("es-ES", {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    }).format(value / 1000)} km`;
+  }
+  return `${fmtNumber(value)} m`;
+}
+
 function statCard(label, value, sub) {
   return `
     <div class="stat-card rounded-xl p-4 border border-gray-100">
@@ -24,6 +87,12 @@ function statCard(label, value, sub) {
       ${sub ? `<p class="text-xs text-gray-400 mt-0.5">${escapeHtml(sub)}</p>` : ""}
     </div>
   `;
+}
+
+function sourceLabel(source) {
+  if (!source) return "Fuente no disponible";
+  if (source === "market-mock") return "Mock market";
+  return source.replaceAll("-", " ");
 }
 
 function listingCard(listing) {
@@ -58,6 +127,67 @@ function listingCard(listing) {
   `;
 }
 
+function transactionCard(transaction) {
+  const badges = [];
+  if (transaction.m2) badges.push(`${transaction.m2} m²`);
+  if (transaction.bedrooms != null) badges.push(`${transaction.bedrooms} hab.`);
+  if (transaction.bathrooms != null) badges.push(`${transaction.bathrooms} baños`);
+
+  const distance = fmtDistance(transaction.distance_m);
+  if (distance) badges.push(distance);
+  const relativeClose = relativeFromDate(transaction.close_date);
+
+  return `
+    <article class="card-hover bg-white rounded-2xl border border-gray-100 overflow-hidden flex flex-col shadow-sm">
+      <div class="p-4 flex flex-col flex-1">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <p class="text-sm text-gray-500">Transacción cerrada</p>
+            <p class="font-semibold text-gray-900 mt-1">${escapeHtml(transaction.address || "Comparable reciente")}</p>
+          </div>
+          <span class="text-xs rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 font-semibold">
+            Margen ${escapeHtml(fmtPct(transaction.negotiation_margin_pct))}
+          </span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 mt-4">
+          <div class="rounded-xl bg-slate-50 border border-slate-100 p-3">
+            <p class="text-xs uppercase tracking-wide text-slate-500 font-semibold">Asking</p>
+            <p class="text-lg font-bold text-slate-800 mt-1">${escapeHtml(fmt(transaction.asking_price))}</p>
+            <p class="text-xs text-slate-500 mt-1">${escapeHtml(fmtNumber(transaction.asking_price_per_m2))} €/m²</p>
+          </div>
+          <div class="rounded-xl bg-emerald-50 border border-emerald-100 p-3">
+            <p class="text-xs uppercase tracking-wide text-emerald-700 font-semibold">Closing</p>
+            <p class="text-lg font-bold text-emerald-800 mt-1">${escapeHtml(fmt(transaction.closing_price))}</p>
+            <p class="text-xs text-emerald-700 mt-1">${escapeHtml(fmtNumber(transaction.closing_price_per_m2))} €/m²</p>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap gap-1.5 mt-3">
+          ${badges.map((badge) => `<span class="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">${escapeHtml(badge)}</span>`).join("")}
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+          <div class="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2.5">
+            <p class="text-[11px] uppercase tracking-wide text-amber-700 font-semibold">Tiempo en vender</p>
+            <p class="text-sm font-bold text-amber-900 mt-1">${escapeHtml(fmtDays(transaction.days_on_market))}</p>
+          </div>
+          <div class="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2.5">
+            <p class="text-[11px] uppercase tracking-wide text-blue-700 font-semibold">Fecha de cierre</p>
+            <p class="text-sm font-bold text-blue-900 mt-1">${escapeHtml(relativeClose || fmtDate(transaction.close_date))}</p>
+            <p class="text-[11px] text-blue-700 mt-0.5">${escapeHtml(fmtDate(transaction.close_date))}</p>
+          </div>
+        </div>
+
+        <div class="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between gap-3 text-xs text-gray-500">
+          <span>${escapeHtml(transaction.days_on_market != null ? `Vendida en ${fmtDays(transaction.days_on_market)}` : "Tiempo en mercado no disponible")}</span>
+          <span>${escapeHtml(sourceLabel(transaction.source))}</span>
+        </div>
+      </div>
+    </article>
+  `;
+}
+
 function renderSearchMetadata(searchMetadata) {
   const box = document.getElementById("searchMeta");
   if (!searchMetadata) {
@@ -82,8 +212,145 @@ function renderSearchMetadata(searchMetadata) {
   box.classList.remove("hidden");
 }
 
+function renderMarketChart(chartSeries) {
+  const series = (chartSeries || []).filter((point) => point.asking_price || point.closing_price);
+  if (series.length === 0) return "";
+
+  const width = 720;
+  const height = 260;
+  const padding = { top: 20, right: 16, bottom: 46, left: 58 };
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const maxValue = Math.max(
+    ...series.flatMap((point) => [point.asking_price || 0, point.closing_price || 0]),
+    1,
+  );
+  const groupWidth = plotWidth / series.length;
+  const barWidth = Math.min(24, groupWidth / 3);
+
+  const gridLines = Array.from({ length: 5 }, (_, index) => {
+    const ratio = index / 4;
+    const y = padding.top + plotHeight - (plotHeight * ratio);
+    const labelValue = Math.round((maxValue * ratio) / 1000);
+    return `
+      <g>
+        <line x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}" stroke="#e5e7eb" stroke-width="1" />
+        <text x="${padding.left - 10}" y="${y + 4}" text-anchor="end" font-size="11" fill="#94a3b8">${escapeHtml(labelValue)}k</text>
+      </g>
+    `;
+  }).join("");
+
+  const bars = series.map((point, index) => {
+    const centerX = padding.left + (groupWidth * index) + (groupWidth / 2);
+    const askingValue = point.asking_price || 0;
+    const closingValue = point.closing_price || 0;
+    const askingHeight = (askingValue / maxValue) * plotHeight;
+    const closingHeight = (closingValue / maxValue) * plotHeight;
+    const askingX = centerX - barWidth - 4;
+    const closingX = centerX + 4;
+    const askingY = padding.top + plotHeight - askingHeight;
+    const closingY = padding.top + plotHeight - closingHeight;
+    const label = point.label || `Comp ${index + 1}`;
+
+    return `
+      <g>
+        <rect x="${askingX}" y="${askingY}" width="${barWidth}" height="${askingHeight}" rx="4" fill="#94a3b8" />
+        <rect x="${closingX}" y="${closingY}" width="${barWidth}" height="${closingHeight}" rx="4" fill="#10b981" />
+        <text x="${centerX}" y="${height - 16}" text-anchor="middle" font-size="11" fill="#64748b">${escapeHtml(label)}</text>
+      </g>
+    `;
+  }).join("");
+
+  return `
+    <div class="flex items-center justify-between gap-3 mb-4">
+      <div>
+        <p class="text-sm font-semibold text-gray-800">Asking vs closing</p>
+        <p class="text-xs text-gray-500 mt-1">Comparativa por transacción reciente para visualizar el margen de negociación.</p>
+      </div>
+      <div class="flex items-center gap-3 text-xs text-gray-500">
+        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm bg-slate-400 inline-block"></span> Asking</span>
+        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm bg-emerald-500 inline-block"></span> Closing</span>
+      </div>
+    </div>
+    <div class="overflow-x-auto">
+      <svg viewBox="0 0 ${width} ${height}" class="min-w-[640px] w-full h-auto" role="img" aria-label="Grafico de asking price frente a closing price">
+        ${gridLines}
+        <line x1="${padding.left}" y1="${padding.top + plotHeight}" x2="${width - padding.right}" y2="${padding.top + plotHeight}" stroke="#cbd5e1" stroke-width="1" />
+        ${bars}
+      </svg>
+    </div>
+  `;
+}
+
+function renderMarketTransactions(marketTransactions) {
+  const section = document.getElementById("marketTransactionsSection");
+  const badge = document.getElementById("marketTransactionsBadge");
+  const statsGrid = document.getElementById("marketTransactionsStats");
+  const insight = document.getElementById("marketTransactionsInsight");
+  const chart = document.getElementById("marketTransactionsChart");
+  const grid = document.getElementById("marketTransactionsGrid");
+
+  if (!marketTransactions?.summary || !marketTransactions.transactions?.length) {
+    section.classList.add("hidden");
+    badge.classList.add("hidden");
+    insight.classList.add("hidden");
+    chart.classList.add("hidden");
+    statsGrid.innerHTML = "";
+    insight.innerHTML = "";
+    chart.innerHTML = "";
+    grid.innerHTML = "";
+    return;
+  }
+
+  const { summary, transactions } = marketTransactions;
+  statsGrid.innerHTML = [
+    statCard(
+      "Asking medio",
+      fmt(summary.avg_asking_price),
+      summary.avg_asking_price_per_m2 ? `${fmtNumber(summary.avg_asking_price_per_m2)} €/m²` : "precio de salida",
+    ),
+    statCard(
+      "Closing medio",
+      fmt(summary.avg_closing_price),
+      summary.avg_closing_price_per_m2 ? `${fmtNumber(summary.avg_closing_price_per_m2)} €/m²` : "precio de cierre",
+    ),
+    statCard("Margen neg.", fmtPct(summary.negotiation_margin_pct), "gap medio asking vs closing"),
+    statCard("Muestra", fmtNumber(summary.sample_size), "transacciones recientes"),
+  ].join("");
+
+  badge.textContent = transactions.every((transaction) => transaction.source === "market-mock")
+    ? `Mockups · ${summary.sample_size} transacciones`
+    : `${summary.sample_size} transacciones`;
+  badge.classList.remove("hidden");
+
+  insight.innerHTML = `
+    <p class="text-sm font-semibold text-gray-800">Lectura de mercado</p>
+    <p class="text-sm text-gray-600 mt-1">
+      El closing medio se sitúa en <strong>${escapeHtml(fmt(summary.avg_closing_price))}</strong>,
+      un <strong>${escapeHtml(fmtPct(summary.asking_vs_closing_gap_pct))}</strong> por debajo del asking medio
+      (<strong>${escapeHtml(fmt(summary.avg_asking_price))}</strong>).
+    </p>
+    <p class="text-xs text-gray-500 mt-3">
+      La valoración principal sigue basada en los comparables de Idealista; esta capa añade contexto para negociación.
+    </p>
+  `;
+  insight.classList.remove("hidden");
+
+  const chartMarkup = renderMarketChart(summary.chart_series);
+  if (chartMarkup) {
+    chart.innerHTML = chartMarkup;
+    chart.classList.remove("hidden");
+  } else {
+    chart.innerHTML = "";
+    chart.classList.add("hidden");
+  }
+
+  grid.innerHTML = transactions.map(transactionCard).join("");
+  section.classList.remove("hidden");
+}
+
 export function renderResults(data, payload) {
-  const { municipio, listings, stats, search_url, search_metadata } = data;
+  const { municipio, listings, stats, search_url, search_metadata, market_transactions } = data;
 
   document.getElementById("municipioLabel").textContent =
     `${municipio.name}${municipio.province ? `, ${municipio.province}` : ""}`;
@@ -117,6 +384,8 @@ export function renderResults(data, payload) {
   } else {
     estimateCard.classList.add("hidden");
   }
+
+  renderMarketTransactions(market_transactions);
 
   const listingsGrid = document.getElementById("listingsGrid");
   if (listings.length === 0) {
