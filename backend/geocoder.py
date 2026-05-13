@@ -137,6 +137,133 @@ async def search_nominatim_unrestricted(query: str, *, limit: int) -> list[dict]
         return response.json()
 
 
+# ---------------------------------------------------------------------------
+# Photon (Komoot) — used for autocomplete suggestions.
+#
+# Photon is OSM-backed (same data as Nominatim) but, unlike Nominatim's public
+# instance, it is *designed* for typeahead/autocomplete usage and does not
+# enforce the 1 req/s policy that breaks browser autocomplete UX. It is the
+# provider Nominatim itself recommends for autocomplete:
+#   https://operations.osmfoundation.org/policies/nominatim/
+# ---------------------------------------------------------------------------
+
+PHOTON_ENDPOINT = "https://photon.komoot.io/api/"
+
+
+def _photon_label(props: dict) -> str:
+    segments: list[str] = []
+
+    street = props.get("street")
+    housenumber = props.get("housenumber")
+    street_line = " ".join(part for part in [street, housenumber] if part)
+    if street_line:
+        segments.append(street_line)
+    elif props.get("name"):
+        segments.append(props["name"])
+
+    locality = (
+        props.get("city")
+        or props.get("town")
+        or props.get("village")
+        or props.get("county")
+    )
+    if locality and locality not in segments:
+        segments.append(locality)
+
+    state = props.get("state")
+    if state and state != locality:
+        segments.append(state)
+
+    postcode = props.get("postcode")
+    if postcode:
+        segments.append(postcode)
+
+    country = props.get("country")
+    if country and country not in {"España", "Spain"}:
+        segments.append(country)
+
+    return ", ".join(s for s in segments if s)
+
+
+def _photon_feature_to_resolved(feature: dict) -> ResolvedAddress | None:
+    geometry = feature.get("geometry") or {}
+    coords = geometry.get("coordinates") or []
+    if len(coords) < 2:
+        return None
+    lon, lat = float(coords[0]), float(coords[1])
+
+    props = feature.get("properties") or {}
+    municipality = (
+        props.get("city")
+        or props.get("town")
+        or props.get("village")
+        or props.get("county")
+        or props.get("state")
+        or props.get("name")
+        or ""
+    )
+
+    label = _photon_label(props) or municipality or props.get("name") or ""
+    if not label:
+        return None
+
+    osm_id = props.get("osm_id")
+    osm_type = props.get("osm_type")
+    provider_id = f"{osm_type}{osm_id}" if osm_id is not None and osm_type else None
+
+    return ResolvedAddress(
+        label=label,
+        lat=lat,
+        lon=lon,
+        municipality=municipality or label,
+        province=props.get("state"),
+        road=props.get("street"),
+        house_number=props.get("housenumber"),
+        postcode=props.get("postcode"),
+        neighbourhood=props.get("district"),
+        quarter=None,
+        city_district=props.get("district"),
+        country=props.get("country"),
+        provider="photon",
+        provider_id=provider_id,
+        precision=props.get("osm_value") or props.get("type"),
+    )
+
+
+async def search_photon(query: str, *, limit: int) -> list[ResolvedAddress]:
+    """Autocomplete-friendly geocoder backed by Komoot's Photon (OSM data)."""
+    params = {
+        "q": query,
+        "limit": limit,
+        # Photon only supports default/de/en/fr. "default" returns names in their
+        # native language (perfect for ES results).
+        "lang": "default",
+    }
+
+    async with httpx.AsyncClient(timeout=10.0, trust_env=False) as client:
+        response = await client.get(PHOTON_ENDPOINT, params=params)
+        response.raise_for_status()
+        payload = response.json()
+
+    features = payload.get("features") or []
+    suggestions: list[ResolvedAddress] = []
+    seen_labels: set[str] = set()
+    for feature in features:
+        props = feature.get("properties") or {}
+        # Restrict to Spanish results — the rest of the pipeline (Idealista
+        # slug, valuations) only handles ES.
+        if props.get("countrycode") and props["countrycode"] != "ES":
+            continue
+        resolved = _photon_feature_to_resolved(feature)
+        if not resolved or resolved.label in seen_labels:
+            continue
+        seen_labels.add(resolved.label)
+        suggestions.append(resolved)
+        if len(suggestions) >= limit:
+            break
+    return suggestions
+
+
 async def reverse_nominatim(lat: float, lon: float) -> dict | None:
     params = {
         "lat": lat,
@@ -274,13 +401,36 @@ def municipio_from_resolved_address(address: ResolvedAddress) -> MunicipioInfo:
 
 
 async def suggest_addresses(query: str, limit: int = 5) -> list[ResolvedAddress]:
+    """
+    Returns autocomplete suggestions for an address.
+
+    Primary provider is Photon (autocomplete-optimized, no rate-limit). We fall
+    back to Nominatim only when Photon is unreachable, since Nominatim's public
+    instance rejects high-frequency autocomplete traffic with HTTP 429.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
     normalized_query = query.strip()
     if len(normalized_query) < 3:
         return []
 
-    results = await search_nominatim(normalized_query, limit=max(1, min(limit, 8)))
-    if not results:
-        results = await search_nominatim_unrestricted(normalized_query, limit=max(1, min(limit, 8)))
+    capped_limit = max(1, min(limit, 8))
+
+    try:
+        photon_suggestions = await search_photon(normalized_query, limit=capped_limit)
+        if photon_suggestions:
+            return photon_suggestions
+    except Exception as exc:
+        logger.warning("Photon autocomplete failed, falling back to Nominatim: %s", exc)
+
+    try:
+        results = await search_nominatim(normalized_query, limit=capped_limit)
+        if not results:
+            results = await search_nominatim_unrestricted(normalized_query, limit=capped_limit)
+    except Exception as exc:
+        logger.warning("Nominatim fallback also failed: %s", exc)
+        return []
 
     suggestions: list[ResolvedAddress] = []
     seen_labels: set[str] = set()
@@ -290,7 +440,7 @@ async def suggest_addresses(query: str, limit: int = 5) -> list[ResolvedAddress]
             continue
         seen_labels.add(suggestion.label)
         suggestions.append(suggestion)
-        if len(suggestions) >= limit:
+        if len(suggestions) >= capped_limit:
             break
     return suggestions
 

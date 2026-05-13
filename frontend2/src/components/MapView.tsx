@@ -61,7 +61,7 @@ export function MapView({
   const effectiveZoom = zoom ?? (radiusMeters ? zoomForRadius(radiusMeters) : SELECTED_ZOOM)
 
   return (
-    <div style={{ height }} className="w-full rounded-xl overflow-hidden">
+    <div style={{ height }} className="w-full overflow-hidden">
       <MapContainer
         center={DEFAULT_CENTER}
         zoom={DEFAULT_ZOOM}

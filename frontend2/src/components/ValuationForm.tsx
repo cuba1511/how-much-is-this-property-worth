@@ -167,18 +167,21 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
 
         {/* Impact phrases */}
         {STEPS[currentStep].impacts.length > 0 && (
-          <div className="flex flex-col gap-sm rounded-2xl bg-primary/5 border border-primary/15 px-md py-md">
+          <aside
+            aria-label={t('steps.' + ['property', 'location', 'details'][currentStep])}
+            className="flex flex-col gap-sm rounded-2xl border border-primary/15 bg-primary/5 px-md py-md"
+          >
             {STEPS[currentStep].impacts.map(({ icon: Icon, key }, i) => (
               <div key={i} className="flex items-center gap-sm">
                 <Icon className="h-4 w-4 shrink-0 text-primary" />
-                <p className="text-xs font-medium text-ink-secondary leading-relaxed">{t(key)}</p>
+                <p className="text-xs font-medium leading-relaxed text-ink-secondary">{t(key)}</p>
               </div>
             ))}
-          </div>
+          </aside>
         )}
 
         {/* Navigation */}
-        <div className="flex items-center justify-between pt-sm">
+        <div className="mt-xs flex items-center justify-between gap-sm">
           {currentStep > 0 ? (
             <button
               type="button"
@@ -190,7 +193,7 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
               {t('form.back')}
             </button>
           ) : (
-            <div />
+            <span />
           )}
 
           {currentStep < STEPS.length - 1 && (

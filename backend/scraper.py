@@ -1123,9 +1123,16 @@ async def scrape_idealista_listings(
     bathrooms: Optional[int] = None,
     m2: Optional[int] = None,
     max_listings: int = 15,
+    enrich_details: bool = True,
 ) -> tuple[list[Listing], str, SearchMetadata]:
     """
     Scrape Idealista listings using Bright Data's remote Chrome via CDP.
+
+    Set `enrich_details=False` to skip the per-listing detail enrichment step.
+    Enrichment visits each ranked listing individually and can add 20-60s
+    (one CAPTCHA round-trip per listing in bad days). The slim Apps Script
+    endpoint sets it to False so the call fits in Apps Script's 30s custom
+    function cap.
 
     Returns (ranked_listings, final_search_url, search_metadata).
     """
@@ -1189,10 +1196,15 @@ async def scrape_idealista_listings(
                     break
 
             ranked_listings = rank_candidates(candidates, max_listings=max_listings)
-            ranked_listings = await enrich_listings_with_details(
-                browser,
-                ranked_listings,
-            )
+            if enrich_details:
+                ranked_listings = await enrich_listings_with_details(
+                    browser,
+                    ranked_listings,
+                )
+            else:
+                logger.info(
+                    "Skipping per-listing detail enrichment (enrich_details=False)"
+                )
         finally:
             await browser.close()
 

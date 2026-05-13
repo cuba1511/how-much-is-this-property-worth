@@ -1,51 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { MapPin, Check, Search, X } from 'lucide-react'
+import { autocompleteAddresses } from '@/lib/api'
 import type { ResolvedAddress } from '@/lib/types'
-
-interface NominatimResult {
-  place_id: number
-  display_name: string
-  lat: string
-  lon: string
-  address: {
-    road?: string
-    house_number?: string
-    postcode?: string
-    city?: string
-    town?: string
-    village?: string
-    municipality?: string
-    county?: string
-    state?: string
-    country?: string
-    neighbourhood?: string
-    quarter?: string
-    city_district?: string
-  }
-}
-
-function toResolvedAddress(result: NominatimResult): ResolvedAddress {
-  const addr = result.address
-  const municipality =
-    addr.municipality ?? addr.city ?? addr.town ?? addr.village ?? addr.county ?? ''
-  return {
-    label: result.display_name,
-    lat: parseFloat(result.lat),
-    lon: parseFloat(result.lon),
-    municipality,
-    province: addr.state ?? null,
-    road: addr.road ?? null,
-    house_number: addr.house_number ?? null,
-    postcode: addr.postcode ?? null,
-    neighbourhood: addr.neighbourhood ?? null,
-    quarter: addr.quarter ?? null,
-    city_district: addr.city_district ?? null,
-    country: addr.country ?? null,
-    provider: 'nominatim',
-    provider_id: String(result.place_id),
-  }
-}
 
 export interface AddressSearchProps {
   onSelect: (address: ResolvedAddress | null) => void
@@ -61,11 +18,12 @@ export function AddressSearch({
   const { t } = useTranslation()
   const resolvedPlaceholder = placeholder ?? t('address.placeholder')
   const [query, setQuery] = useState('')
-  const [suggestions, setSuggestions] = useState<NominatimResult[]>([])
+  const [suggestions, setSuggestions] = useState<ResolvedAddress[]>([])
   const [loading, setLoading] = useState(false)
   const [selected, setSelected] = useState<ResolvedAddress | null>(null)
   const [open, setOpen] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
   const search = useCallback(async (q: string) => {
@@ -74,25 +32,21 @@ export function AddressSearch({
       setOpen(false)
       return
     }
+    // Cancel any in-flight request to avoid out-of-order results overwriting newer ones.
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
     setLoading(true)
     try {
-      const params = new URLSearchParams({
-        q,
-        format: 'json',
-        limit: '5',
-        addressdetails: '1',
-        countrycodes: 'es',
-      })
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, {
-        headers: { 'Accept-Language': 'es' },
-      })
-      const data: NominatimResult[] = await res.json()
+      const data = await autocompleteAddresses(q, { limit: 5, signal: controller.signal })
       setSuggestions(data)
       setOpen(data.length > 0)
-    } catch {
+    } catch (err) {
+      if ((err as { name?: string })?.name === 'AbortError') return
       setSuggestions([])
+      setOpen(false)
     } finally {
-      setLoading(false)
+      if (abortRef.current === controller) setLoading(false)
     }
   }, [])
 
@@ -115,13 +69,12 @@ export function AddressSearch({
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  function handleSelect(result: NominatimResult) {
-    const resolved = toResolvedAddress(result)
-    setSelected(resolved)
-    setQuery(result.display_name)
+  function handleSelect(result: ResolvedAddress) {
+    setSelected(result)
+    setQuery(result.label)
     setSuggestions([])
     setOpen(false)
-    onSelect(resolved)
+    onSelect(result)
   }
 
   function handleClear() {
@@ -205,15 +158,15 @@ export function AddressSearch({
           aria-label={t('address.suggestions')}
           className="absolute z-[1001] mt-1 w-full bg-surface border border-line rounded-xl shadow-lift overflow-hidden"
         >
-          {suggestions.map((s) => (
-            <li key={s.place_id} role="option" aria-selected={false}>
+          {suggestions.map((s, idx) => (
+            <li key={`${s.provider_id ?? idx}-${s.label}`} role="option" aria-selected={false}>
               <button
                 type="button"
                 className="w-full text-left px-md py-sm text-sm text-ink hover:bg-surface-tint transition-colors flex items-start gap-sm"
                 onClick={() => handleSelect(s)}
               >
                 <MapPin className="w-3.5 h-3.5 text-ink-muted shrink-0 mt-0.5" />
-                <span className="line-clamp-2">{s.display_name}</span>
+                <span className="line-clamp-2">{s.label}</span>
               </button>
             </li>
           ))}
