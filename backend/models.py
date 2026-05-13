@@ -20,11 +20,21 @@ class ResolvedAddress(BaseModel):
     precision: Optional[str] = None
 
 
+class PropertyFeatures(BaseModel):
+    pool: bool = False
+    terrace: bool = False
+    elevator: bool = False
+    parking: bool = False
+
+
 class ValuationRequest(BaseModel):
     address: str = Field(..., description="Full address of the property")
     m2: int = Field(..., gt=0, description="Surface area in square meters")
     bedrooms: int = Field(..., ge=0, description="Number of bedrooms")
     bathrooms: int = Field(..., ge=1, description="Number of bathrooms")
+    property_type: Optional[str] = Field(None, description="Property type (casa, piso, etc.)")
+    property_condition: Optional[str] = Field(None, description="Property condition (obra_nueva, buen_estado, a_reformar)")
+    features: Optional[PropertyFeatures] = None
     selected_address: Optional[ResolvedAddress] = None
 
 
