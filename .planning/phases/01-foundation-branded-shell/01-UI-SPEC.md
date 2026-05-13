@@ -1,7 +1,7 @@
 ---
 phase: 1
 slug: foundation-branded-shell
-status: draft
+status: approved
 shadcn_initialized: true
 preset: new-york
 created: 2026-05-13
@@ -41,7 +41,7 @@ Declared values (multiples of 4). Already configured in `tailwind.config.js` →
 | 2xl | 48px | Major section breaks, hero top padding on desktop |
 | 3xl | 64px | Page-level spacing, bottom padding below placeholder card |
 
-Exceptions: none — standard 8-point scale throughout.
+Exceptions: 12px (`mt-3`) used for headline-to-subtitle gap — inherited from existing `h1` CSS rule (`margin: 24px 0 12px`). Retained for visual tightness between headline and subtitle; falls outside the 8-point scale but is a deliberate reuse of the established typographic margin.
 
 ---
 
@@ -176,6 +176,10 @@ All UI text in Spanish (BRAND-04).
 - Flex column layout (existing)
 - **Change**: Remove `text-align: center` — hero content is left-aligned
 
+### Focal Point
+
+**Primary focal point:** `h1` headline — largest element on the page (clamp 32–52px), first visual anchor on load. The electric blue "tu casa?" accent text provides a secondary color focal point within the headline.
+
 ### Vertical Rhythm
 
 ```
@@ -269,11 +273,11 @@ Phase 1 includes foundation TypeScript modules per CONTEXT.md D-08 through D-11.
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS (FLAG resolved — focal point added)
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS (FLAG resolved — 12px exception documented)
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** approved 2026-05-13
