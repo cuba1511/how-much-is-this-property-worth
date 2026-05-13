@@ -1,22 +1,56 @@
-import { Home } from 'lucide-react'
+import { useState } from 'react'
+import { Navbar } from '@/components/Navbar'
 import { HeroSection } from '@/components/HeroSection'
+import { ValuationForm } from '@/components/ValuationForm'
+import { ValuationResults } from '@/components/ValuationResults'
+import type { ValuationResponse } from '@/lib/types'
 
 function App() {
+  const [result, setResult] = useState<ValuationResponse | null>(null)
+  const [apiError, setApiError] = useState<string | null>(null)
+
+  function handleResult(res: ValuationResponse) {
+    setApiError(null)
+    setResult(res)
+    setTimeout(() => {
+      document.getElementById('results')?.scrollIntoView({ behavior: 'smooth' })
+    }, 100)
+  }
+
+  function handleReset() {
+    setResult(null)
+    setApiError(null)
+    setTimeout(() => {
+      document.getElementById('form-area')?.scrollIntoView({ behavior: 'smooth' })
+    }, 100)
+  }
+
   return (
     <>
+      <Navbar />
       <HeroSection />
+
       <div
         id="form-area"
-        className="bg-surface-tint rounded-2xl shadow-card p-2xl min-h-[200px] mt-xl mx-md md:mx-xl mb-3xl flex flex-col items-center justify-center gap-4"
+        className="mt-xl mx-xl pb-3xl"
       >
-        <Home size={48} className="text-ink-muted opacity-50" />
-        <h2 className="text-ink-muted font-medium">
-          Aquí aparecerá el formulario de valoración
-        </h2>
-        <p className="text-ink-muted text-sm max-w-md text-center">
-          Completa los datos de tu propiedad para obtener una estimación basada en comparables del mercado.
-        </p>
+        {!result && (
+          <>
+            {apiError && (
+              <div className="mb-md rounded-xl border border-destructive/30 bg-destructive/5 px-md py-sm text-sm text-destructive">
+                {apiError}
+              </div>
+            )}
+            <ValuationForm onResult={handleResult} onError={setApiError} />
+          </>
+        )}
       </div>
+
+      {result && (
+        <div id="results" className="mx-xl mt-xl mb-3xl">
+          <ValuationResults result={result} onReset={handleReset} />
+        </div>
+      )}
     </>
   )
 }

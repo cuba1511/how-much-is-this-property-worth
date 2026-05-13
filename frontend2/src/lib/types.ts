@@ -16,12 +16,19 @@ export interface ResolvedAddress {
   precision?: string | null
 }
 
+export interface LeadInfo {
+  fullName: string
+  email: string
+  phone: string
+}
+
 export interface ValuationRequest {
   address: string
   m2: number
   bedrooms: number
   bathrooms: number
   selected_address?: ResolvedAddress | null
+  lead?: LeadInfo
 }
 
 export interface MunicipioInfo {
