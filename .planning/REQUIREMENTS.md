@@ -76,29 +76,29 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FORM-01 | — | Pending |
-| FORM-02 | — | Pending |
-| FORM-03 | — | Pending |
-| FORM-04 | — | Pending |
-| FORM-05 | — | Pending |
-| MAP-01 | — | Pending |
-| BEHV-01 | — | Pending |
-| BEHV-02 | — | Pending |
-| BEHV-03 | — | Pending |
-| BEHV-04 | — | Pending |
-| BRAND-01 | — | Pending |
-| BRAND-02 | — | Pending |
-| BRAND-03 | — | Pending |
-| BRAND-04 | — | Pending |
-| UX-01 | — | Pending |
-| UX-02 | — | Pending |
-| UX-03 | — | Pending |
+| FORM-01 | Phase 3 | Pending |
+| FORM-02 | Phase 3 | Pending |
+| FORM-03 | Phase 4 | Pending |
+| FORM-04 | Phase 4 | Pending |
+| FORM-05 | Phase 4 | Pending |
+| MAP-01 | Phase 2 | Pending |
+| BEHV-01 | Phase 4 | Pending |
+| BEHV-02 | Phase 4 | Pending |
+| BEHV-03 | Phase 5 | Pending |
+| BEHV-04 | Phase 4 | Pending |
+| BRAND-01 | Phase 1 | Pending |
+| BRAND-02 | Phase 1 | Pending |
+| BRAND-03 | Phase 5 | Pending |
+| BRAND-04 | Phase 1 | Pending |
+| UX-01 | Phase 3 | Pending |
+| UX-02 | Phase 4 | Pending |
+| UX-03 | Phase 5 | Pending |
 
 **Coverage:**
 - v1 requirements: 17 total
-- Mapped to phases: 0
-- Unmapped: 17
+- Mapped to phases: 17
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-05-13*
-*Last updated: 2026-05-13 after initial definition*
+*Last updated: 2026-05-13 after roadmap phase mapping*
