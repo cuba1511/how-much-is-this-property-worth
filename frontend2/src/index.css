@@ -1,0 +1,206 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* PropHero tokens (from live site colour palette) */
+    --ph-white: #ffffff;
+    --ph-light-bg: #f5f7f9;
+    --ph-blue-bg: #f3f5fe;
+    --ph-text: #1e252d;
+    --ph-text-secondary: #596b7d;
+    --ph-text-muted: #abb8c7;
+    --ph-blue: #2050f6;
+    --ph-blue-dark: #162eb7;
+    --ph-cyan: #65c6eb;
+    --ph-orange: #f45504;
+    --ph-orange-light: #ff7a40;
+    --ph-pink: #ea4ac0;
+    --ph-line: rgba(32, 80, 246, 0.18);
+    --ph-line-strong: #4d4d4d;
+
+    /* shadcn/ui CSS variables — mapped to PropHero palette */
+    --background: 0 0% 100%;
+    --foreground: 215 20% 15%;
+    --card: 0 0% 100%;
+    --card-foreground: 215 20% 15%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 20% 15%;
+    --primary: 225 93% 54%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 195 76% 66%;
+    --secondary-foreground: 215 20% 15%;
+    --muted: 214 20% 96%;
+    --muted-foreground: 210 14% 42%;
+    --accent: 20 95% 49%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 225 86% 54% / 0.18;
+    --input: 225 86% 54% / 0.18;
+    --ring: 225 93% 54%;
+    --radius: 0.5rem;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 225 93% 54%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.3% 26.1%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 225 93% 54%;
+
+    /* Legacy PropHero custom properties */
+    --text: var(--ph-text-secondary);
+    --text-h: var(--ph-text);
+    --bg: var(--ph-white);
+    --bg-section: var(--ph-light-bg);
+    --bg-tint: var(--ph-blue-bg);
+    --code-bg: var(--ph-blue-bg);
+    --accent-bg: color-mix(in srgb, var(--ph-orange) 12%, transparent);
+    --accent-border: color-mix(in srgb, var(--ph-orange) 45%, transparent);
+    --primary-bg: color-mix(in srgb, var(--ph-blue) 10%, transparent);
+    --primary-border: color-mix(in srgb, var(--ph-blue) 35%, transparent);
+    --social-bg: var(--ph-light-bg);
+    --shadow: 0 10px 40px rgba(32, 80, 246, 0.08);
+
+    --sans: Inter, system-ui, 'Segoe UI', Roboto, sans-serif;
+    --heading: Inter, system-ui, 'Segoe UI', Roboto, sans-serif;
+    --mono: ui-monospace, Consolas, monospace;
+
+    font: 18px/1.45 var(--sans);
+    letter-spacing: 0.01em;
+    color-scheme: light;
+    color: hsl(var(--foreground));
+    background: hsl(var(--background));
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+
+    @media (max-width: 1024px) {
+      font-size: 16px;
+    }
+  }
+
+  .dark {
+    --background: 224 50% 8%;
+    --foreground: 214 20% 82%;
+    --card: 222 47% 11%;
+    --card-foreground: 214 20% 96%;
+    --popover: 222 47% 11%;
+    --popover-foreground: 214 20% 96%;
+    --primary: 228 92% 72%;
+    --primary-foreground: 224 50% 8%;
+    --secondary: 195 76% 66%;
+    --secondary-foreground: 214 20% 96%;
+    --muted: 223 47% 13%;
+    --muted-foreground: 214 20% 73%;
+    --accent: 20 100% 63%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 195 76% 66% / 0.15;
+    --input: 195 76% 66% / 0.15;
+    --ring: 228 92% 72%;
+
+    --sidebar-background: 224 50% 8%;
+    --sidebar-foreground: 214 20% 82%;
+    --sidebar-primary: 228 92% 72%;
+    --sidebar-primary-foreground: 224 50% 8%;
+    --sidebar-accent: 223 47% 13%;
+    --sidebar-accent-foreground: 214 20% 82%;
+    --sidebar-border: 195 76% 66% / 0.15;
+    --sidebar-ring: 228 92% 72%;
+
+    --text: #abb8c7;
+    --text-h: #f5f7f9;
+    --bg: #0a0f1e;
+    --bg-section: #111827;
+    --bg-tint: #141c2e;
+    --code-bg: #141c2e;
+    --accent-bg: color-mix(in srgb, #ff7a40 18%, transparent);
+    --accent-border: color-mix(in srgb, #ff7a40 45%, transparent);
+    --primary-bg: color-mix(in srgb, #5578f8 15%, transparent);
+    --primary-border: color-mix(in srgb, #5578f8 40%, transparent);
+    --social-bg: rgba(26, 34, 52, 0.85);
+    --shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+
+    #social .button-icon {
+      filter: invert(1) brightness(2);
+    }
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-pill bg-primary px-6 py-3 text-center font-semibold text-primary-foreground shadow-card transition hover:bg-primary-dark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-pill border-2 border-primary bg-surface px-6 py-3 text-center font-semibold text-primary transition hover:bg-surface-tint focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-pill border border-transparent px-4 py-2 text-sm font-medium text-ink-secondary transition hover:border-line hover:bg-surface-muted hover:text-ink;
+  }
+}
+
+body {
+  margin: 0;
+}
+
+#root {
+  width: 1126px;
+  max-width: 100%;
+  margin: 0 auto;
+  border-inline: 1px solid var(--border);
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+h1,
+h2 {
+  font-family: var(--heading);
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+h1 {
+  font-size: clamp(2rem, 4vw + 1rem, 3.25rem);
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  margin: 24px 0 12px;
+}
+
+h2 {
+  font-size: 1.35rem;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  margin: 0 0 8px;
+  @media (max-width: 1024px) {
+    font-size: 1.2rem;
+  }
+}
+
+p {
+  margin: 0;
+}
+
+code,
+.counter {
+  font-family: var(--mono);
+  display: inline-flex;
+  border-radius: 6px;
+  color: var(--text-h);
+}
+
+code {
+  font-size: 15px;
+  line-height: 135%;
+  padding: 4px 8px;
+  background: var(--code-bg);
+}

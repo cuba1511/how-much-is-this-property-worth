@@ -1,0 +1,106 @@
+{
+  "hero": {
+    "title": "¿Cuánto vale ",
+    "titleHighlight": "mi casa",
+    "titleEnd": "?",
+    "subtitle": "Introduce los datos de tu propiedad y te mostramos comparables reales para estimar su valor de mercado."
+  },
+  "steps": {
+    "property": "Propiedad",
+    "location": "Ubicación",
+    "details": "Detalles"
+  },
+  "impacts": {
+    "propertiesSold": "+265.000 propiedades vendidas en todo el mundo en los últimos 5 años",
+    "avgSaleTime": "Tiempo medio de venta: menos de 5 meses",
+    "locationValue": "La ubicación determina hasta el 70% del valor de una vivienda",
+    "realTimePrices": "Analizamos precios reales de tu zona en tiempo real",
+    "precisionMatters": "Cuanto más preciso, mejor será tu valoración",
+    "resultTime": "Resultado en menos de 60 segundos"
+  },
+  "form": {
+    "back": "Atrás",
+    "next": "Siguiente",
+    "submit": "Valorar mi propiedad",
+    "analyzing": "Analizando mercado…",
+    "serverError": "Error al contactar con el servidor"
+  },
+  "propertyType": {
+    "label": "Tipo de propiedad",
+    "house": "Casa",
+    "apartment": "Piso",
+    "error": "Selecciona un tipo de propiedad"
+  },
+  "features": {
+    "label": "Características",
+    "pool": "Piscina",
+    "terrace": "Terraza",
+    "elevator": "Ascensor",
+    "parking": "Estacionamiento"
+  },
+  "address": {
+    "label": "Dirección",
+    "placeholder": "Busca tu dirección...",
+    "error": "Introduce una dirección válida",
+    "confirmed": "Dirección confirmada",
+    "searchLabel": "Buscar dirección",
+    "clearSearch": "Limpiar búsqueda",
+    "suggestions": "Sugerencias de dirección"
+  },
+  "condition": {
+    "label": "Estado de la propiedad",
+    "newBuild": "Obra nueva",
+    "good": "Buen estado",
+    "toRenovate": "A reformar",
+    "error": "Selecciona el estado"
+  },
+  "details": {
+    "area": "Superficie (m²)",
+    "areaPlaceholder": "Ej: 80",
+    "areaMin": "Mínimo 20 m²",
+    "areaMax": "Máximo 500 m²",
+    "areaRequired": "Introduce los metros cuadrados",
+    "bedrooms": "Habitaciones",
+    "bathrooms": "Baños"
+  },
+  "stepper": {
+    "decrease": "Reducir {{label}}",
+    "increase": "Aumentar {{label}}",
+    "decreaseDefault": "Reducir valor",
+    "increaseDefault": "Aumentar valor"
+  },
+  "results": {
+    "estimatedValuation": "Valoración estimada",
+    "newValuation": "Nueva valoración",
+    "range": "Rango: {{low}} – {{high}}",
+    "noData": "No hay suficientes datos para estimar el valor",
+    "avgPrice": "Precio medio",
+    "avgPricePerM2": "€/m² medio",
+    "comparables": "Comparables",
+    "comparablesFound": "Comparables encontrados ({{count}})",
+    "rooms": "{{count}} hab.",
+    "baths": "{{count}} baños",
+    "m2": "{{count}} m²"
+  },
+  "lead": {
+    "title": "Último paso",
+    "description": "Déjanos tus datos para enviarte el informe de valoración.",
+    "name": "Nombre completo",
+    "namePlaceholder": "Juan García",
+    "nameError": "Introduce tu nombre",
+    "email": "Email",
+    "emailPlaceholder": "juan@ejemplo.com",
+    "emailError": "Introduce tu email",
+    "emailInvalid": "Email no válido",
+    "phone": "Teléfono",
+    "phonePlaceholder": "+34 612 345 678",
+    "phoneError": "Introduce tu teléfono",
+    "phoneInvalid": "Teléfono no válido",
+    "submit": "Obtener valoración",
+    "privacy": "No compartiremos tu información con terceros."
+  },
+  "language": {
+    "es": "Español",
+    "en": "English"
+  }
+}
