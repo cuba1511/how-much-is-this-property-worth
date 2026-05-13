@@ -81,7 +81,7 @@ export function PropertyTypeStep({ submitting = false }: PropertyTypeStepProps) 
       {/* Feature cards */}
       <div className="flex flex-col gap-sm">
         <label className="text-sm font-medium text-ink">{t('features.label')}</label>
-        <div className="grid grid-cols-2 gap-md">
+        <div className="grid grid-cols-1 gap-md sm:grid-cols-2">
           {FEATURES.map(({ key, labelKey, icon: Icon }) => {
             const checked = features?.[key] ?? false
             return (

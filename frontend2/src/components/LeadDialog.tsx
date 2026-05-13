@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { User, Mail, Phone, Loader2 } from 'lucide-react'
+import { User, Mail, Loader2 } from 'lucide-react'
+import { isValidPhoneNumber, type Value } from 'react-phone-number-input'
 import {
   Dialog,
   DialogContent,
@@ -10,6 +11,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PhoneInputField } from '@/components/ui/phone-input'
 
 export interface LeadData {
   fullName: string
@@ -40,7 +42,7 @@ export function LeadDialog({ open, onOpenChange, onSubmit, submitting }: LeadDia
     }
     if (!lead.phone.trim()) {
       next.phone = t('lead.phoneError')
-    } else if (!/^[+\d\s()-]{6,20}$/.test(lead.phone)) {
+    } else if (!isValidPhoneNumber(lead.phone)) {
       next.phone = t('lead.phoneInvalid')
     }
 
@@ -107,17 +109,14 @@ export function LeadDialog({ open, onOpenChange, onSubmit, submitting }: LeadDia
 
           <div className="flex flex-col gap-xs">
             <Label htmlFor="lead-phone">{t('lead.phone')}</Label>
-            <div className="relative">
-              <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
-              <Input
-                id="lead-phone"
-                type="tel"
-                placeholder={t('lead.phonePlaceholder')}
-                value={lead.phone}
-                onChange={(e) => update('phone', e.target.value)}
-                className="pl-9"
-              />
-            </div>
+            <PhoneInputField
+              id="lead-phone"
+              defaultCountry="ES"
+              value={lead.phone as Value}
+              onChange={(val) => update('phone', val ?? '')}
+              placeholder={t('lead.phonePlaceholder')}
+              error={!!errors.phone}
+            />
             {errors.phone && <p className="text-xs text-destructive">{errors.phone}</p>}
           </div>
 
