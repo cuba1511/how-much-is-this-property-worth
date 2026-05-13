@@ -3,7 +3,10 @@
     "title": "How much is ",
     "titleHighlight": "my property",
     "titleEnd": " worth?",
-    "subtitle": "Enter your property details and we'll show you real comparables to estimate its market value."
+    "subtitle": "Enter your property details and we'll show you real comparables to estimate its market value.",
+    "badge": "Smart valuation",
+    "ctaCaption": "Free · result in under 60s",
+    "imageAlt": "Apartment building"
   },
   "steps": {
     "property": "Property",
