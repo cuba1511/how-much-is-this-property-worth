@@ -29,7 +29,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. User sees "¿Cuánto vale tu casa?" headline with PropHero branding when loading the page
   2. Page renders with PropHero design tokens — electric blue, cyan, orange CTA colors, and Inter font
   3. All visible UI text is in Spanish
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Foundation modules + demo cleanup (types, schemas, API client, remove demo artifacts, Spanish lang)
+- [ ] 01-02-PLAN.md — Hero section + app shell (HeroSection component, App.tsx rewrite, placeholder card)
+
 **UI hint**: yes
 
 ### Phase 2: Interactive Map
