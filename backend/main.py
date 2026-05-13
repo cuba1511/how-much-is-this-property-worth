@@ -111,6 +111,12 @@ async def get_valuation(request: ValuationRequest):
         raise HTTPException(status_code=502, detail="Geocoding service unavailable")
 
     logger.info(f"Municipio resolved: {municipio.name} (slug: {municipio.slug})")
+    logger.info(
+        "Request details — type: %s, condition: %s, features: %s",
+        request.property_type,
+        request.property_condition,
+        request.features.model_dump() if request.features else None,
+    )
 
     # --- Step 2: Scrape Idealista ---
     try:
