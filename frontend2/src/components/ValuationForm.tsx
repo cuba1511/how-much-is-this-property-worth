@@ -52,7 +52,7 @@ const STEPS: StepConfig[] = [
 ]
 
 interface ValuationFormProps {
-  onResult: (result: ValuationResponse) => void
+  onResult: (result: ValuationResponse, request: import('@/lib/types').ValuationRequest, lead?: import('@/lib/types').LeadInfo) => void
   onError: (message: string) => void
 }
 
@@ -125,13 +125,17 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
     try {
       const data = methods.getValues()
       const { propertyType, features, propertyCondition, ...apiFields } = data
-      const result = await valuateProperty({
+      const requestPayload = {
         ...apiFields,
+        property_type: propertyType,
+        property_condition: propertyCondition,
+        features,
         selected_address: resolvedAddress ?? undefined,
         lead,
-      })
+      }
+      const result = await valuateProperty(requestPayload)
       setLeadDialogOpen(false)
-      onResult(result)
+      onResult(result, requestPayload, lead)
     } catch (err) {
       onError(err instanceof Error ? err.message : t('form.serverError'))
       setLeadDialogOpen(false)

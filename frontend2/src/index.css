@@ -51,6 +51,12 @@
     --sidebar-border: 220 13% 91%;
     --sidebar-ring: 225 93% 54%;
 
+    --chart-1: 225 93% 54%;
+    --chart-2: 20 95% 49%;
+    --chart-3: 195 76% 66%;
+    --chart-4: 300 65% 55%;
+    --chart-5: 150 60% 45%;
+
     /* Legacy PropHero custom properties */
     --text: var(--ph-text-secondary);
     --text-h: var(--ph-text);
@@ -113,6 +119,12 @@
     --sidebar-accent-foreground: 214 20% 82%;
     --sidebar-border: 195 76% 66% / 0.15;
     --sidebar-ring: 228 92% 72%;
+
+    --chart-1: 228 92% 72%;
+    --chart-2: 20 100% 63%;
+    --chart-3: 195 76% 66%;
+    --chart-4: 300 65% 65%;
+    --chart-5: 150 60% 55%;
 
     --text: #abb8c7;
     --text-h: #f5f7f9;

@@ -80,7 +80,80 @@
     "comparablesFound": "Comparables found ({{count}})",
     "rooms": "{{count}} bed.",
     "baths": "{{count}} bath.",
-    "m2": "{{count}} m²"
+    "m2": "{{count}} m²",
+    "confidence": {
+      "high": "High confidence",
+      "medium": "Medium confidence",
+      "low": "Low confidence"
+    },
+    "stages": {
+      "same_street": "Same street",
+      "same_microzone": "Same microzone",
+      "same_local_area": "Same local area",
+      "municipality": "Municipality"
+    },
+    "hero": {
+      "breakdown": "{{m2}} m² × {{pricePerM2}} €/m²",
+      "analyzedIn": "Analyzed in {{seconds}}s · {{count}} properties in real time"
+    },
+    "market": {
+      "title": "Market reality",
+      "headline": "In {{municipio}}, they close at -{{gap}}% of the asking price",
+      "salePriceLabel": "Estimated real sale price",
+      "marginLabel": "Average negotiation margin",
+      "asking": "Asking",
+      "closing": "Closing"
+    },
+    "howWeGotThere": {
+      "title": "How we got this estimate",
+      "viewOnIdealista": "View on Idealista",
+      "listings": "{{count}} listings",
+      "areaRange": "{{min}}–{{max}} m²",
+      "duration": "{{ms}}ms",
+      "priceDistribution": "Price distribution",
+      "estimated": "Estimated"
+    },
+    "positioning": {
+      "title": "Positioning",
+      "bedroomRefined": "Refined estimate for {{count}} bedrooms",
+      "spread": "Comparables €/m² range",
+      "vsGlobal": "vs. global average",
+      "min": "Min",
+      "max": "Max",
+      "avg": "Avg"
+    },
+    "zone": {
+      "title": "Search zone",
+      "radiusHint": "Radius: {{radius}}m ({{stage}})",
+      "nearbyTransactions": "Nearby transactions"
+    },
+    "time": {
+      "title": "Time on market",
+      "avgDays": "{{count}} days on average",
+      "urgency": "Sellers with a specialized advisor close faster",
+      "transactions": "transactions"
+    },
+    "comparablesSection": {
+      "title": "Comparables ({{count}})",
+      "sort": {
+        "price": "Price",
+        "ppm": "€/m²",
+        "sizeMatch": "Size match"
+      },
+      "match": {
+        "exact": "Exact match",
+        "relaxed": "Broad match"
+      },
+      "floor": "Floor {{floor}}",
+      "groupCount": "{{count}} listings"
+    },
+    "cta": {
+      "expiresIn": "This analysis expires in 24h · we sent a copy to your email",
+      "talkToAdvisor": "Talk to a PropHero advisor",
+      "requestPdf": "Request detailed PDF",
+      "greeting": "Hi {{name}}, your market analysis is ready",
+      "basedOn": "Based on {{count}} real transactions"
+    }
   },
   "lead": {
     "title": "Last step",

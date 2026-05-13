@@ -22,11 +22,21 @@ export interface LeadInfo {
   phone: string
 }
 
+export interface PropertyFeatures {
+  pool: boolean
+  terrace: boolean
+  elevator: boolean
+  parking: boolean
+}
+
 export interface ValuationRequest {
   address: string
   m2: number
   bedrooms: number
   bathrooms: number
+  property_type?: string | null
+  property_condition?: string | null
+  features?: PropertyFeatures | null
   selected_address?: ResolvedAddress | null
   lead?: LeadInfo
 }

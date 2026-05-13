@@ -3,22 +3,28 @@ import { Navbar } from '@/components/Navbar'
 import { HeroSection } from '@/components/HeroSection'
 import { ValuationForm } from '@/components/ValuationForm'
 import { ValuationResults } from '@/components/ValuationResults'
-import type { ValuationResponse } from '@/lib/types'
+import type { ValuationResponse, ValuationRequest, LeadInfo } from '@/lib/types'
+
+interface ValuationData {
+  result: ValuationResponse
+  request: ValuationRequest
+  lead?: LeadInfo
+}
 
 function App() {
-  const [result, setResult] = useState<ValuationResponse | null>(null)
+  const [data, setData] = useState<ValuationData | null>(null)
   const [apiError, setApiError] = useState<string | null>(null)
 
-  function handleResult(res: ValuationResponse) {
+  function handleResult(result: ValuationResponse, request: ValuationRequest, lead?: LeadInfo) {
     setApiError(null)
-    setResult(res)
+    setData({ result, request, lead })
     setTimeout(() => {
       document.getElementById('results')?.scrollIntoView({ behavior: 'smooth' })
     }, 100)
   }
 
   function handleReset() {
-    setResult(null)
+    setData(null)
     setApiError(null)
     setTimeout(() => {
       document.getElementById('form-area')?.scrollIntoView({ behavior: 'smooth' })
@@ -34,7 +40,7 @@ function App() {
         id="form-area"
         className="mt-xl mx-xl pb-3xl"
       >
-        {!result && (
+        {!data && (
           <>
             {apiError && (
               <div className="mb-md rounded-xl border border-destructive/30 bg-destructive/5 px-md py-sm text-sm text-destructive">
@@ -46,9 +52,14 @@ function App() {
         )}
       </div>
 
-      {result && (
+      {data && (
         <div id="results" className="mx-xl mt-xl mb-3xl">
-          <ValuationResults result={result} onReset={handleReset} />
+          <ValuationResults
+            result={data.result}
+            request={data.request}
+            lead={data.lead}
+            onReset={handleReset}
+          />
         </div>
       )}
     </>
