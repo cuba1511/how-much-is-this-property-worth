@@ -1,5 +1,9 @@
+import asyncio
+import hashlib
+import json
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 from time import perf_counter
 
@@ -36,6 +40,29 @@ logger = logging.getLogger(__name__)
 
 DATASET_MAX_ROWS = 10
 DATASET_MIN_ROWS = 3
+
+# In-process TTL cache for /api/valuation/simple. The full valuation pipeline
+# can take 40-70s when Idealista throws CAPTCHAs through Bright Data, which
+# blows past Google Apps Script's 30s hard cap for custom functions. Caching
+# repeated `(address, beds, baths, m2, fast)` requests gets us under 1s on
+# warm hits, so demos via Google Sheets actually work once an address has
+# been pre-warmed (with curl or the web app).
+SIMPLE_VALUATION_CACHE_TTL_SECONDS = 60 * 60
+_simple_valuation_cache: dict[str, tuple[float, SimpleValuationResponse]] = {}
+_simple_valuation_cache_lock = asyncio.Lock()
+
+
+def _simple_valuation_cache_key(request: ValuationRequest, fast: bool) -> str:
+    payload = {
+        "address": request.address,
+        "bedrooms": request.bedrooms,
+        "bathrooms": request.bathrooms,
+        "m2": request.m2,
+        "fast": fast,
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True).encode("utf-8")
+    ).hexdigest()
 
 
 def build_dataset(listings: list[Listing]) -> ComparablesDataset:
@@ -268,7 +295,17 @@ async def get_valuation(request: ValuationRequest):
     response_model=SimpleValuationResponse,
     summary="Slim valuation contract for external integrations (Apps Script, Sheets, Zapier)",
 )
-async def get_valuation_simple(request: ValuationRequest) -> SimpleValuationResponse:
+async def get_valuation_simple(
+    request: ValuationRequest,
+    fast: bool = Query(
+        False,
+        description=(
+            "If true, skip the Idealista scrape and return mocked market data "
+            "instantly. Use this for Google Sheets / Apps Script demos where "
+            "the 30s custom-function cap blocks real scraping."
+        ),
+    ),
+) -> SimpleValuationResponse:
     """
     Stable, slim wrapper over /api/valuation. Returns only the four fields most
     integrations care about: price, asking_price, closing_price, negotiation_factor.
@@ -276,20 +313,137 @@ async def get_valuation_simple(request: ValuationRequest) -> SimpleValuationResp
     NOTE: asking_price / closing_price / negotiation_factor currently come from the
     mocked market-transactions layer and are flagged with `is_mock: true`. The
     contract will not change when real data replaces the mock.
-    """
-    full = await get_valuation(request)
 
-    summary = full.market_transactions.summary if full.market_transactions else None
-    margin_pct = summary.negotiation_margin_pct if summary else None
+    Cached for 1h per `(address, beds, baths, m2, fast)` tuple.
+    """
+    cache_key = _simple_valuation_cache_key(request, fast)
+    now = time.time()
+    async with _simple_valuation_cache_lock:
+        cached = _simple_valuation_cache.get(cache_key)
+        if cached and (now - cached[0]) < SIMPLE_VALUATION_CACHE_TTL_SECONDS:
+            logger.info(
+                "Cache HIT /api/valuation/simple (fast=%s) — %s",
+                fast,
+                request.address,
+            )
+            return cached[1]
+
+    if fast:
+        response = await _build_fast_simple_valuation(request)
+    else:
+        response = await _build_lean_simple_valuation(request)
+
+    async with _simple_valuation_cache_lock:
+        _simple_valuation_cache[cache_key] = (time.time(), response)
+
+    return response
+
+
+async def _build_lean_simple_valuation(request: ValuationRequest) -> SimpleValuationResponse:
+    """Real scrape, but WITHOUT per-listing detail enrichment.
+
+    This is the path that used to fit in Apps Script's 30s custom-function cap
+    before commit 9cebc75 added per-listing detail enrichment. The simple
+    endpoint only needs aggregated price stats, so detail enrichment is wasted
+    work here.
+
+    Typical latency: 5-20s depending on Idealista CAPTCHA load.
+    """
+    valuation_address = (
+        request.selected_address.label if request.selected_address else request.address
+    )
+
+    try:
+        municipio = (
+            municipio_from_resolved_address(request.selected_address)
+            if request.selected_address
+            else await get_municipio_from_address(request.address)
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        logger.error(f"Geocoding failed (lean mode): {exc}", exc_info=True)
+        raise HTTPException(status_code=502, detail="Geocoding service unavailable")
+
+    try:
+        listings, _search_url, _search_metadata = await scrape_idealista_listings(
+            address=valuation_address,
+            municipio=municipio,
+            bedrooms=request.bedrooms,
+            bathrooms=request.bathrooms,
+            m2=request.m2,
+            max_listings=DATASET_MAX_ROWS,
+            enrich_details=False,
+        )
+    except Exception as exc:
+        logger.error(f"Scraping failed (lean mode): {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Could not fetch listings from Idealista: {str(exc)}",
+        )
+
+    ppms = [lst.price_per_m2 for lst in listings if lst.price_per_m2]
+    avg_ppm2 = int(sum(ppms) / len(ppms)) if ppms else None
+    estimated = int(avg_ppm2 * request.m2) if avg_ppm2 else None
+
+    market_transactions = build_market_transactions_mock(
+        valuation_address,
+        municipio,
+        m2=request.m2,
+        bedrooms=request.bedrooms,
+        bathrooms=request.bathrooms,
+        listing_avg_price_per_m2=avg_ppm2,
+    )
+    summary = market_transactions.summary
+    margin_pct = summary.negotiation_margin_pct
 
     return SimpleValuationResponse(
-        address=full.municipio.road or request.address,
-        price=full.stats.estimated_value,
-        asking_price=summary.avg_asking_price if summary else None,
-        closing_price=summary.avg_closing_price if summary else None,
+        address=municipio.road or request.address,
+        price=estimated,
+        asking_price=summary.avg_asking_price,
+        closing_price=summary.avg_closing_price,
         negotiation_factor=round(margin_pct / 100, 4) if margin_pct is not None else None,
-        comparables_used=full.stats.total_comparables,
-        is_mock=summary is not None,
+        comparables_used=len(listings),
+        is_mock=True,
+    )
+
+
+async def _build_fast_simple_valuation(request: ValuationRequest) -> SimpleValuationResponse:
+    """Instant, scrape-free response built from the mock market-transactions layer.
+
+    Geocoding via Nominatim is still needed to seed the mock with realistic
+    municipio metadata, but it returns in <1s.
+    """
+    try:
+        municipio = (
+            municipio_from_resolved_address(request.selected_address)
+            if request.selected_address
+            else await get_municipio_from_address(request.address)
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        logger.error(f"Geocoding failed (fast mode): {exc}", exc_info=True)
+        raise HTTPException(status_code=502, detail="Geocoding service unavailable")
+
+    market_transactions = build_market_transactions_mock(
+        request.address,
+        municipio,
+        m2=request.m2,
+        bedrooms=request.bedrooms,
+        bathrooms=request.bathrooms,
+    )
+    summary = market_transactions.summary
+    margin_pct = summary.negotiation_margin_pct
+
+    return SimpleValuationResponse(
+        address=municipio.road or request.address,
+        price=summary.avg_closing_price,
+        asking_price=summary.avg_asking_price,
+        closing_price=summary.avg_closing_price,
+        negotiation_factor=round(margin_pct / 100, 4) if margin_pct is not None else None,
+        comparables_used=summary.total_transactions,
+        is_mock=True,
     )
 
 

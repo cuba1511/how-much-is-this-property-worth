@@ -29,6 +29,11 @@ export function Stepper({
     if (value < max) onChange(value + 1)
   }
 
+  const buttonClass =
+    'flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary transition-colors ' +
+    'hover:bg-primary/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ' +
+    'focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-primary/10'
+
   return (
     <div className="flex flex-col gap-xs">
       {label && (
@@ -40,8 +45,7 @@ export function Stepper({
           onClick={decrement}
           disabled={disabled || value <= min}
           aria-label={label ? t('stepper.decrease', { label }) : t('stepper.decreaseDefault')}
-          className="flex h-9 w-9 items-center justify-center rounded-full text-primary transition-colors disabled:cursor-not-allowed disabled:opacity-30"
-          style={{ backgroundColor: 'rgba(32, 80, 246, 0.1)' }}
+          className={buttonClass}
         >
           <Minus className="h-4 w-4" />
         </button>
@@ -56,8 +60,7 @@ export function Stepper({
           onClick={increment}
           disabled={disabled || value >= max}
           aria-label={label ? t('stepper.increase', { label }) : t('stepper.increaseDefault')}
-          className="flex h-9 w-9 items-center justify-center rounded-full text-primary transition-colors disabled:cursor-not-allowed disabled:opacity-30"
-          style={{ backgroundColor: 'rgba(32, 80, 246, 0.1)' }}
+          className={buttonClass}
         >
           <Plus className="h-4 w-4" />
         </button>

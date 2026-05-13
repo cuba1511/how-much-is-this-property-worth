@@ -35,37 +35,51 @@ function App() {
   return (
     <>
       <Navbar />
-      <HeroSection />
 
-      <div
-        id="form-area"
-        className="mt-xl mx-xl pb-3xl"
-      >
+      <main className="flex-1 w-full">
         {!data && (
           <>
-            {apiError && (
-              <div className="mb-md rounded-xl border border-destructive/30 bg-destructive/5 px-md py-sm text-sm text-destructive">
-                {apiError}
+            <HeroSection />
+
+            <section
+              id="form-area"
+              className="px-md md:px-xl pb-3xl"
+            >
+              <div className="mx-auto w-full max-w-2xl">
+                {apiError && (
+                  <div
+                    role="alert"
+                    className="mb-md rounded-xl border border-destructive/30 bg-destructive/5 px-md py-sm text-sm text-destructive"
+                  >
+                    {apiError}
+                  </div>
+                )}
+                <div className="card-surface p-lg md:p-xl">
+                  <ValuationForm onResult={handleResult} onError={setApiError} />
+                </div>
               </div>
-            )}
-            <ValuationForm onResult={handleResult} onError={setApiError} />
+            </section>
           </>
         )}
-      </div>
 
-      {data && (
-        <>
-          <div id="results" className="mx-xl mt-xl mb-3xl">
-            <ValuationResults
-              result={data.result}
-              request={data.request}
-              lead={data.lead}
-              onReset={handleReset}
-            />
-          </div>
-          <FloatingChat leadName={data.lead?.fullName} />
-        </>
-      )}
+        {data && (
+          <section
+            id="results"
+            className="px-md md:px-xl pt-xl pb-3xl"
+          >
+            <div className="mx-auto w-full max-w-5xl">
+              <ValuationResults
+                result={data.result}
+                request={data.request}
+                lead={data.lead}
+                onReset={handleReset}
+              />
+            </div>
+          </section>
+        )}
+      </main>
+
+      {data && <FloatingChat leadName={data.lead?.fullName} />}
     </>
   )
 }
