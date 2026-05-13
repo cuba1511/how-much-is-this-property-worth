@@ -172,6 +172,14 @@
     "submit": "Obtener valoración",
     "privacy": "No compartiremos tu información con terceros."
   },
+  "chat": {
+    "agentName": "Tifany",
+    "agentRole": "Advisor PropHero",
+    "greeting": "¡Hola{{name}}! Soy Tifany, acabo de ver tu valoración y tengo info adicional sobre tu zona. ¿Te gustaría que lo comentemos?",
+    "cta": "Responder por WhatsApp",
+    "close": "Cerrar chat",
+    "typing": "escribiendo…"
+  },
   "language": {
     "es": "Español",
     "en": "English"
