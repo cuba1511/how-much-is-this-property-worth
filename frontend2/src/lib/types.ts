@@ -1,0 +1,134 @@
+export interface ResolvedAddress {
+  label: string
+  lat: number
+  lon: number
+  municipality: string
+  province?: string | null
+  road?: string | null
+  house_number?: string | null
+  postcode?: string | null
+  neighbourhood?: string | null
+  quarter?: string | null
+  city_district?: string | null
+  country?: string | null
+  provider: string
+  provider_id?: string | null
+  precision?: string | null
+}
+
+export interface ValuationRequest {
+  address: string
+  m2: number
+  bedrooms: number
+  bathrooms: number
+  selected_address?: ResolvedAddress | null
+}
+
+export interface MunicipioInfo {
+  name: string
+  slug: string
+  province?: string | null
+  lat?: number | null
+  lon?: number | null
+  road?: string | null
+  neighbourhood?: string | null
+  quarter?: string | null
+  city_district?: string | null
+  postcode?: string | null
+}
+
+export interface Listing {
+  title: string
+  price?: number | null
+  m2?: number | null
+  price_per_m2?: number | null
+  bedrooms?: number | null
+  bathrooms?: number | null
+  address?: string | null
+  url: string
+  image_url?: string | null
+  floor?: string | null
+  source_stage?: string | null
+}
+
+export interface ValuationStats {
+  total_comparables: number
+  avg_price?: number | null
+  min_price?: number | null
+  max_price?: number | null
+  avg_price_per_m2?: number | null
+  estimated_value?: number | null
+  price_range_low?: number | null
+  price_range_high?: number | null
+}
+
+export interface MarketTransactionChartPoint {
+  label: string
+  asking_price?: number | null
+  closing_price?: number | null
+  negotiation_margin_pct?: number | null
+}
+
+export interface MarketTransaction {
+  id: string
+  address?: string | null
+  m2?: number | null
+  bedrooms?: number | null
+  bathrooms?: number | null
+  asking_price?: number | null
+  closing_price?: number | null
+  asking_price_per_m2?: number | null
+  closing_price_per_m2?: number | null
+  negotiation_margin_pct?: number | null
+  close_date?: string | null
+  days_on_market?: number | null
+  source: string
+  distance_m?: number | null
+}
+
+export interface MarketTransactionsSummary {
+  total_transactions: number
+  avg_asking_price?: number | null
+  avg_closing_price?: number | null
+  avg_asking_price_per_m2?: number | null
+  avg_closing_price_per_m2?: number | null
+  asking_vs_closing_gap_pct?: number | null
+  negotiation_margin_pct?: number | null
+  sample_size: number
+  chart_series: MarketTransactionChartPoint[]
+}
+
+export interface MarketTransactions {
+  summary: MarketTransactionsSummary
+  transactions: MarketTransaction[]
+}
+
+export interface SearchStageResult {
+  name: string
+  label: string
+  query: string
+  search_url: string
+  listings_found: number
+  duration_ms: number
+  area_min?: number | null
+  area_max?: number | null
+  bedrooms_mode: string
+  bathrooms_mode: string
+}
+
+export interface SearchMetadata {
+  strategy: string
+  target_comparables: number
+  final_stage: string
+  total_duration_ms: number
+  stages: SearchStageResult[]
+}
+
+export interface ValuationResponse {
+  municipio: MunicipioInfo
+  listings: Listing[]
+  stats: ValuationStats
+  search_url: string
+  search_metadata: SearchMetadata
+  market_transactions?: MarketTransactions | null
+}
