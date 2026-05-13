@@ -31,6 +31,19 @@ function fmtPct(n) {
   }).format(n)}%`;
 }
 
+function fmtSignedEur(n) {
+  if (n == null || !Number.isFinite(n)) return "—";
+  const rounded = Math.round(n);
+  const formatted = new Intl.NumberFormat("es-ES", {
+    style: "currency",
+    currency: "EUR",
+    maximumFractionDigits: 0,
+  }).format(Math.abs(rounded));
+  if (rounded > 0) return `+${formatted}`;
+  if (rounded < 0) return `−${formatted}`;
+  return formatted;
+}
+
 function fmtDate(value) {
   if (!value) return "Fecha no disponible";
   const parsed = new Date(value);
@@ -95,6 +108,26 @@ function sourceLabel(source) {
   return source.replaceAll("-", " ");
 }
 
+const CONDITION_LABELS = {
+  obra_nueva: "Obra nueva",
+  reformado: "Reformado",
+  a_reformar: "A reformar",
+  segunda_mano: "Segunda mano",
+};
+
+function listingFeatures(listing) {
+  const features = [];
+  if (listing.condition && CONDITION_LABELS[listing.condition]) {
+    features.push(CONDITION_LABELS[listing.condition]);
+  }
+  if (listing.has_elevator) features.push("Ascensor");
+  if (listing.has_terrace) features.push("Terraza");
+  if (listing.has_pool) features.push("Piscina");
+  if (listing.has_garage) features.push("Garaje");
+  if (listing.has_air_conditioning) features.push("A/C");
+  return features;
+}
+
 function listingCard(listing) {
   const img = listing.image_url
     ? `<img src="${escapeHtml(listing.image_url)}" alt="" class="listing-img" onerror="this.style.display='none'">`
@@ -111,6 +144,18 @@ function listingCard(listing) {
   if (listing.bathrooms) badges.push(`${listing.bathrooms} baños`);
   if (listing.floor) badges.push(listing.floor);
 
+  const features = listingFeatures(listing);
+  const featuresMarkup = features.length
+    ? `<div class="flex flex-wrap gap-1.5 mt-2">
+         ${features
+           .map(
+             (feature) =>
+               `<span class="text-xs bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full px-2 py-0.5 font-medium">${escapeHtml(feature)}</span>`,
+           )
+           .join("")}
+       </div>`
+    : "";
+
   return `
     <a href="${escapeHtml(listing.url)}" target="_blank" rel="noreferrer"
        class="card-hover bg-white rounded-2xl border border-gray-100 overflow-hidden flex flex-col shadow-sm">
@@ -122,6 +167,7 @@ function listingCard(listing) {
         <div class="flex flex-wrap gap-1.5 mt-3">
           ${badges.map((badge) => `<span class="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">${escapeHtml(badge)}</span>`).join("")}
         </div>
+        ${featuresMarkup}
       </div>
     </a>
   `;
@@ -282,6 +328,187 @@ function renderMarketChart(chartSeries) {
   `;
 }
 
+const DATASET_NUMERIC_COLS = [
+  { key: "metros", label: "metros" },
+  { key: "precio", label: "precio" },
+  { key: "habitaciones", label: "habitaciones" },
+  { key: "banos", label: "baños" },
+];
+
+function renderDataset(dataset) {
+  const section = document.getElementById("datasetSection");
+  const badge = document.getElementById("datasetBadge");
+  const warning = document.getElementById("datasetWarning");
+  const table = document.getElementById("datasetTable");
+
+  if (!dataset || !dataset.rows?.length) {
+    section.classList.add("hidden");
+    table.innerHTML = "";
+    warning.classList.add("hidden");
+    return;
+  }
+
+  badge.textContent = `${dataset.row_count} / ${dataset.max_allowed} filas`;
+  if (dataset.row_count < dataset.min_required) {
+    warning.textContent = `Solo ${dataset.row_count} comparables disponibles, por debajo del mínimo recomendado (${dataset.min_required}). Los resultados pueden ser menos fiables.`;
+    warning.classList.remove("hidden");
+  } else {
+    warning.classList.add("hidden");
+  }
+
+  const headerCells = [
+    `<th class="text-left px-3 py-2 font-semibold text-gray-500">#</th>`,
+    ...DATASET_NUMERIC_COLS.map(
+      (col) => `<th class="text-right px-3 py-2 font-semibold text-gray-500">${escapeHtml(col.label)}</th>`,
+    ),
+  ].join("");
+
+  const bodyRows = dataset.rows
+    .map((row, index) => {
+      const numericCells = DATASET_NUMERIC_COLS.map((col) => {
+        const value = row[col.key];
+        const format = col.formatter || fmtNumber;
+        const cell = value == null
+          ? '<span class="text-gray-300">-</span>'
+          : escapeHtml(format(value));
+        return `<td class="text-right px-3 py-2 text-gray-800 tabular-nums">${cell}</td>`;
+      }).join("");
+      return `
+        <tr class="border-t border-gray-100">
+          <td class="px-3 py-2 text-gray-500">${index + 1}</td>
+          ${numericCells}
+        </tr>
+      `;
+    })
+    .join("");
+
+  table.innerHTML = `
+    <thead class="bg-gray-50">
+      <tr>${headerCells}</tr>
+    </thead>
+    <tbody>${bodyRows}</tbody>
+  `;
+  section.classList.remove("hidden");
+}
+
+function computePredictedValue(regression, userFeatures) {
+  if (!regression || !userFeatures) return null;
+  if (!Array.isArray(regression.coefficients) || regression.coefficients.length === 0) {
+    return null;
+  }
+
+  const xByFeature = {
+    intercept: 1,
+    metros: userFeatures.m2,
+    habitaciones: userFeatures.bedrooms,
+    banos: userFeatures.bathrooms,
+  };
+
+  let total = 0;
+  for (const coef of regression.coefficients) {
+    const x = xByFeature[coef.feature];
+    if (!Number.isFinite(x) || !Number.isFinite(coef.coefficient)) continue;
+    total += coef.coefficient * x;
+  }
+  return total;
+}
+
+function regressionCard(coef) {
+  const isIntercept = coef.kind === "intercept";
+  const isContinuous = coef.kind === "continuous";
+
+  let displayValue;
+  let displaySub;
+  let toneClass;
+
+  if (isIntercept) {
+    displayValue = fmtSignedEur(coef.coefficient);
+    displaySub = "intercepto del modelo";
+    toneClass = "bg-slate-50 border-slate-200 text-slate-800";
+  } else {
+    displayValue = fmtSignedEur(coef.coefficient);
+    if (isContinuous && coef.unit_label) {
+      displaySub = `por ${escapeHtml(coef.unit_label)}`;
+    } else {
+      displaySub = "cuando aplica";
+    }
+    if (coef.coefficient > 0) {
+      toneClass = "bg-emerald-50 border-emerald-200 text-emerald-800";
+    } else if (coef.coefficient < 0) {
+      toneClass = "bg-rose-50 border-rose-200 text-rose-800";
+    } else {
+      toneClass = "bg-gray-50 border-gray-200 text-gray-700";
+    }
+  }
+
+  return `
+    <div class="rounded-xl border ${toneClass} p-4">
+      <p class="text-xs font-medium uppercase tracking-wide opacity-70">${escapeHtml(coef.label)}</p>
+      <p class="text-xl font-extrabold mt-1 tabular-nums">${escapeHtml(displayValue)}</p>
+      <p class="text-xs opacity-70 mt-0.5">${displaySub}</p>
+    </div>
+  `;
+}
+
+function renderRegression(regression, predictedValue) {
+  const section = document.getElementById("regressionSection");
+  const badge = document.getElementById("regressionBadge");
+  const warning = document.getElementById("regressionWarning");
+  const grid = document.getElementById("regressionGrid");
+  const hero = document.getElementById("personalizedValuationHero");
+
+  if (!regression || !regression.coefficients?.length) {
+    section.classList.add("hidden");
+    grid.innerHTML = "";
+    warning.classList.add("hidden");
+    if (hero) {
+      hero.classList.add("hidden");
+      hero.innerHTML = "";
+    }
+    return;
+  }
+
+  const r2 =
+    regression.r_squared != null
+      ? `R² ${new Intl.NumberFormat("es-ES", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }).format(regression.r_squared)}`
+      : null;
+  const badgeParts = [`n = ${regression.sample_size}`, `p = ${regression.feature_count}`];
+  if (r2) badgeParts.push(r2);
+  badge.textContent = badgeParts.join(" · ");
+
+  if (regression.is_underdetermined) {
+    warning.textContent =
+      regression.notes ||
+      "Sistema infradeterminado (n_filas < n_features). Los coeficientes son la solución de mínima norma y deben tomarse como ilustrativos.";
+    warning.classList.remove("hidden");
+  } else {
+    warning.classList.add("hidden");
+  }
+
+  if (hero) {
+    const value = Number.isFinite(predictedValue) ? predictedValue : null;
+    if (value != null) {
+      hero.innerHTML = `
+        <div class="bg-gradient-to-r from-indigo-600 to-blue-600 rounded-2xl p-6 text-white">
+          <p class="text-indigo-100 text-sm font-medium mb-1">Precio sugerido de listing</p>
+          <p class="text-4xl font-extrabold tracking-tight tabular-nums">${escapeHtml(fmt(value))}</p>
+          <p class="text-indigo-100 text-xs mt-3">Calculado aplicando los coeficientes del modelo a tus inputs (m², habitaciones, baños).</p>
+        </div>
+      `;
+      hero.classList.remove("hidden");
+    } else {
+      hero.classList.add("hidden");
+      hero.innerHTML = "";
+    }
+  }
+
+  grid.innerHTML = regression.coefficients.map(regressionCard).join("");
+  section.classList.remove("hidden");
+}
+
 function renderMarketTransactions(marketTransactions) {
   const section = document.getElementById("marketTransactionsSection");
   const badge = document.getElementById("marketTransactionsBadge");
@@ -349,8 +576,17 @@ function renderMarketTransactions(marketTransactions) {
   section.classList.remove("hidden");
 }
 
-export function renderResults(data, payload) {
-  const { municipio, listings, stats, search_url, search_metadata, market_transactions } = data;
+export function renderResults(data, payload, userFeatures) {
+  const {
+    municipio,
+    listings,
+    stats,
+    search_url,
+    search_metadata,
+    market_transactions,
+    dataset,
+    regression,
+  } = data;
 
   document.getElementById("municipioLabel").textContent =
     `${municipio.name}${municipio.province ? `, ${municipio.province}` : ""}`;
@@ -386,6 +622,9 @@ export function renderResults(data, payload) {
   }
 
   renderMarketTransactions(market_transactions);
+  renderDataset(dataset);
+  const predictedValue = computePredictedValue(regression, userFeatures);
+  renderRegression(regression, predictedValue);
 
   const listingsGrid = document.getElementById("listingsGrid");
   if (listings.length === 0) {

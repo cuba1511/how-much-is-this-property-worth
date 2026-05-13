@@ -8,6 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from typing import Optional
+
 from geocoder import (
     get_municipio_from_address,
     municipio_from_resolved_address,
@@ -16,16 +18,65 @@ from geocoder import (
 )
 from market_transactions import build_market_transactions_mock
 from models import (
+    ComparablesDataset,
+    DatasetRow,
+    Listing,
+    ResolvedAddress,
     ResolvedAddress,
     SimpleValuationResponse,
     ValuationRequest,
     ValuationResponse,
     ValuationStats,
 )
+from regression import fit_listing_regression
 from scraper import scrape_idealista_listings
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+DATASET_MAX_ROWS = 10
+DATASET_MIN_ROWS = 3
+
+
+def build_dataset(listings: list[Listing]) -> ComparablesDataset:
+    rows: list[DatasetRow] = []
+    for listing in listings[:DATASET_MAX_ROWS]:
+        rows.append(
+            DatasetRow(
+                listing_url=listing.url,
+                metros=listing.m2,
+                precio=listing.price,
+                habitaciones=listing.bedrooms,
+                banos=listing.bathrooms,
+            )
+        )
+    return ComparablesDataset(
+        rows=rows,
+        row_count=len(rows),
+        min_required=DATASET_MIN_ROWS,
+        max_allowed=DATASET_MAX_ROWS,
+    )
+
+
+def log_dataset(dataset: ComparablesDataset) -> None:
+    logger.info("Comparables dataset (%d rows)", dataset.row_count)
+    logger.info("| # | metros | precio | hab | banos |")
+    logger.info("|---|--------|--------|-----|-------|")
+    for idx, row in enumerate(dataset.rows, start=1):
+        logger.info(
+            "| %d | %s | %s | %s | %s |",
+            idx,
+            row.metros if row.metros is not None else "-",
+            row.precio if row.precio is not None else "-",
+            row.habitaciones if row.habitaciones is not None else "-",
+            row.banos if row.banos is not None else "-",
+        )
+    if dataset.row_count < dataset.min_required:
+        logger.warning(
+            "Dataset has %d rows, below recommended minimum of %d",
+            dataset.row_count,
+            dataset.min_required,
+        )
 
 
 @asynccontextmanager
@@ -131,6 +182,7 @@ async def get_valuation(request: ValuationRequest):
             bedrooms=request.bedrooms,
             bathrooms=request.bathrooms,
             m2=request.m2,
+            max_listings=DATASET_MAX_ROWS,
         )
     except Exception as exc:
         logger.error(f"Scraping failed: {exc}", exc_info=True)
@@ -165,6 +217,34 @@ async def get_valuation(request: ValuationRequest):
         listing_avg_price_per_m2=avg_ppm2,
     )
 
+    dataset = build_dataset(listings)
+    log_dataset(dataset)
+
+    regression = fit_listing_regression(dataset.rows)
+    if regression:
+        alpha_repr = f"{regression.alpha:.3g}" if regression.alpha is not None else "n/a"
+        r2_repr = (
+            f"{regression.r_squared:.4f}" if regression.r_squared is not None else "n/a"
+        )
+        logger.info(
+            "Regression (%s, n=%d, p=%d, alpha=%s, underdet=%s, R2=%s)",
+            regression.method,
+            regression.sample_size,
+            regression.feature_count,
+            alpha_repr,
+            regression.is_underdetermined,
+            r2_repr,
+        )
+        for coef in regression.coefficients:
+            logger.info(
+                "  %-26s (%s): %+.4f",
+                coef.label,
+                coef.kind,
+                coef.coefficient,
+            )
+    else:
+        logger.warning("Regression not produced (insufficient data)")
+
     logger.info(
         "Valuation finished in %sms using stage %s",
         int((perf_counter() - request_started_at) * 1000),
@@ -178,6 +258,8 @@ async def get_valuation(request: ValuationRequest):
         search_url=search_url,
         search_metadata=search_metadata,
         market_transactions=market_transactions,
+        dataset=dataset,
+        regression=regression,
     )
 
 
