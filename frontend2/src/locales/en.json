@@ -172,6 +172,14 @@
     "submit": "Get valuation",
     "privacy": "We will not share your information with third parties."
   },
+  "chat": {
+    "agentName": "Tifany",
+    "agentRole": "PropHero Advisor",
+    "greeting": "Hi{{name}}! I'm Tifany, I just reviewed your valuation and I have some extra insights about your area. Want to chat about it?",
+    "cta": "Reply on WhatsApp",
+    "close": "Close chat",
+    "typing": "typing…"
+  },
   "language": {
     "es": "Español",
     "en": "English"

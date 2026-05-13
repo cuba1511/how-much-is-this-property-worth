@@ -3,6 +3,7 @@ import { Navbar } from '@/components/Navbar'
 import { HeroSection } from '@/components/HeroSection'
 import { ValuationForm } from '@/components/ValuationForm'
 import { ValuationResults } from '@/components/ValuationResults'
+import { FloatingChat } from '@/components/FloatingChat'
 import type { ValuationResponse, ValuationRequest, LeadInfo } from '@/lib/types'
 
 interface ValuationData {
@@ -53,14 +54,17 @@ function App() {
       </div>
 
       {data && (
-        <div id="results" className="mx-xl mt-xl mb-3xl">
-          <ValuationResults
-            result={data.result}
-            request={data.request}
-            lead={data.lead}
-            onReset={handleReset}
-          />
-        </div>
+        <>
+          <div id="results" className="mx-xl mt-xl mb-3xl">
+            <ValuationResults
+              result={data.result}
+              request={data.request}
+              lead={data.lead}
+              onReset={handleReset}
+            />
+          </div>
+          <FloatingChat leadName={data.lead?.fullName} />
+        </>
       )}
     </>
   )

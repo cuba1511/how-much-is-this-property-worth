@@ -124,10 +124,25 @@ export default {
           from: { height: "var(--radix-accordion-content-height)" },
           to: { height: "0" },
         },
+        "chat-slide-in": {
+          from: { opacity: "0", transform: "translateY(16px) scale(0.95)" },
+          to: { opacity: "1", transform: "translateY(0) scale(1)" },
+        },
+        "chat-bubble-in": {
+          from: { opacity: "0", transform: "translateY(8px)" },
+          to: { opacity: "1", transform: "translateY(0)" },
+        },
+        "typing-dot": {
+          "0%, 60%, 100%": { opacity: "0.3", transform: "translateY(0)" },
+          "30%": { opacity: "1", transform: "translateY(-3px)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "chat-slide-in": "chat-slide-in 0.4s ease-out forwards",
+        "chat-bubble-in": "chat-bubble-in 0.3s ease-out forwards",
+        "typing-dot": "typing-dot 1.2s ease-in-out infinite",
       },
     },
   },
