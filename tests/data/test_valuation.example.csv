@@ -1,0 +1,5 @@
+address,m2,bedrooms,bathrooms,property_type,property_condition,pool,terrace,elevator,parking,appraiser_value,notes
+"Calle Granada 24, 6D, Madrid",75,2,1,piso,buen_estado,false,false,true,false,530000,"Madrid centro, edificio antiguo reformado"
+"Rois de Corella 6, 2C, Carlet",90,3,2,piso,buen_estado,false,true,true,false,147000,"Carlet, segunda mano"
+"Calle Mayor 12, Madrid",95,3,2,piso,reformado,false,true,true,false,420000,"Ejemplo Madrid centro"
+"Avenida Diagonal 250, Barcelona",110,3,2,piso,reformado,false,true,true,true,615000,"Ejemplo Barcelona"
