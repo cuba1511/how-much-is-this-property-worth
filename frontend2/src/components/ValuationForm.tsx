@@ -23,7 +23,7 @@ import {
   step3Schema,
   type ValuationRequestForm,
 } from '@/lib/schemas'
-import { valuateProperty } from '@/lib/api'
+import { valuateProperty, ValuationError } from '@/lib/api'
 import type { ResolvedAddress, ValuationResponse } from '@/lib/types'
 
 interface ImpactItem { icon: LucideIcon; key: string }
@@ -137,7 +137,8 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
       setLeadDialogOpen(false)
       onResult(result, requestPayload, lead)
     } catch (err) {
-      onError(err instanceof Error ? err.message : t('form.serverError'))
+      const code = err instanceof ValuationError ? err.code : 'server'
+      onError(t(`form.error.${code}`))
       setLeadDialogOpen(false)
     } finally {
       setSubmitting(false)

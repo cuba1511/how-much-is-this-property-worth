@@ -1,9 +1,60 @@
 from __future__ import annotations
 
-import unicodedata
+import asyncio
+import logging
+import os
 import re
+import time
+import unicodedata
+from collections import OrderedDict
+
 import httpx
+
 from models import MunicipioInfo, ResolvedAddress
+
+logger = logging.getLogger(__name__)
+
+
+# Street-type / filler tokens that don't help Photon match a specific address
+# (they appear in thousands of street names and only add noise to the query).
+# Covers ES + CA + common abbreviations.
+_STREET_FILLER_TOKENS = {
+    "calle", "c", "c/", "c.",
+    "carrer",
+    "avenida", "avda", "av", "av.",
+    "avinguda",
+    "plaza", "pza", "plza",
+    "plaça", "pl", "pl.",
+    "paseo", "pº", "po",
+    "passeig",
+    "ronda",
+    "camino", "cami", "camí",
+    "travesia", "travesía", "travessera",
+    "calleja", "callejon", "callejón",
+    "via", "vía",
+    "glorieta",
+    "bulevar", "boulevard",
+}
+
+
+def _strip_street_fillers(query: str) -> str:
+    """Remove street-type prefix tokens (calle, carrer, av, etc.) from a query.
+
+    Photon matches every token, so generic prefixes dilute the result set with
+    thousands of unrelated streets. Stripping them dramatically improves recall
+    when the user types things like "carrer Sant Joan d'Àustria 101" — what we
+    actually want to send is "Sant Joan d'Àustria 101".
+    """
+    if not query:
+        return query
+    tokens = re.split(r"\s+", query.strip())
+    kept: list[str] = []
+    for tok in tokens:
+        normalized = tok.lower().rstrip(".,").strip()
+        if normalized in _STREET_FILLER_TOKENS:
+            continue
+        kept.append(tok)
+    return " ".join(kept).strip()
 
 
 def slugify(text: str) -> str:
@@ -230,6 +281,18 @@ def _photon_feature_to_resolved(feature: dict) -> ResolvedAddress | None:
     )
 
 
+def _photon_headers() -> dict:
+    # Identify ourselves explicitly. httpx's default UA ("python-httpx/x.x") is
+    # the kind of token Cloudflare/Komoot occasionally throttles to a hard 403,
+    # which is exactly what we were seeing in prod. A real UA + a Referer that
+    # points to our own product makes us look like a normal app, not a bot.
+    return {
+        "User-Agent": "HouseValuationMVP/1.0 (contact@prophero.com)",
+        "Referer": "https://prophero.com",
+        "Accept": "application/json",
+    }
+
+
 async def search_photon(query: str, *, limit: int) -> list[ResolvedAddress]:
     """Autocomplete-friendly geocoder backed by Komoot's Photon (OSM data)."""
     params = {
@@ -241,7 +304,11 @@ async def search_photon(query: str, *, limit: int) -> list[ResolvedAddress]:
     }
 
     async with httpx.AsyncClient(timeout=10.0, trust_env=False) as client:
-        response = await client.get(PHOTON_ENDPOINT, params=params)
+        response = await client.get(
+            PHOTON_ENDPOINT,
+            params=params,
+            headers=_photon_headers(),
+        )
         response.raise_for_status()
         payload = response.json()
 
@@ -400,37 +467,278 @@ def municipio_from_resolved_address(address: ResolvedAddress) -> MunicipioInfo:
     )
 
 
-async def suggest_addresses(query: str, limit: int = 5) -> list[ResolvedAddress]:
-    """
-    Returns autocomplete suggestions for an address.
+# ---------------------------------------------------------------------------
+# MapTiler & LocationIQ — optional providers gated behind API keys.
+#
+# Both Photon (Komoot) and the public Nominatim instance regularly throttle
+# autocomplete traffic from commercial IPs (Photon → 403 Cloudflare block,
+# Nominatim → 429 after >1 req/s). When an API key is configured we use these
+# providers first to bypass the public-instance limits entirely.
+#
+# MapTiler:   https://docs.maptiler.com/cloud/api/geocoding/   (100k req/mo free)
+# LocationIQ: https://locationiq.com/docs                       (5k req/day free)
+# ---------------------------------------------------------------------------
 
-    Primary provider is Photon (autocomplete-optimized, no rate-limit). We fall
-    back to Nominatim only when Photon is unreachable, since Nominatim's public
-    instance rejects high-frequency autocomplete traffic with HTTP 429.
-    """
-    import logging
-    logger = logging.getLogger(__name__)
+MAPTILER_ENDPOINT = "https://api.maptiler.com/geocoding/{query}.json"
+LOCATIONIQ_ENDPOINT = "https://api.locationiq.com/v1/autocomplete"
 
-    normalized_query = query.strip()
-    if len(normalized_query) < 3:
+
+def _maptiler_feature_to_resolved(feature: dict) -> ResolvedAddress | None:
+    geometry = feature.get("geometry") or {}
+    coords = geometry.get("coordinates") or []
+    if len(coords) < 2:
+        return None
+    lon, lat = float(coords[0]), float(coords[1])
+
+    props = feature.get("properties") or {}
+    place_name = feature.get("place_name") or feature.get("text") or ""
+
+    context = {ctx.get("kind") or ctx.get("id", "").split(".")[0]: ctx for ctx in feature.get("context", []) if isinstance(ctx, dict)}
+
+    def ctx_text(kind: str) -> str | None:
+        item = context.get(kind)
+        return item.get("text") if item else None
+
+    municipality = (
+        ctx_text("municipality")
+        or ctx_text("place")
+        or ctx_text("locality")
+        or ctx_text("city")
+        or props.get("place_type_name")
+        or ""
+    )
+    province = ctx_text("region") or ctx_text("subregion") or props.get("region")
+    postcode = ctx_text("postal_code") or props.get("postal_code")
+    country = ctx_text("country") or props.get("country")
+
+    if not place_name:
+        return None
+
+    return ResolvedAddress(
+        label=place_name,
+        lat=lat,
+        lon=lon,
+        municipality=municipality or place_name,
+        province=province,
+        road=props.get("street") or feature.get("text"),
+        house_number=props.get("address") or feature.get("address"),
+        postcode=postcode,
+        neighbourhood=ctx_text("neighborhood") or ctx_text("neighbourhood"),
+        quarter=None,
+        city_district=ctx_text("district"),
+        country=country,
+        provider="maptiler",
+        provider_id=str(feature.get("id")) if feature.get("id") is not None else None,
+        precision=feature.get("place_type", [None])[0] if isinstance(feature.get("place_type"), list) else None,
+    )
+
+
+async def search_maptiler(query: str, *, limit: int) -> list[ResolvedAddress]:
+    api_key = os.getenv("MAPTILER_API_KEY")
+    if not api_key:
         return []
 
-    capped_limit = max(1, min(limit, 8))
+    # MapTiler embeds the query in the URL path; httpx URL-encodes path segments
+    # automatically when we build the URL via copy_with().
+    base_url = httpx.URL("https://api.maptiler.com/geocoding/")
+    url = base_url.join(f"{query}.json")
+    params = {
+        "key": api_key,
+        "country": "es",
+        "language": "es",
+        "limit": limit,
+        "autocomplete": "true",
+    }
 
-    try:
-        photon_suggestions = await search_photon(normalized_query, limit=capped_limit)
-        if photon_suggestions:
-            return photon_suggestions
-    except Exception as exc:
-        logger.warning("Photon autocomplete failed, falling back to Nominatim: %s", exc)
+    async with httpx.AsyncClient(timeout=8.0, trust_env=False) as client:
+        response = await client.get(url, params=params)
+        response.raise_for_status()
+        payload = response.json()
 
+    features = payload.get("features") or []
+    suggestions: list[ResolvedAddress] = []
+    seen: set[str] = set()
+    for feature in features:
+        resolved = _maptiler_feature_to_resolved(feature)
+        if not resolved:
+            continue
+        key = resolved.provider_id or resolved.label
+        if key in seen:
+            continue
+        seen.add(key)
+        suggestions.append(resolved)
+        if len(suggestions) >= limit:
+            break
+    return suggestions
+
+
+def _locationiq_to_resolved(item: dict) -> ResolvedAddress | None:
     try:
-        results = await search_nominatim(normalized_query, limit=capped_limit)
-        if not results:
-            results = await search_nominatim_unrestricted(normalized_query, limit=capped_limit)
-    except Exception as exc:
-        logger.warning("Nominatim fallback also failed: %s", exc)
+        lat = float(item.get("lat"))
+        lon = float(item.get("lon"))
+    except (TypeError, ValueError):
+        return None
+
+    addr = item.get("address") or {}
+    label = item.get("display_name") or item.get("display_place") or ""
+    if not label:
+        return None
+
+    municipality = (
+        addr.get("city")
+        or addr.get("town")
+        or addr.get("village")
+        or addr.get("municipality")
+        or addr.get("county")
+        or ""
+    )
+
+    return ResolvedAddress(
+        label=label,
+        lat=lat,
+        lon=lon,
+        municipality=municipality or label,
+        province=addr.get("state") or addr.get("region"),
+        road=addr.get("road") or addr.get("street") or addr.get("name"),
+        house_number=addr.get("house_number"),
+        postcode=addr.get("postcode"),
+        neighbourhood=addr.get("neighbourhood") or addr.get("suburb"),
+        quarter=addr.get("quarter"),
+        city_district=addr.get("city_district") or addr.get("district"),
+        country=addr.get("country"),
+        provider="locationiq",
+        provider_id=str(item.get("place_id")) if item.get("place_id") else None,
+        precision=item.get("type") or item.get("class"),
+    )
+
+
+async def search_locationiq(query: str, *, limit: int) -> list[ResolvedAddress]:
+    api_key = os.getenv("LOCATIONIQ_API_KEY")
+    if not api_key:
         return []
+
+    params = {
+        "key": api_key,
+        "q": query,
+        "limit": limit,
+        "countrycodes": "es",
+        "format": "json",
+        "addressdetails": 1,
+        "normalizecity": 1,
+        "tag": "place:*,highway:*,building:*",
+    }
+
+    async with httpx.AsyncClient(timeout=8.0, trust_env=False) as client:
+        response = await client.get(LOCATIONIQ_ENDPOINT, params=params)
+        response.raise_for_status()
+        payload = response.json()
+
+    if not isinstance(payload, list):
+        return []
+
+    suggestions: list[ResolvedAddress] = []
+    seen: set[str] = set()
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        resolved = _locationiq_to_resolved(item)
+        if not resolved:
+            continue
+        key = resolved.provider_id or resolved.label
+        if key in seen:
+            continue
+        seen.add(key)
+        suggestions.append(resolved)
+        if len(suggestions) >= limit:
+            break
+    return suggestions
+
+
+# ---------------------------------------------------------------------------
+# Autocomplete cache + in-flight dedupe.
+#
+# Without this, every keystroke ("p", "po", "pon", "ponc", ...) becomes a
+# separate upstream request. With debounce + a small server-side TTL cache,
+# typing "ponciano" only fires ~1-2 upstream calls instead of 7+.
+# ---------------------------------------------------------------------------
+
+_AUTOCOMPLETE_CACHE_MAX = 1024
+_AUTOCOMPLETE_CACHE_TTL_HIT = 300.0   # 5 min for results we want to reuse
+_AUTOCOMPLETE_CACHE_TTL_MISS = 30.0   # 30 s for empty/errored results
+
+# OrderedDict acts as a tiny LRU.
+_autocomplete_cache: "OrderedDict[tuple[str, int], tuple[float, list[ResolvedAddress]]]" = OrderedDict()
+_autocomplete_cache_lock = asyncio.Lock()
+_autocomplete_inflight: dict[tuple[str, int], asyncio.Future[list[ResolvedAddress]]] = {}
+
+
+def _autocomplete_cache_key(query: str, limit: int) -> tuple[str, int]:
+    return (query.strip().lower(), limit)
+
+
+async def _cache_get(key: tuple[str, int]) -> list[ResolvedAddress] | None:
+    async with _autocomplete_cache_lock:
+        entry = _autocomplete_cache.get(key)
+        if not entry:
+            return None
+        expires_at, value = entry
+        if expires_at < time.monotonic():
+            _autocomplete_cache.pop(key, None)
+            return None
+        _autocomplete_cache.move_to_end(key)
+        return value
+
+
+async def _cache_put(key: tuple[str, int], value: list[ResolvedAddress]) -> None:
+    ttl = _AUTOCOMPLETE_CACHE_TTL_HIT if value else _AUTOCOMPLETE_CACHE_TTL_MISS
+    async with _autocomplete_cache_lock:
+        _autocomplete_cache[key] = (time.monotonic() + ttl, value)
+        _autocomplete_cache.move_to_end(key)
+        while len(_autocomplete_cache) > _AUTOCOMPLETE_CACHE_MAX:
+            _autocomplete_cache.popitem(last=False)
+
+
+async def _photon_chain(normalized_query: str, capped_limit: int) -> list[ResolvedAddress]:
+    """Run the original + filler-stripped Photon queries in parallel."""
+    cleaned_query = _strip_street_fillers(normalized_query)
+    queries = [normalized_query]
+    if cleaned_query and cleaned_query.lower() != normalized_query.lower():
+        queries.append(cleaned_query)
+
+    results = await asyncio.gather(
+        *(search_photon(q, limit=capped_limit) for q in queries),
+        return_exceptions=True,
+    )
+    merged: list[ResolvedAddress] = []
+    seen_keys: set[str] = set()
+    any_success = False
+    any_failure = False
+    for res in results:
+        if isinstance(res, Exception):
+            any_failure = True
+            logger.warning("Photon autocomplete query failed: %s", res)
+            continue
+        any_success = True
+        for suggestion in res:
+            key = suggestion.provider_id or suggestion.label
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            merged.append(suggestion)
+
+    if merged:
+        return merged[:capped_limit]
+    if any_success and not any_failure:
+        # Photon answered but had nothing; signal "empty, don't fall through".
+        return []
+    # All queries failed → bubble up so the caller falls back to Nominatim.
+    raise RuntimeError("Photon returned no successful responses")
+
+
+async def _nominatim_chain(normalized_query: str, capped_limit: int) -> list[ResolvedAddress]:
+    results = await search_nominatim(normalized_query, limit=capped_limit)
+    if not results:
+        results = await search_nominatim_unrestricted(normalized_query, limit=capped_limit)
 
     suggestions: list[ResolvedAddress] = []
     seen_labels: set[str] = set()
@@ -443,6 +751,94 @@ async def suggest_addresses(query: str, limit: int = 5) -> list[ResolvedAddress]
         if len(suggestions) >= capped_limit:
             break
     return suggestions
+
+
+async def _suggest_addresses_uncached(
+    normalized_query: str,
+    capped_limit: int,
+) -> list[ResolvedAddress]:
+    """Provider chain. First non-empty result wins; failures cascade.
+
+    Order is intentional: API-key providers first (rate-limit-free), then free
+    public instances. Each step is best-effort; we never let one provider's
+    outage block the whole chain.
+    """
+
+    if os.getenv("MAPTILER_API_KEY"):
+        try:
+            results = await search_maptiler(normalized_query, limit=capped_limit)
+            if results:
+                return results
+        except Exception as exc:
+            logger.warning("MapTiler autocomplete failed: %s", exc)
+
+    if os.getenv("LOCATIONIQ_API_KEY"):
+        try:
+            results = await search_locationiq(normalized_query, limit=capped_limit)
+            if results:
+                return results
+        except Exception as exc:
+            logger.warning("LocationIQ autocomplete failed: %s", exc)
+
+    try:
+        results = await _photon_chain(normalized_query, capped_limit)
+        if results:
+            return results
+    except Exception as exc:
+        logger.warning("Photon autocomplete failed, falling back to Nominatim: %s", exc)
+
+    try:
+        return await _nominatim_chain(normalized_query, capped_limit)
+    except Exception as exc:
+        logger.warning("Nominatim fallback also failed: %s", exc)
+        return []
+
+
+async def suggest_addresses(query: str, limit: int = 5) -> list[ResolvedAddress]:
+    """
+    Returns autocomplete suggestions for an address.
+
+    The provider chain is, in order: MapTiler (if MAPTILER_API_KEY set) →
+    LocationIQ (if LOCATIONIQ_API_KEY set) → Photon → Nominatim. The first two
+    are commercial providers with API keys; without them, we fall back to the
+    free public Photon/Nominatim instances which can return 403/429 from
+    commercial IPs.
+
+    A small in-process TTL cache + in-flight dedupe absorbs autocomplete bursts
+    (one cached prefix serves N keystrokes). Empty/error responses are cached
+    for a short TTL to avoid hammering throttled providers on each keystroke.
+    """
+    normalized_query = query.strip()
+    if len(normalized_query) < 3:
+        return []
+
+    capped_limit = max(1, min(limit, 8))
+    cache_key = _autocomplete_cache_key(normalized_query, capped_limit)
+
+    cached = await _cache_get(cache_key)
+    if cached is not None:
+        return list(cached)
+
+    inflight = _autocomplete_inflight.get(cache_key)
+    if inflight is not None:
+        return list(await inflight)
+
+    loop = asyncio.get_running_loop()
+    future: asyncio.Future[list[ResolvedAddress]] = loop.create_future()
+    _autocomplete_inflight[cache_key] = future
+
+    try:
+        result = await _suggest_addresses_uncached(normalized_query, capped_limit)
+        await _cache_put(cache_key, result)
+        if not future.done():
+            future.set_result(result)
+        return result
+    except Exception as exc:
+        if not future.done():
+            future.set_exception(exc)
+        raise
+    finally:
+        _autocomplete_inflight.pop(cache_key, None)
 
 
 async def reverse_geocode(lat: float, lon: float) -> ResolvedAddress:

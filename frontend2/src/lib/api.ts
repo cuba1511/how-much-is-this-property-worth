@@ -8,18 +8,50 @@ const DEFAULT_HEADERS: HeadersInit = {
   'ngrok-skip-browser-warning': 'true',
 }
 
+// Backend pipeline normally finishes in 40-70s but CAPTCHAs can push it further.
+// 120s is the hard ceiling — past this we surface a timeout instead of hanging forever.
+const VALUATION_TIMEOUT_MS = 120_000
+
+export type ValuationErrorCode = 'timeout' | 'network' | 'server'
+
+export class ValuationError extends Error {
+  code: ValuationErrorCode
+  status?: number
+
+  constructor(code: ValuationErrorCode, message: string, status?: number) {
+    super(message)
+    this.name = 'ValuationError'
+    this.code = code
+    this.status = status
+  }
+}
+
 export async function valuateProperty(request: ValuationRequest): Promise<ValuationResponse> {
-  const res = await fetch(`${API_BASE}/api/valuation`, {
-    method: 'POST',
-    headers: {
-      ...DEFAULT_HEADERS,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(request),
-  })
+  const controller = new AbortController()
+  const timeoutId = window.setTimeout(() => controller.abort(), VALUATION_TIMEOUT_MS)
+
+  let res: Response
+  try {
+    res = await fetch(`${API_BASE}/api/valuation`, {
+      method: 'POST',
+      headers: {
+        ...DEFAULT_HEADERS,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+      signal: controller.signal,
+    })
+  } catch (err) {
+    if ((err as { name?: string })?.name === 'AbortError') {
+      throw new ValuationError('timeout', `Valuation timed out after ${VALUATION_TIMEOUT_MS}ms`)
+    }
+    throw new ValuationError('network', `Network error: ${(err as Error).message ?? 'unknown'}`)
+  } finally {
+    window.clearTimeout(timeoutId)
+  }
 
   if (!res.ok) {
-    throw new Error(`API error: ${res.status}`)
+    throw new ValuationError('server', `API error: ${res.status}`, res.status)
   }
 
   return res.json() as Promise<ValuationResponse>

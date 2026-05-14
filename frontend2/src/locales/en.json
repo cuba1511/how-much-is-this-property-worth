@@ -26,7 +26,12 @@
     "next": "Next",
     "submit": "Value my property",
     "analyzing": "Analyzing market…",
-    "serverError": "Error contacting the server"
+    "serverError": "Error contacting the server",
+    "error": {
+      "timeout": "The valuation is taking longer than expected. Please try again in a few seconds.",
+      "network": "We couldn't reach the server. Check your connection and try again.",
+      "server": "The server couldn't complete the valuation. Please try again in a moment."
+    }
   },
   "propertyType": {
     "label": "Property type",

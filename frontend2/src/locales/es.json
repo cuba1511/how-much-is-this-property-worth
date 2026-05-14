@@ -26,7 +26,12 @@
     "next": "Siguiente",
     "submit": "Valorar mi propiedad",
     "analyzing": "Analizando mercado…",
-    "serverError": "Error al contactar con el servidor"
+    "serverError": "Error al contactar con el servidor",
+    "error": {
+      "timeout": "La valoración está tardando más de lo esperado. Inténtalo de nuevo en unos segundos.",
+      "network": "No pudimos contactar con el servidor. Comprueba tu conexión e inténtalo de nuevo.",
+      "server": "El servidor no pudo completar la valoración. Inténtalo de nuevo en un momento."
+    }
   },
   "propertyType": {
     "label": "Tipo de propiedad",
