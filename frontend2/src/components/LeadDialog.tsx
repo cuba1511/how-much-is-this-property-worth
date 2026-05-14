@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { User, Mail, Loader2 } from 'lucide-react'
+import { User, Mail } from 'lucide-react'
 import { isValidPhoneNumber, type Value } from 'react-phone-number-input'
 import {
   Dialog,
@@ -12,6 +12,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PhoneInputField } from '@/components/ui/phone-input'
+import { LeadAnalyzingProgress } from '@/components/LeadAnalyzingProgress'
 
 export interface LeadData {
   fullName: string
@@ -68,77 +69,75 @@ export function LeadDialog({ open, onOpenChange, onSubmit, submitting }: LeadDia
         onEscapeKeyDown={(e) => { if (submitting) e.preventDefault() }}
       >
         <DialogHeader>
-          <DialogTitle>{t('lead.title')}</DialogTitle>
+          <DialogTitle>
+            {submitting ? t('lead.analyzing.title') : t('lead.title')}
+          </DialogTitle>
           <DialogDescription>
-            {t('lead.description')}
+            {submitting ? t('lead.analyzing.description') : t('lead.description')}
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-md" noValidate>
-          <div className="flex flex-col gap-xs">
-            <Label htmlFor="lead-name">{t('lead.name')}</Label>
-            <div className="relative">
-              <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
-              <Input
-                id="lead-name"
-                placeholder={t('lead.namePlaceholder')}
-                value={lead.fullName}
-                onChange={(e) => update('fullName', e.target.value)}
-                className="pl-9"
-                autoFocus
-              />
+        {submitting ? (
+          <LeadAnalyzingProgress active={submitting} />
+        ) : (
+          <form onSubmit={handleSubmit} className="flex flex-col gap-md" noValidate>
+            <div className="flex flex-col gap-xs">
+              <Label htmlFor="lead-name">{t('lead.name')}</Label>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
+                <Input
+                  id="lead-name"
+                  placeholder={t('lead.namePlaceholder')}
+                  value={lead.fullName}
+                  onChange={(e) => update('fullName', e.target.value)}
+                  className="pl-9"
+                  autoFocus
+                />
+              </div>
+              {errors.fullName && <p className="text-xs text-destructive">{errors.fullName}</p>}
             </div>
-            {errors.fullName && <p className="text-xs text-destructive">{errors.fullName}</p>}
-          </div>
 
-          <div className="flex flex-col gap-xs">
-            <Label htmlFor="lead-email">{t('lead.email')}</Label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
-              <Input
-                id="lead-email"
-                type="email"
-                placeholder={t('lead.emailPlaceholder')}
-                value={lead.email}
-                onChange={(e) => update('email', e.target.value)}
-                className="pl-9"
-              />
+            <div className="flex flex-col gap-xs">
+              <Label htmlFor="lead-email">{t('lead.email')}</Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
+                <Input
+                  id="lead-email"
+                  type="email"
+                  placeholder={t('lead.emailPlaceholder')}
+                  value={lead.email}
+                  onChange={(e) => update('email', e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              {errors.email && <p className="text-xs text-destructive">{errors.email}</p>}
             </div>
-            {errors.email && <p className="text-xs text-destructive">{errors.email}</p>}
-          </div>
 
-          <div className="flex flex-col gap-xs">
-            <Label htmlFor="lead-phone">{t('lead.phone')}</Label>
-            <PhoneInputField
-              id="lead-phone"
-              defaultCountry="ES"
-              value={lead.phone as Value}
-              onChange={(val) => update('phone', val ?? '')}
-              placeholder={t('lead.phonePlaceholder')}
-              error={!!errors.phone}
-            />
-            {errors.phone && <p className="text-xs text-destructive">{errors.phone}</p>}
-          </div>
+            <div className="flex flex-col gap-xs">
+              <Label htmlFor="lead-phone">{t('lead.phone')}</Label>
+              <PhoneInputField
+                id="lead-phone"
+                defaultCountry="ES"
+                value={lead.phone as Value}
+                onChange={(val) => update('phone', val ?? '')}
+                placeholder={t('lead.phonePlaceholder')}
+                error={!!errors.phone}
+              />
+              {errors.phone && <p className="text-xs text-destructive">{errors.phone}</p>}
+            </div>
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="btn-primary mt-sm w-full disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {submitting ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                {t('form.analyzing')}
-              </>
-            ) : (
-              t('lead.submit')
-            )}
-          </button>
+            <button
+              type="submit"
+              className="btn-primary mt-sm w-full"
+            >
+              {t('lead.submit')}
+            </button>
 
-          <p className="text-center text-xs text-ink-muted">
-            {t('lead.privacy')}
-          </p>
-        </form>
+            <p className="text-center text-xs text-ink-muted">
+              {t('lead.privacy')}
+            </p>
+          </form>
+        )}
       </DialogContent>
     </Dialog>
   )
