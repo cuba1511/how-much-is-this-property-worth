@@ -173,7 +173,21 @@
     "phoneError": "Enter your phone number",
     "phoneInvalid": "Invalid phone number",
     "submit": "Get valuation",
-    "privacy": "We will not share your information with third parties."
+    "privacy": "We will not share your information with third parties.",
+    "analyzing": {
+      "title": "Analyzing your property",
+      "description": "We're pulling real market prices for you. This can take up to a minute.",
+      "elapsed": "{{seconds}}s elapsed",
+      "hint": "Don't close this window. Data is arriving in real time.",
+      "phases": {
+        "geocoding": "Locating your address…",
+        "searching": "Searching comparables on Idealista…",
+        "processing": "Analyzing the properties we found…",
+        "pricing": "Computing prices per zone…",
+        "adjusting": "Adjusting for your property's features…",
+        "finalizing": "Generating your report…"
+      }
+    }
   },
   "chat": {
     "agentName": "Tifany",
