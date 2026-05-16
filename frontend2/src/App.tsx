@@ -63,7 +63,7 @@ function App() {
               onReset={handleReset}
             />
           </div>
-          <FloatingChat leadName={data.lead?.fullName} />
+          <FloatingChat leadName={data.lead?.full_name} />
         </>
       )}
     </>

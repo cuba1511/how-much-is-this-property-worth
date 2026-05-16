@@ -151,6 +151,10 @@
       "expiresIn": "This analysis expires in 24h · we sent a copy to your email",
       "talkToAdvisor": "Talk to a PropHero advisor",
       "requestPdf": "Request detailed PDF",
+      "downloadPdf": "Download PDF",
+      "downloadingPdf": "Generating PDF…",
+      "downloadError": "Could not download the PDF. Please try again.",
+      "emailSent": "We sent the report to {{email}}",
       "greeting": "Hi {{name}}, your market analysis is ready",
       "basedOn": "Based on {{count}} real transactions"
     }

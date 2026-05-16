@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Valoración PropHero — {{ address }}</title>
+  <style>
+    /* PropHero brand tokens, inlined for headless PDF rendering. */
+    :root {
+      --ph-blue: #2050f6;
+      --ph-blue-dark: #162eb7;
+      --ph-cyan: #65c6eb;
+      --ph-orange: #f45504;
+      --ph-text: #1e252d;
+      --ph-text-secondary: #596b7d;
+      --ph-text-muted: #abb8c7;
+      --ph-bg: #ffffff;
+      --ph-bg-tint: #f3f5fe;
+      --ph-bg-muted: #f5f7f9;
+      --ph-line: rgba(32, 80, 246, 0.18);
+    }
+
+    * { box-sizing: border-box; }
+
+    @page {
+      size: A4;
+      margin: 18mm 14mm;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
+      color: var(--ph-text);
+      font-size: 11pt;
+      line-height: 1.45;
+      margin: 0;
+      background: var(--ph-bg);
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding-bottom: 12mm;
+      border-bottom: 1px solid var(--ph-line);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .brand-mark {
+      width: 28px; height: 28px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--ph-blue), var(--ph-cyan));
+      display: inline-block;
+    }
+    .brand-name {
+      font-weight: 700;
+      font-size: 14pt;
+      letter-spacing: -0.01em;
+    }
+    .meta {
+      text-align: right;
+      font-size: 9pt;
+      color: var(--ph-text-secondary);
+    }
+    .meta-date { font-weight: 600; color: var(--ph-text); }
+
+    h1, h2, h3 {
+      margin: 0;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      color: var(--ph-text);
+    }
+    h1 { font-size: 22pt; line-height: 1.15; margin-top: 12mm; }
+    h2 { font-size: 13pt; margin: 10mm 0 4mm; }
+    h3 { font-size: 11pt; margin: 6mm 0 2mm; color: var(--ph-text-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
+
+    .label {
+      font-size: 9pt;
+      color: var(--ph-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 2px;
+    }
+
+    .lead-line {
+      color: var(--ph-text-secondary);
+      font-size: 10pt;
+      margin-top: 2mm;
+    }
+    .lead-line strong { color: var(--ph-text); }
+
+    /* Hero */
+    .hero {
+      margin-top: 8mm;
+      padding: 8mm 8mm 6mm;
+      border-radius: 12px;
+      background: var(--ph-bg-tint);
+      border: 1px solid var(--ph-line);
+    }
+    .hero-label {
+      font-size: 9pt;
+      color: var(--ph-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 600;
+    }
+    .hero-value {
+      font-size: 36pt;
+      font-weight: 700;
+      color: var(--ph-text);
+      letter-spacing: -0.03em;
+      line-height: 1;
+      margin: 2mm 0 1mm;
+    }
+    .hero-range {
+      font-size: 10pt;
+      color: var(--ph-text-secondary);
+    }
+    .hero-badges {
+      display: flex;
+      gap: 6px;
+      margin-top: 4mm;
+      flex-wrap: wrap;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 8.5pt;
+      font-weight: 500;
+      background: rgba(32, 80, 246, 0.1);
+      color: var(--ph-blue-dark);
+    }
+    .badge.method-ols { background: rgba(101, 198, 235, 0.18); color: #0a6e93; }
+    .badge.method-avg { background: rgba(244, 85, 4, 0.12); color: var(--ph-orange); }
+    .badge.confidence-sample { background: rgba(101, 198, 235, 0.18); color: #0a6e93; }
+    .badge.confidence-flat { background: rgba(244, 85, 4, 0.12); color: var(--ph-orange); }
+
+    /* Property summary */
+    .property-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 4mm;
+      margin-top: 6mm;
+    }
+    .property-card {
+      padding: 4mm;
+      border: 1px solid var(--ph-line);
+      border-radius: 8px;
+      background: #ffffff;
+    }
+    .property-card .label { margin-bottom: 2mm; }
+    .property-card .value { font-size: 14pt; font-weight: 600; }
+
+    /* KPIs row */
+    .kpi-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4mm;
+      margin-top: 6mm;
+    }
+    .kpi-card {
+      padding: 4mm;
+      border: 1px solid var(--ph-line);
+      border-radius: 8px;
+      background: var(--ph-bg-muted);
+    }
+    .kpi-card .label { margin-bottom: 2mm; }
+    .kpi-card .value { font-size: 16pt; font-weight: 600; color: var(--ph-text); }
+
+    /* Comparables table */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 4mm;
+      font-size: 9.5pt;
+    }
+    th {
+      text-align: left;
+      padding: 3mm 2mm;
+      font-weight: 600;
+      font-size: 8.5pt;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--ph-text-secondary);
+      border-bottom: 1px solid var(--ph-line);
+    }
+    td {
+      padding: 3mm 2mm;
+      border-bottom: 1px solid rgba(32, 80, 246, 0.08);
+      vertical-align: top;
+    }
+    td.right { text-align: right; font-variant-numeric: tabular-nums; }
+    tr:last-child td { border-bottom: none; }
+    .listing-title {
+      font-weight: 500;
+      color: var(--ph-text);
+      max-width: 70mm;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .listing-stage {
+      display: inline-block;
+      font-size: 7.5pt;
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: rgba(32, 80, 246, 0.08);
+      color: var(--ph-blue-dark);
+      margin-left: 4mm;
+    }
+
+    /* Methodology block */
+    .methodology {
+      margin-top: 8mm;
+      padding: 5mm;
+      background: var(--ph-bg-muted);
+      border-left: 3px solid var(--ph-blue);
+      border-radius: 4px;
+      font-size: 9.5pt;
+      color: var(--ph-text-secondary);
+    }
+    .methodology strong { color: var(--ph-text); }
+    .methodology ul { margin: 2mm 0 0; padding-left: 5mm; }
+    .methodology li { margin: 1mm 0; }
+
+    /* Footer */
+    .footer {
+      margin-top: 10mm;
+      padding-top: 4mm;
+      border-top: 1px solid var(--ph-line);
+      font-size: 8.5pt;
+      color: var(--ph-text-muted);
+      line-height: 1.5;
+    }
+    .footer strong { color: var(--ph-text-secondary); }
+
+    .empty {
+      color: var(--ph-text-muted);
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+
+  <header class="header">
+    <div class="brand">
+      <span class="brand-mark"></span>
+      <span class="brand-name">PropHero</span>
+    </div>
+    <div class="meta">
+      <div class="meta-date">{{ generated_at }}</div>
+      <div>Reporte de valoración</div>
+      {% if lead %}
+      <div style="margin-top: 2mm;">Para <strong style="color: var(--ph-text);">{{ lead.full_name }}</strong></div>
+      {% endif %}
+    </div>
+  </header>
+
+  <h1>Valoración de tu propiedad</h1>
+  <p class="lead-line">
+    <strong>{{ address }}</strong>{% if municipio %} · {{ municipio }}{% endif %}
+  </p>
+
+  <section class="hero">
+    <div class="hero-label">Valor estimado</div>
+    {% if estimated_value %}
+      <div class="hero-value">{{ estimated_value | money }}</div>
+      {% if price_range_low and price_range_high %}
+        <div class="hero-range">
+          Rango: <strong>{{ price_range_low | money }}</strong> — <strong>{{ price_range_high | money }}</strong>
+        </div>
+      {% endif %}
+      <div class="hero-badges">
+        {% if estimation_method == 'ols_lstsq' %}
+          <span class="badge method-ols">Modelo de regresión multivariable</span>
+        {% elif estimation_method == 'avg_ppm2' %}
+          <span class="badge method-avg">Promedio ponderado de comparables</span>
+        {% endif %}
+        {% if confidence_method == 'sample_std' %}
+          <span class="badge confidence-sample">Rango basado en dispersión real del mercado (±1σ)</span>
+        {% elif confidence_method == 'flat_pct' %}
+          <span class="badge confidence-flat">Rango heurístico (±10%)</span>
+        {% endif %}
+        {% if total_comparables %}
+          <span class="badge">{{ total_comparables }} comparables analizados</span>
+        {% endif %}
+      </div>
+    {% else %}
+      <div class="hero-value empty">No estimado</div>
+      <div class="hero-range">No encontramos suficientes comparables fiables para esta dirección.</div>
+    {% endif %}
+  </section>
+
+  <h2>Detalle de la propiedad</h2>
+  <div class="property-grid">
+    <div class="property-card">
+      <div class="label">Superficie</div>
+      <div class="value">{{ request_m2 }} m²</div>
+    </div>
+    <div class="property-card">
+      <div class="label">Habitaciones</div>
+      <div class="value">{{ request_bedrooms }}</div>
+    </div>
+    <div class="property-card">
+      <div class="label">Baños</div>
+      <div class="value">{{ request_bathrooms }}</div>
+    </div>
+    <div class="property-card">
+      <div class="label">Tipo / Estado</div>
+      <div class="value" style="font-size: 11pt;">
+        {{ property_type or '—' }}{% if property_condition %} · {{ property_condition | replace('_', ' ') }}{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <h2>Estadísticas del mercado</h2>
+  <div class="kpi-row">
+    <div class="kpi-card">
+      <div class="label">Precio medio</div>
+      <div class="value">{{ avg_price | money or '—' }}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Precio medio €/m²</div>
+      <div class="value">{{ avg_price_per_m2 | money or '—' }}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Comparables</div>
+      <div class="value">{{ total_comparables }}</div>
+    </div>
+  </div>
+
+  {% if listings %}
+  <h2>Comparables analizados</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Listing</th>
+        <th class="right">m²</th>
+        <th class="right">Hab</th>
+        <th class="right">Baños</th>
+        <th class="right">Precio</th>
+        <th class="right">€/m²</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for lst in listings[:10] %}
+      <tr>
+        <td>
+          <div class="listing-title">{{ lst.title }}</div>
+          {% if lst.source_stage %}<span class="listing-stage">{{ lst.source_stage | replace('_', ' ') }}</span>{% endif %}
+        </td>
+        <td class="right">{{ lst.m2 or '—' }}</td>
+        <td class="right">{{ lst.bedrooms if lst.bedrooms is not none else '—' }}</td>
+        <td class="right">{{ lst.bathrooms if lst.bathrooms is not none else '—' }}</td>
+        <td class="right">{{ lst.price | money or '—' }}</td>
+        <td class="right">{{ lst.price_per_m2 | money or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <section class="methodology">
+    <strong>Cómo calculamos este valor.</strong>
+    Buscamos en tiempo real propiedades similares en venta en Idealista a partir de tu
+    dirección, aplicando filtros progresivos de cercanía (misma calle → microzona →
+    distrito → municipio) hasta reunir suficientes comparables.
+    <ul>
+      {% if estimation_method == 'ols_lstsq' %}
+      <li>Aplicamos una regresión lineal multivariable sobre m², habitaciones y baños
+          de los comparables (R² in-sample {{ r_squared_pct }}%, n={{ regression_sample_size }}).</li>
+      {% else %}
+      <li>Calculamos el precio medio por m² de los comparables y lo aplicamos a tu
+          superficie.</li>
+      {% endif %}
+      {% if confidence_method == 'sample_std' %}
+      <li>El rango refleja la dispersión real del mercado en tu zona (±1σ del €/m²),
+          no un margen cosmético.</li>
+      {% else %}
+      <li>El rango es una heurística (±10%) por falta de comparables suficientes para
+          medir la dispersión real.</li>
+      {% endif %}
+      <li>No incluye ajustes manuales por condición, vistas o piso — esta valoración
+          es un punto de partida cuantitativo, no una tasación profesional.</li>
+    </ul>
+  </section>
+
+  <footer class="footer">
+    <strong>Descargo:</strong> esta valoración es una estimación automatizada basada en
+    datos públicos de Idealista. No sustituye a una tasación oficial. Los precios reales
+    de venta pueden variar significativamente según el estado del inmueble, la
+    documentación, la negociación y las condiciones del mercado al momento de la venta.
+    <br><br>
+    Generado por <strong>PropHero</strong> · {{ generated_at }}
+  </footer>
+
+</body>
+</html>
