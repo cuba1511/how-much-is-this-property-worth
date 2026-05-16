@@ -108,6 +108,21 @@ class ValuationStats(BaseModel):
     estimated_value: Optional[int] = None
     price_range_low: Optional[int] = None
     price_range_high: Optional[int] = None
+    estimation_method: Optional[str] = Field(
+        None,
+        description=(
+            "How estimated_value was produced. One of: 'ols_lstsq' (OLS regression "
+            "on m²/hab/baños), 'avg_ppm2' (fallback when regression is unreliable), "
+            "or None when no estimate could be produced."
+        ),
+    )
+    confidence_method: Optional[str] = Field(
+        None,
+        description=(
+            "How price_range_low/high were derived. 'sample_std' = ±1σ of "
+            "comparables' €/m²; 'flat_pct' = legacy ±10% heuristic."
+        ),
+    )
 
 
 class RegressionCoefficient(BaseModel):

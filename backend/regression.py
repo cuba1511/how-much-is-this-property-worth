@@ -156,3 +156,44 @@ def fit_listing_regression(rows: list[DatasetRow]) -> Optional[RegressionResult]
         alpha=None,
         notes=notes,
     )
+
+
+def predict_from_regression(
+    result: RegressionResult,
+    *,
+    m2: Optional[int],
+    bedrooms: Optional[int],
+    bathrooms: Optional[int],
+) -> Optional[int]:
+    """Apply fitted OLS coefficients to a target property.
+
+    Returns the predicted price in EUR, or `None` if the prediction is not
+    safe to emit (non-finite, negative, or any required input missing).
+
+    Maps each coefficient `feature` name back to the user input. `intercept`
+    always contributes `1 * coefficient`. Missing inputs for continuous
+    features short-circuit to None — we don't silently impute at predict time
+    (the caller should fall back to the simpler `avg_ppm² × m²` baseline).
+    """
+    if result is None or m2 is None:
+        return None
+
+    inputs: dict[str, float] = {
+        "metros": float(m2),
+        "habitaciones": float(bedrooms) if bedrooms is not None else None,  # type: ignore[assignment]
+        "banos": float(bathrooms) if bathrooms is not None else None,  # type: ignore[assignment]
+    }
+
+    total = 0.0
+    for coef in result.coefficients:
+        if coef.feature == "intercept":
+            total += coef.coefficient
+            continue
+        value = inputs.get(coef.feature)
+        if value is None:
+            return None
+        total += coef.coefficient * value
+
+    if not math.isfinite(total) or total <= 0:
+        return None
+    return int(round(total))

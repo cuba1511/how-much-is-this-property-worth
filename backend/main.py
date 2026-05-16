@@ -1,5 +1,6 @@
 import logging
 import os
+import statistics
 from contextlib import asynccontextmanager
 from time import perf_counter
 
@@ -22,14 +23,25 @@ from models import (
     DatasetRow,
     Listing,
     ResolvedAddress,
-    ResolvedAddress,
     SimpleValuationResponse,
     ValuationRequest,
     ValuationResponse,
     ValuationStats,
 )
-from regression import fit_listing_regression
+from regression import fit_listing_regression, predict_from_regression
 from scraper import scrape_idealista_listings
+
+# ── Estimation tuning knobs ────────────────────────────────────────────────
+# Minimum sample size to trust the OLS regression for the headline estimate.
+OLS_MIN_SAMPLE_SIZE = 6
+# Minimum in-sample R² to accept the OLS estimate as the headline figure.
+OLS_MIN_R_SQUARED = 0.5
+# Reject the OLS estimate when it deviates from the simple `avg_ppm² × m²`
+# baseline by more than this factor (sanity check against pathological fits
+# on small/noisy samples).
+OLS_VS_BASELINE_MAX_DEVIATION = 0.5  # 50%
+# Floor for the honest confidence interval (so we never report 0 € as the low).
+CI_FLOOR_EUR = 0
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -77,6 +89,109 @@ def log_dataset(dataset: ComparablesDataset) -> None:
             dataset.row_count,
             dataset.min_required,
         )
+
+
+def _choose_estimate(
+    *,
+    regression,
+    baseline_estimate: Optional[int],
+    m2: int,
+    bedrooms: int,
+    bathrooms: int,
+) -> tuple[Optional[int], Optional[str]]:
+    """Pick between the OLS prediction and the simple avg_ppm² × m² baseline.
+
+    OLS wins only if all of these hold:
+      - regression was produced
+      - rank is full (no underdetermined system)
+      - sample size ≥ OLS_MIN_SAMPLE_SIZE
+      - in-sample R² ≥ OLS_MIN_R_SQUARED
+      - prediction is finite, positive, and within
+        OLS_VS_BASELINE_MAX_DEVIATION of the baseline (sanity check against
+        pathological fits on noisy samples)
+
+    Otherwise we fall back to `avg_ppm² × m²`. If neither path produces a
+    number, we return (None, None) and let the frontend show the "no estimate"
+    state honestly.
+    """
+    if regression is None:
+        return baseline_estimate, ("avg_ppm2" if baseline_estimate else None)
+
+    if (
+        regression.is_underdetermined
+        or regression.r_squared is None
+        or regression.r_squared < OLS_MIN_R_SQUARED
+        or regression.sample_size < OLS_MIN_SAMPLE_SIZE
+    ):
+        logger.info(
+            "OLS rejected (n=%d, R²=%s, underdet=%s) → using avg_ppm² baseline",
+            regression.sample_size,
+            f"{regression.r_squared:.3f}" if regression.r_squared is not None else "n/a",
+            regression.is_underdetermined,
+        )
+        return baseline_estimate, ("avg_ppm2" if baseline_estimate else None)
+
+    ols_estimate = predict_from_regression(
+        regression, m2=m2, bedrooms=bedrooms, bathrooms=bathrooms
+    )
+    if ols_estimate is None:
+        return baseline_estimate, ("avg_ppm2" if baseline_estimate else None)
+
+    if baseline_estimate:
+        deviation = abs(ols_estimate - baseline_estimate) / baseline_estimate
+        if deviation > OLS_VS_BASELINE_MAX_DEVIATION:
+            logger.warning(
+                "OLS prediction (%s) deviates %.0f%% from baseline (%s) → using baseline",
+                f"{ols_estimate:,}",
+                deviation * 100,
+                f"{baseline_estimate:,}",
+            )
+            return baseline_estimate, "avg_ppm2"
+
+    logger.info(
+        "Using OLS estimate %s (R²=%.3f, n=%d)",
+        f"{ols_estimate:,}",
+        regression.r_squared,
+        regression.sample_size,
+    )
+    return ols_estimate, "ols_lstsq"
+
+
+def _confidence_interval(
+    *,
+    estimated: Optional[int],
+    avg_ppm2: Optional[int],
+    ppms: list[int],
+    request_m2: int,
+) -> tuple[Optional[int], Optional[int], Optional[str]]:
+    """Build a confidence interval grounded in the dispersion of comparables.
+
+    With ≥3 comparables we report `(avg_ppm² ± 1σ) × m²` — a wider range when
+    the market is heterogeneous, narrower when listings agree. With fewer
+    samples (or no avg) we fall back to the legacy ±10% flat band so the UI
+    always has something to display.
+
+    Returns `(low, high, method)` where method ∈ {'sample_std', 'flat_pct', None}.
+    """
+    if estimated is None:
+        return None, None, None
+
+    if avg_ppm2 and len(ppms) >= 3:
+        try:
+            std_ppm2 = statistics.stdev(ppms)
+        except statistics.StatisticsError:
+            std_ppm2 = 0.0
+        low = max(CI_FLOOR_EUR, int((avg_ppm2 - std_ppm2) * request_m2))
+        high = int((avg_ppm2 + std_ppm2) * request_m2)
+        if high > low:
+            return low, high, "sample_std"
+
+    # Fallback: legacy ±10% so we never ship without a range.
+    return (
+        int(estimated * 0.90),
+        int(estimated * 1.10),
+        "flat_pct",
+    )
 
 
 @asynccontextmanager
@@ -196,7 +311,29 @@ async def get_valuation(request: ValuationRequest):
     ppms = [lst.price_per_m2 for lst in listings if lst.price_per_m2]
 
     avg_ppm2 = int(sum(ppms) / len(ppms)) if ppms else None
-    estimated = int(avg_ppm2 * request.m2) if avg_ppm2 else None
+    baseline_estimate = int(avg_ppm2 * request.m2) if avg_ppm2 else None
+
+    dataset = build_dataset(listings)
+    log_dataset(dataset)
+
+    regression = fit_listing_regression(dataset.rows)
+
+    # --- Choose headline estimate: OLS prediction or the avg_ppm² fallback. ---
+    estimated, estimation_method = _choose_estimate(
+        regression=regression,
+        baseline_estimate=baseline_estimate,
+        m2=request.m2,
+        bedrooms=request.bedrooms,
+        bathrooms=request.bathrooms,
+    )
+
+    # --- Honest confidence interval: ±1σ of comparables' €/m², not a flat ±10%. ---
+    price_range_low, price_range_high, confidence_method = _confidence_interval(
+        estimated=estimated,
+        avg_ppm2=avg_ppm2,
+        ppms=ppms,
+        request_m2=request.m2,
+    )
 
     stats = ValuationStats(
         total_comparables=len(listings),
@@ -205,8 +342,10 @@ async def get_valuation(request: ValuationRequest):
         max_price=max(prices) if prices else None,
         avg_price_per_m2=avg_ppm2,
         estimated_value=estimated,
-        price_range_low=int(estimated * 0.90) if estimated else None,
-        price_range_high=int(estimated * 1.10) if estimated else None,
+        price_range_low=price_range_low,
+        price_range_high=price_range_high,
+        estimation_method=estimation_method,
+        confidence_method=confidence_method,
     )
     market_transactions = build_market_transactions_mock(
         valuation_address,
@@ -217,10 +356,6 @@ async def get_valuation(request: ValuationRequest):
         listing_avg_price_per_m2=avg_ppm2,
     )
 
-    dataset = build_dataset(listings)
-    log_dataset(dataset)
-
-    regression = fit_listing_regression(dataset.rows)
     if regression:
         alpha_repr = f"{regression.alpha:.3g}" if regression.alpha is not None else "n/a"
         r2_repr = (

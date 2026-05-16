@@ -77,6 +77,8 @@ export interface ValuationStats {
   estimated_value?: number | null
   price_range_low?: number | null
   price_range_high?: number | null
+  estimation_method?: 'ols_lstsq' | 'avg_ppm2' | null
+  confidence_method?: 'sample_std' | 'flat_pct' | null
 }
 
 export interface MarketTransactionChartPoint {
