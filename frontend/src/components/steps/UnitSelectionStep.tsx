@@ -14,6 +14,15 @@ function display(value: string | null | undefined): string {
   return value
 }
 
+/** Catastro encodes floors as strings: -1 = sótano, 00 = bajo, 01 = primero… */
+function formatFloor(floor: string | null | undefined): string {
+  if (floor == null || floor === '') return '—'
+  if (floor === '-1') return 'Sótano'
+  if (floor === '00') return 'Bajo'
+  if (/^\d+$/.test(floor)) return String(parseInt(floor, 10))
+  return floor
+}
+
 export function UnitSelectionStep({
   units,
   selected,
@@ -67,7 +76,7 @@ export function UnitSelectionStep({
                 >
                   <span className="text-ink-secondary">{display(unit.block)}</span>
                   <span className="text-ink-secondary">{display(unit.staircase)}</span>
-                  <span className="font-medium text-ink">{display(unit.floor)}</span>
+                  <span className="font-medium text-ink">{formatFloor(unit.floor)}</span>
                   <span className="font-medium text-ink">{display(unit.door)}</span>
                   <span className="flex justify-center">
                     <span
