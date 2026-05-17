@@ -36,7 +36,7 @@ export function AddressStep({ onResolvedAddress, resolvedAddress, submitting = f
             : errors.address.message}
         </p>
       )}
-      <div className="bg-surface-tint rounded-2xl shadow-card overflow-hidden mt-xs">
+      <div className="mt-xs overflow-hidden rounded-2xl border border-line">
         <MapView position={mapPosition} height="300px" />
       </div>
     </div>

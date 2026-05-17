@@ -3,7 +3,10 @@
     "title": "How much is ",
     "titleHighlight": "my property",
     "titleEnd": " worth?",
-    "subtitle": "Enter your property details and we'll show you real comparables to estimate its market value."
+    "subtitle": "Enter your property details and we'll show you real comparables to estimate its market value.",
+    "badge": "Smart valuation",
+    "ctaCaption": "Free · result in under 60s",
+    "imageAlt": "Apartment building"
   },
   "steps": {
     "property": "Property",
@@ -23,7 +26,12 @@
     "next": "Next",
     "submit": "Value my property",
     "analyzing": "Analyzing market…",
-    "serverError": "Error contacting the server"
+    "serverError": "Error contacting the server",
+    "error": {
+      "timeout": "The valuation is taking longer than expected. Please try again in a few seconds.",
+      "network": "We couldn't reach the server. Check your connection and try again.",
+      "server": "The server couldn't complete the valuation. Please try again in a moment."
+    }
   },
   "propertyType": {
     "label": "Property type",
@@ -174,7 +182,21 @@
     "phoneError": "Enter your phone number",
     "phoneInvalid": "Invalid phone number",
     "submit": "Get valuation",
-    "privacy": "We will not share your information with third parties."
+    "privacy": "We will not share your information with third parties.",
+    "analyzing": {
+      "title": "Analyzing your property",
+      "description": "We're pulling real market prices for you. This can take up to a minute.",
+      "elapsed": "{{seconds}}s elapsed",
+      "hint": "Don't close this window. Data is arriving in real time.",
+      "phases": {
+        "geocoding": "Locating your address…",
+        "searching": "Searching comparables on Idealista…",
+        "processing": "Analyzing the properties we found…",
+        "pricing": "Computing prices per zone…",
+        "adjusting": "Adjusting for your property's features…",
+        "finalizing": "Generating your report…"
+      }
+    }
   },
   "chat": {
     "agentName": "Tifany",

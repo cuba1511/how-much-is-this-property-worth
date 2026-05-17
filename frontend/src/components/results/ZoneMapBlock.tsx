@@ -32,11 +32,13 @@ export function ZoneMapBlock({ municipio, selectedAddress, transactions, finalSt
         })}
       </p>
 
-      <MapView
-        propertyPosition={position}
-        radiusMeters={radius}
-        height="280px"
-      />
+      <div className="overflow-hidden rounded-2xl border border-line">
+        <MapView
+          propertyPosition={position}
+          radiusMeters={radius}
+          height="280px"
+        />
+      </div>
 
       {sortedTx.length > 0 && (
         <div className="mt-md">
