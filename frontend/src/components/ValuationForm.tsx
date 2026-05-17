@@ -75,6 +75,7 @@ interface ValuationFormProps {
 export function ValuationForm({ onResult, onError }: ValuationFormProps) {
   const { t } = useTranslation()
   const [currentStep, setCurrentStep] = useState(0)
+  const [maxStepReached, setMaxStepReached] = useState(0)
   const [resolvedAddress, setResolvedAddress] = useState<ResolvedAddress | null>(null)
   const [selectedUnit, setSelectedUnit] = useState<CadastralUnit | null>(null)
   const [cadastralUnitsCount, setCadastralUnitsCount] = useState(0)
@@ -174,7 +175,9 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
   async function handleNext() {
     const valid = await validateCurrentStep()
     if (valid && currentStep < STEPS.length - 1) {
-      setCurrentStep((s) => s + 1)
+      const next = currentStep + 1
+      setCurrentStep(next)
+      setMaxStepReached((m) => Math.max(m, next))
     }
   }
 
@@ -230,7 +233,11 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
   return (
     <FormProvider {...methods}>
       <div className="flex flex-col gap-lg">
-        <StepIndicator steps={STEPS.map(s => ({ label: t(s.labelKey) }))} current={currentStep} />
+        <StepIndicator
+          steps={STEPS.map((s) => ({ label: t(s.labelKey) }))}
+          current={currentStep}
+          maxReached={maxStepReached}
+        />
 
         {showAddressBanner && resolvedAddress && (
           <SelectedAddressBanner address={resolvedAddress} unit={selectedUnit} />
