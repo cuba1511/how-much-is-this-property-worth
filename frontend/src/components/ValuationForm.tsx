@@ -9,7 +9,6 @@ import {
   BarChart3,
   Home,
   Ruler,
-  Target,
   type LucideIcon,
 } from 'lucide-react'
 import { StepIndicator } from '@/components/StepIndicator'
@@ -62,7 +61,7 @@ const STEPS: StepConfig[] = [
   },
   {
     labelKey: 'steps.purpose',
-    impacts: [{ icon: Target, key: 'impacts.precisionMatters' }],
+    impacts: [],
   },
 ]
 
