@@ -8,16 +8,20 @@ import {
   MapPin,
   BarChart3,
   Home,
+  Ruler,
   type LucideIcon,
 } from 'lucide-react'
 import { StepIndicator } from '@/components/StepIndicator'
+import { SelectedAddressBanner } from '@/components/SelectedAddressBanner'
 import { PropertyIdentificationStep } from '@/components/steps/PropertyIdentificationStep'
-import { CharacteristicsStep } from '@/components/steps/CharacteristicsStep'
+import { PropertyTypeStep } from '@/components/steps/PropertyTypeStep'
+import { PropertyDetailsStep } from '@/components/steps/PropertyDetailsStep'
 import { LeadDialog, type LeadData } from '@/components/LeadDialog'
 import {
   valuationRequestSchema,
   step1Schema,
   step2Schema,
+  step3Schema,
   type ValuationRequestForm,
 } from '@/lib/schemas'
 import { submitLead, ValuationError } from '@/lib/api'
@@ -43,9 +47,11 @@ const STEPS: StepConfig[] = [
   },
   {
     labelKey: 'steps.characteristics',
-    impacts: [
-      { icon: Home, key: 'impacts.precisionMatters' },
-    ],
+    impacts: [{ icon: Home, key: 'impacts.precisionMatters' }],
+  },
+  {
+    labelKey: 'steps.details',
+    impacts: [{ icon: Ruler, key: 'impacts.resultTime' }],
   },
 ]
 
@@ -78,6 +84,8 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
     mode: 'onTouched',
   })
 
+  const showAddressBanner = Boolean(resolvedAddress) && currentStep > 0
+
   function setIssueErrors(issues: { path: PropertyKey[]; message: string }[]) {
     for (const issue of issues) {
       const field = String(issue.path[0]) as keyof ValuationRequestForm
@@ -106,9 +114,19 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
       return true
     }
 
-    const r = step2Schema.safeParse({
-      propertyType: values.propertyType,
-      features: values.features,
+    if (currentStep === 1) {
+      const r = step2Schema.safeParse({
+        propertyType: values.propertyType,
+        features: values.features,
+      })
+      if (!r.success) {
+        setIssueErrors(r.error.issues)
+        return false
+      }
+      return true
+    }
+
+    const r = step3Schema.safeParse({
       propertyCondition: values.propertyCondition,
       m2: values.m2,
       bedrooms: values.bedrooms,
@@ -180,7 +198,11 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
       >
         <StepIndicator steps={STEPS.map(s => ({ label: t(s.labelKey) }))} current={currentStep} />
 
-        <div className="min-h-[320px]">
+        {showAddressBanner && resolvedAddress && (
+          <SelectedAddressBanner address={resolvedAddress} unit={selectedUnit} />
+        )}
+
+        <div className="min-h-[280px]">
           {currentStep === 0 && (
             <>
               <PropertyIdentificationStep
@@ -199,7 +221,10 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
               )}
             </>
           )}
-          {currentStep === 1 && <CharacteristicsStep submitting={submitting} />}
+          {currentStep === 1 && <PropertyTypeStep submitting={submitting} />}
+          {currentStep === 2 && (
+            <PropertyDetailsStep submitting={submitting} showSubmit />
+          )}
         </div>
 
         {STEPS[currentStep].impacts.length > 0 && (

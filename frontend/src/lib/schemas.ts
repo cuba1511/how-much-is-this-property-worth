@@ -21,16 +21,20 @@ export const step1Schema = z.object({
   address: z.string().min(1),
 })
 
-/** Paso 2 — Características */
+/** Paso 2 — Tipo de inmueble y extras */
 export const step2Schema = z.object({
   propertyType: z.enum(propertyTypes),
   features: featuresSchema,
+})
+
+/** Paso 3 — Estado, superficie, habitaciones y baños */
+export const step3Schema = z.object({
   propertyCondition: z.enum(propertyConditions),
   m2: z.number().int().min(20).max(500),
   bedrooms: z.number().int().min(0).max(10),
   bathrooms: z.number().int().min(1).max(5),
 })
 
-export const valuationRequestSchema = step1Schema.merge(step2Schema)
+export const valuationRequestSchema = step1Schema.merge(step2Schema).merge(step3Schema)
 
 export type ValuationRequestForm = z.infer<typeof valuationRequestSchema>

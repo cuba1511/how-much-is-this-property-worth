@@ -12,9 +12,10 @@ const CONDITIONS: { value: PropertyCondition; labelKey: string; icon: typeof Spa
 
 interface PropertyDetailsStepProps {
   submitting: boolean
+  showSubmit?: boolean
 }
 
-export function PropertyDetailsStep({ submitting }: PropertyDetailsStepProps) {
+export function PropertyDetailsStep({ submitting, showSubmit = true }: PropertyDetailsStepProps) {
   const { t } = useTranslation()
   const { control, watch, setValue, formState: { errors } } = useFormContext<ValuationRequestForm>()
   const selectedCondition = watch('propertyCondition')
@@ -139,21 +140,22 @@ export function PropertyDetailsStep({ submitting }: PropertyDetailsStepProps) {
         />
       </div>
 
-      {/* Submit */}
-      <button
-        type="submit"
-        disabled={submitting}
-        className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {submitting ? (
-          <>
-            <Loader2 className="h-4 w-4 animate-spin" />
-            {t('form.analyzing')}
-          </>
-        ) : (
-          t('form.submit')
-        )}
-      </button>
+      {showSubmit && (
+        <button
+          type="submit"
+          disabled={submitting}
+          className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {submitting ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              {t('form.analyzing')}
+            </>
+          ) : (
+            t('form.submit')
+          )}
+        </button>
+      )}
     </div>
   )
 }

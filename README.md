@@ -36,15 +36,17 @@ flowchart TD
     N -->|>1| PICK[UnitSelectionStep - estilo foto]
     PICK --> OK
   end
-  step1 --> step2[Paso 2 — Características]
-  step2 --> step3[Lead + Idealista + resultado]
+  step1 --> step2[Paso 2 — Tipo + extras]
+  step2 --> step3[Paso 3 — Estado, m², baños]
+  step3 --> step4[Lead + Idealista + resultado]
 ```
 
 | Step | UI label | What happens |
 |------|----------|----------------|
 | 1 | El inmueble | Address autocomplete → Catastro lookup → pick floor/door if needed |
-| 2 | Características | Type, condition, m², bedrooms, bathrooms, extras |
-| 3 | Result | Lead capture → comparables scrape → estimated price |
+| 2 | Características | Property type (casa/piso) and extras (pool, terrace, …) |
+| 3 | Detalles | Condition, m², bedrooms, bathrooms — address banner stays visible at top |
+| 4 | Result | Lead capture → comparables scrape → estimated price |
 
 **Catastro API:** free public service `Consulta_DNPLOC` ([docs](https://ovc.catastro.meh.es/ovcservweb/OVCSWLocalizacionRC/OVCCallejero.asmx?op=Consulta_DNPLOC)). Backend: `GET /api/catastro/units`, `POST /api/catastro/units/lookup`.
 
