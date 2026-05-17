@@ -3,7 +3,6 @@ import { ExternalLink, CheckCircle2 } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, ReferenceLine } from 'recharts'
 import type { SearchMetadata, ValuationStats, Listing } from '@/lib/types'
 import { priceDistribution } from '@/lib/results'
-import { formatPrice } from './shared/formatters'
 import {
   ChartContainer,
   ChartTooltip,
