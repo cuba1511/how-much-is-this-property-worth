@@ -18,8 +18,7 @@ import { PropertyIdentificationStep } from '@/components/steps/PropertyIdentific
 import { PropertyTypeStep } from '@/components/steps/PropertyTypeStep'
 import { PropertyDetailsStep } from '@/components/steps/PropertyDetailsStep'
 import { ValuationIntentStep } from '@/components/steps/ValuationIntentStep'
-import { LeadStep } from '@/components/steps/LeadStep'
-import type { LeadData } from '@/components/LeadDialog'
+import { LeadDialog, type LeadData } from '@/components/LeadDialog'
 import {
   valuationRequestSchema,
   step1Schema,
@@ -61,10 +60,6 @@ const STEPS: StepConfig[] = [
     labelKey: 'steps.purpose',
     impacts: [{ icon: Target, key: 'impacts.precisionMatters' }],
   },
-  {
-    labelKey: 'steps.contact',
-    impacts: [],
-  },
 ]
 
 interface ValuationFormProps {
@@ -84,6 +79,7 @@ export function ValuationForm({ onResult, onError, initialResolvedAddress = null
   const [cadastralUnitsCount, setCadastralUnitsCount] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [unitError, setUnitError] = useState<string | null>(null)
+  const [leadDialogOpen, setLeadDialogOpen] = useState(false)
 
   const methods = useForm<ValuationRequestForm>({
     resolver: zodResolver(valuationRequestSchema),
@@ -190,10 +186,12 @@ export function ValuationForm({ onResult, onError, initialResolvedAddress = null
     if (currentStep > 0 && !submitting) setCurrentStep((s) => s - 1)
   }
 
-  async function handleLeadSubmit(formLead: LeadData) {
+  async function handleRequestValuation() {
     const valid = await validateCurrentStep()
-    if (!valid) return
+    if (valid) setLeadDialogOpen(true)
+  }
 
+  async function handleLeadSubmit(formLead: LeadData) {
     setSubmitting(true)
     try {
       const data = methods.getValues()
@@ -272,10 +270,14 @@ export function ValuationForm({ onResult, onError, initialResolvedAddress = null
           {currentStep === 1 && <PropertyTypeStep submitting={submitting} />}
           {currentStep === 2 && <PropertyDetailsStep submitting={submitting} showSubmit={false} />}
           {currentStep === 3 && <ValuationIntentStep submitting={submitting} />}
-          {currentStep === 4 && (
-            <LeadStep onSubmit={handleLeadSubmit} submitting={submitting} />
-          )}
         </div>
+
+        <LeadDialog
+          open={leadDialogOpen}
+          onOpenChange={setLeadDialogOpen}
+          onSubmit={handleLeadSubmit}
+          submitting={submitting}
+        />
 
         {STEPS[currentStep].impacts.length > 0 && !submitting && (
           <aside
@@ -291,14 +293,13 @@ export function ValuationForm({ onResult, onError, initialResolvedAddress = null
           </aside>
         )}
 
-        {!isLastStep && (
+        {!submitting && (
           <div className="mt-xs flex items-center justify-between gap-sm">
             {currentStep > 0 ? (
               <button
                 type="button"
                 onClick={handleBack}
-                disabled={submitting}
-                className="btn-ghost disabled:cursor-not-allowed disabled:opacity-40"
+                className="btn-ghost"
               >
                 <ChevronLeft className="h-4 w-4" />
                 {t('form.back')}
@@ -307,24 +308,21 @@ export function ValuationForm({ onResult, onError, initialResolvedAddress = null
               <span />
             )}
 
-            <button
-              type="button"
-              onClick={handleNext}
-              disabled={submitting}
-              className="btn-primary disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {t('form.next')}
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-        )}
-
-        {currentStep > 0 && isLastStep && !submitting && (
-          <div className="mt-xs">
-            <button type="button" onClick={handleBack} className="btn-ghost">
-              <ChevronLeft className="h-4 w-4" />
-              {t('form.back')}
-            </button>
+            {isLastStep ? (
+              <button
+                type="button"
+                onClick={() => void handleRequestValuation()}
+                className="btn-primary"
+              >
+                {t('lead.submit')}
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            ) : (
+              <button type="button" onClick={handleNext} className="btn-primary">
+                {t('form.next')}
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            )}
           </div>
         )}
       </div>
