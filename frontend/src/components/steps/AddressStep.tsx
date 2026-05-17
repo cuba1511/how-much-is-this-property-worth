@@ -9,9 +9,15 @@ interface AddressStepProps {
   onResolvedAddress: (addr: ResolvedAddress | null) => void
   resolvedAddress: ResolvedAddress | null
   submitting?: boolean
+  defaultAddress?: ResolvedAddress | null
 }
 
-export function AddressStep({ onResolvedAddress, resolvedAddress, submitting = false }: AddressStepProps) {
+export function AddressStep({
+  onResolvedAddress,
+  resolvedAddress,
+  submitting = false,
+  defaultAddress,
+}: AddressStepProps) {
   const { t } = useTranslation()
   const { setValue, formState: { errors } } = useFormContext<ValuationRequestForm>()
 
@@ -28,7 +34,11 @@ export function AddressStep({ onResolvedAddress, resolvedAddress, submitting = f
   return (
     <div className="flex flex-col gap-sm">
       <label className="text-sm font-medium text-ink">{t('address.label')}</label>
-      <AddressSearch onSelect={handleAddressSelect} disabled={submitting} />
+      <AddressSearch
+        onSelect={handleAddressSelect}
+        disabled={submitting}
+        defaultAddress={defaultAddress ?? resolvedAddress}
+      />
       {errors.address && (
         <p className="text-xs text-destructive">
           {errors.address.message === 'Required'

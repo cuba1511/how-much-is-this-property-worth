@@ -70,13 +70,16 @@ const STEPS: StepConfig[] = [
 interface ValuationFormProps {
   onResult: (result: ValuationResponse, request: ValuationRequest, lead?: LeadInfo) => void
   onError: (message: string) => void
+  initialResolvedAddress?: ResolvedAddress | null
 }
 
-export function ValuationForm({ onResult, onError }: ValuationFormProps) {
+export function ValuationForm({ onResult, onError, initialResolvedAddress = null }: ValuationFormProps) {
   const { t } = useTranslation()
   const [currentStep, setCurrentStep] = useState(0)
   const [maxStepReached, setMaxStepReached] = useState(0)
-  const [resolvedAddress, setResolvedAddress] = useState<ResolvedAddress | null>(null)
+  const [resolvedAddress, setResolvedAddress] = useState<ResolvedAddress | null>(
+    initialResolvedAddress,
+  )
   const [selectedUnit, setSelectedUnit] = useState<CadastralUnit | null>(null)
   const [cadastralUnitsCount, setCadastralUnitsCount] = useState(0)
   const [submitting, setSubmitting] = useState(false)
@@ -87,7 +90,7 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
     defaultValues: {
       propertyType: undefined as unknown as ValuationRequestForm['propertyType'],
       features: { pool: false, terrace: false, elevator: false, parking: false },
-      address: '',
+      address: initialResolvedAddress?.label ?? '',
       propertyCondition: undefined as unknown as ValuationRequestForm['propertyCondition'],
       m2: undefined as unknown as number,
       bedrooms: 0,

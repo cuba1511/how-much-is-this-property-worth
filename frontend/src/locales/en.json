@@ -6,6 +6,8 @@
     "subtitle": "Enter your property details and we'll show you real comparables to estimate its market value.",
     "badge": "Smart valuation",
     "ctaCaption": "Free · result in under 60s",
+    "addressPlaceholder": "Search your address...",
+    "continue": "Continue",
     "imageAlt": "Apartment building"
   },
   "steps": {

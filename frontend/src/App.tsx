@@ -4,7 +4,7 @@ import { HeroSection } from '@/components/HeroSection'
 import { ValuationForm } from '@/components/ValuationForm'
 import { ValuationResults } from '@/components/ValuationResults'
 import { FloatingChat } from '@/components/FloatingChat'
-import type { ValuationResponse, ValuationRequest, LeadInfo } from '@/lib/types'
+import type { ResolvedAddress, ValuationResponse, ValuationRequest, LeadInfo } from '@/lib/types'
 
 interface ValuationData {
   result: ValuationResponse
@@ -16,6 +16,7 @@ function App() {
   const [data, setData] = useState<ValuationData | null>(null)
   const [apiError, setApiError] = useState<string | null>(null)
   const [started, setStarted] = useState(false)
+  const [prefillAddress, setPrefillAddress] = useState<ResolvedAddress | null>(null)
 
   function handleResult(result: ValuationResponse, request: ValuationRequest, lead?: LeadInfo) {
     setApiError(null)
@@ -29,12 +30,14 @@ function App() {
     setData(null)
     setApiError(null)
     setStarted(false)
+    setPrefillAddress(null)
     setTimeout(() => {
       window.scrollTo({ top: 0, behavior: 'smooth' })
     }, 100)
   }
 
-  function handleStart() {
+  function handleStart(address: ResolvedAddress) {
+    setPrefillAddress(address)
     setStarted(true)
     setTimeout(() => {
       document.getElementById('form-area')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -63,7 +66,11 @@ function App() {
                 </div>
               )}
               <div className="card-surface p-lg md:p-xl">
-                <ValuationForm onResult={handleResult} onError={setApiError} />
+                <ValuationForm
+                  onResult={handleResult}
+                  onError={setApiError}
+                  initialResolvedAddress={prefillAddress}
+                />
               </div>
             </div>
           </section>

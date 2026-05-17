@@ -8,19 +8,22 @@ export interface AddressSearchProps {
   onSelect: (address: ResolvedAddress | null) => void
   placeholder?: string
   disabled?: boolean
+  /** Pre-fill when continuing from the hero or restoring state. */
+  defaultAddress?: ResolvedAddress | null
 }
 
 export function AddressSearch({
   onSelect,
   placeholder,
   disabled = false,
+  defaultAddress = null,
 }: AddressSearchProps) {
   const { t } = useTranslation()
   const resolvedPlaceholder = placeholder ?? t('address.placeholder')
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(defaultAddress?.label ?? '')
   const [suggestions, setSuggestions] = useState<ResolvedAddress[]>([])
   const [loading, setLoading] = useState(false)
-  const [selected, setSelected] = useState<ResolvedAddress | null>(null)
+  const [selected, setSelected] = useState<ResolvedAddress | null>(defaultAddress)
   const [open, setOpen] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const abortRef = useRef<AbortController | null>(null)
