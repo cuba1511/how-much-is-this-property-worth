@@ -1155,7 +1155,7 @@ async def scrape_idealista_listings(
     connect_started_at = perf_counter()
 
     # Imported here to break the scraper <-> listing_detail import cycle.
-    from listing_detail import enrich_listings_with_details
+    from scraping.listing_detail import enrich_listings_with_details
 
     async with async_playwright() as pw:
         browser = await pw.chromium.connect_over_cdp(SBR_WS_CDP)
