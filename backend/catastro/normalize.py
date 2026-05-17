@@ -34,6 +34,21 @@ def _catastro_token(value: str) -> str:
     return _strip_accents(value).upper().strip()
 
 
+# After the tipo de vía, Spanish addresses often include articles Catastro omits:
+# "Calle de Ponciano" → PONCIANO (not DE PONCIANO).
+_STREET_ARTICLE = re.compile(r"^(DE|DEL|LA|LAS|EL|LOS|D')\s+", re.I)
+
+
+def _strip_street_articles(name: str) -> str:
+    token = name.strip()
+    while True:
+        match = _STREET_ARTICLE.match(token)
+        if not match:
+            break
+        token = token[match.end() :].strip()
+    return _catastro_token(token)
+
+
 def _split_road(road: str) -> tuple[str, str]:
     """
     Returns (sigla, street_name) from a free-text road like 'Calle Ponciano'.
@@ -44,8 +59,8 @@ def _split_road(road: str) -> tuple[str, str]:
         match = pattern.match(text)
         if match:
             name = text[match.end() :].strip(" ,.")
-            return sigla, _catastro_token(name)
-    return "CL", _catastro_token(text)
+            return sigla, _strip_street_articles(name)
+    return "CL", _strip_street_articles(text)
 
 
 def _normalize_municipality(address: ResolvedAddress) -> str:

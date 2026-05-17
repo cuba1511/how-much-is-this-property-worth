@@ -75,8 +75,20 @@ def _unit_label(
     return " · ".join(parts) if parts else "Inmueble"
 
 
+def _parse_catastro_errors(root: ET.Element) -> None:
+    """Raise when Catastro returns lerr (e.g. cod 33 LA VÍA NO EXISTE)."""
+    for node in root.iter():
+        if _local_name(node.tag) != "err":
+            continue
+        code = _text(_child(node, "cod"))
+        description = _text(_child(node, "des")) or "Error de Catastro"
+        if code or description:
+            raise ValueError(f"{code} {description}".strip())
+
+
 def _parse_units_xml(payload: str) -> list[CadastralUnit]:
     root = ET.fromstring(payload)
+    _parse_catastro_errors(root)
     units: list[CadastralUnit] = []
 
     for node in root.iter():

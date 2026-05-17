@@ -6,6 +6,8 @@ import { UnitSelectionStep } from '@/components/steps/UnitSelectionStep'
 import { lookupCadastralUnits } from '@/lib/api'
 import type { CadastralUnit, ResolvedAddress } from '@/lib/types'
 
+type LookupStatus = 'idle' | 'loading' | 'done' | 'error'
+
 interface PropertyIdentificationStepProps {
   resolvedAddress: ResolvedAddress | null
   onResolvedAddress: (addr: ResolvedAddress | null) => void
@@ -25,13 +27,15 @@ export function PropertyIdentificationStep({
 }: PropertyIdentificationStepProps) {
   const { t } = useTranslation()
   const [units, setUnits] = useState<CadastralUnit[]>([])
-  const [loading, setLoading] = useState(false)
+  const [lookupStatus, setLookupStatus] = useState<LookupStatus>('idle')
   const [lookupError, setLookupError] = useState<string | null>(null)
   const lastFetchedRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!resolvedAddress?.road || !resolvedAddress.house_number) {
       setUnits([])
+      setLookupStatus('idle')
+      setLookupError(null)
       onSelectedUnit(null)
       onUnitsCountChange?.(0)
       lastFetchedRef.current = null
@@ -42,14 +46,17 @@ export function PropertyIdentificationStep({
     if (lastFetchedRef.current === fetchKey) return
 
     const controller = new AbortController()
-    setLoading(true)
+    setLookupStatus('loading')
     setLookupError(null)
+    setUnits([])
     onSelectedUnit(null)
+    onUnitsCountChange?.(0)
 
     void lookupCadastralUnits(resolvedAddress, controller.signal)
       .then((response) => {
         lastFetchedRef.current = fetchKey
         setUnits(response.units)
+        setLookupStatus('done')
         onUnitsCountChange?.(response.units.length)
         if (response.units.length === 1) {
           onSelectedUnit(response.units[0])
@@ -58,49 +65,54 @@ export function PropertyIdentificationStep({
       .catch((err: Error) => {
         if (err.name === 'AbortError') return
         setUnits([])
+        setLookupStatus('error')
         onUnitsCountChange?.(0)
         setLookupError(t('catastro.lookupError'))
       })
-      .finally(() => setLoading(false))
 
     return () => controller.abort()
-  }, [resolvedAddress, onSelectedUnit, t])
+  }, [resolvedAddress, onSelectedUnit, onUnitsCountChange, t])
 
-  const needsSelection = units.length > 1
-  const singleUnit = units.length === 1
+  const needsSelection = lookupStatus === 'done' && units.length > 1
+  const singleUnit = lookupStatus === 'done' && units.length === 1
+  const showNoUnits =
+    lookupStatus === 'done' && units.length === 0 && Boolean(resolvedAddress?.house_number)
 
   return (
-    <div className="flex flex-col gap-lg">
+    <div className="flex flex-col gap-md">
       <AddressStep
         resolvedAddress={resolvedAddress}
         onResolvedAddress={(addr) => {
           lastFetchedRef.current = null
+          setLookupStatus(addr?.house_number ? 'loading' : 'idle')
+          setUnits([])
+          setLookupError(null)
           onResolvedAddress(addr)
         }}
         submitting={submitting}
       />
 
-      {loading && (
-        <div className="flex items-center gap-sm text-sm text-ink-secondary">
-          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+      {lookupStatus === 'loading' && (
+        <div className="flex items-center gap-sm rounded-lg border border-line bg-surface-tint px-sm py-2 text-xs text-ink-secondary">
+          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
           {t('catastro.loading')}
         </div>
       )}
 
-      {lookupError && !loading && (
-        <p className="rounded-xl border border-amber-200 bg-amber-50 px-md py-sm text-sm text-amber-900">
+      {lookupStatus === 'error' && lookupError && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-sm py-2 text-xs text-amber-900">
           {lookupError}
         </p>
       )}
 
-      {!loading && !lookupError && units.length === 0 && resolvedAddress?.house_number && (
-        <p className="rounded-xl border border-line bg-surface-tint px-md py-sm text-sm text-ink-secondary">
+      {showNoUnits && (
+        <p className="rounded-lg border border-line bg-surface-tint px-sm py-2 text-xs text-ink-secondary">
           {t('catastro.noUnits')}
         </p>
       )}
 
-      {singleUnit && selectedUnit && !needsSelection && (
-        <p className="rounded-xl border border-primary/20 bg-primary/5 px-md py-sm text-sm text-ink">
+      {singleUnit && selectedUnit && (
+        <p className="rounded-lg border border-primary/20 bg-primary/5 px-sm py-2 text-xs text-ink">
           {t('catastro.unitConfirmed', { label: selectedUnit.label })}
         </p>
       )}

@@ -69,6 +69,23 @@ def test_address_to_catastro_query_splits_street():
     assert q["municipality"] == "MADRID"
 
 
+def test_address_to_catastro_strips_de_article():
+    """Photon/OSM often returns 'Calle de Ponciano' — Catastro wants PONCIANO only."""
+    addr = ResolvedAddress(
+        label="Calle de Ponciano 7, Madrid, Comunidad de Madrid, 28015",
+        lat=40.42,
+        lon=-3.70,
+        municipality="Madrid",
+        province="Comunidad de Madrid",
+        road="Calle de Ponciano",
+        house_number="7",
+        provider="photon",
+    )
+    q = address_to_catastro_query(addr)
+    assert q["road"] == "PONCIANO"
+    assert q["province"] == "MADRID"
+
+
 def test_api_catastro_units_endpoint():
     """FastAPI route is registered and returns JSON (in-process, no live server)."""
     from fastapi.testclient import TestClient
