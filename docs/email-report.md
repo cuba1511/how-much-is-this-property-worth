@@ -41,14 +41,14 @@ Why two endpoints:
 
 ## Modules
 
-| File                                 | Role                                                                     |
-|--------------------------------------|--------------------------------------------------------------------------|
-| `backend/db.py`                      | SQLite persistence (`leads`, `valuations` tables). WAL mode.             |
-| `backend/report/template.html`       | Jinja2 template with embedded CSS, A4 page setup, PropHero branding.     |
-| `backend/report/renderer.py`         | `render_report_html(valuation, request_payload, lead?)` — pure function. |
-| `backend/report/pdf.py`              | `generate_pdf_bytes(html)` via Playwright local Chromium.                |
-| `backend/email_sender.py`            | `send_valuation_email(lead, valuation, pdf_bytes)` via Resend REST.      |
-| `backend/main.py`                    | Wires it all together in `/api/lead` + `/api/report/pdf`.                |
+| File                                            | Role                                                                     |
+|-------------------------------------------------|--------------------------------------------------------------------------|
+| `backend/db.py`                                 | SQLite persistence (`leads`, `valuations` tables). WAL mode.             |
+| `backend/report/template.html`                  | Jinja2 template with embedded CSS, A4 page setup, PropHero branding.     |
+| `backend/report/renderer.py`                    | `render_report_html(valuation, request_payload, lead?)` — pure function. |
+| `backend/report/pdf.py`                         | `generate_pdf_bytes(html)` via Playwright local Chromium.                |
+| `backend/notifications/email_sender.py`         | `send_valuation_email(lead, valuation, pdf_bytes)` via Resend REST.      |
+| `backend/main.py`                               | Wires it all together in `/api/lead` + `/api/report/pdf`.                |
 
 ## Configuration
 
@@ -163,13 +163,18 @@ This keeps audit trails honest and avoids race conditions.
 ## Testing locally
 
 ```bash
-# 1. install + chromium (one-time)
+# 1. install + chromium + npm + cp .env (one-time)
 make install
 
-# 2. start backend (.env should have RESEND_API_KEY in dev, optional)
-make backend
+# 2. create the SQLite file (idempotent — safe to re-run)
+make db
 
-# 3. hit the endpoint
+# 3. start backend + frontend together
+make dev
+# Or backend only:
+#   make backend
+
+# 4. hit the endpoint
 curl -X POST http://localhost:8001/api/lead \
   -H 'Content-Type: application/json' \
   -d '{

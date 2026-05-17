@@ -12,14 +12,12 @@ from fastapi.staticfiles import StaticFiles
 from typing import Optional
 
 import db
-from email_sender import EmailDeliveryError, send_valuation_email
-from geocoder import (
+from geocoding import (
     get_municipio_from_address,
     municipio_from_resolved_address,
     reverse_geocode,
     suggest_addresses,
 )
-from market_transactions import build_market_transactions_mock
 from models import (
     ComparablesDataset,
     DatasetRow,
@@ -33,10 +31,15 @@ from models import (
     ValuationResponse,
     ValuationStats,
 )
-from regression import fit_listing_regression, predict_from_regression
+from notifications import EmailDeliveryError, send_valuation_email
 from report.pdf import generate_pdf_bytes
 from report.renderer import render_report_html
-from scraper import scrape_idealista_listings
+from scraping import scrape_idealista_listings
+from valuation import (
+    build_market_transactions_mock,
+    fit_listing_regression,
+    predict_from_regression,
+)
 
 # ── Estimation tuning knobs ────────────────────────────────────────────────
 # Minimum sample size to trust the OLS regression for the headline estimate.

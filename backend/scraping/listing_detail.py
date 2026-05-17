@@ -20,7 +20,7 @@ from playwright.async_api import Page
 from playwright.async_api import TimeoutError as PlaywrightTimeout
 
 from models import Listing
-from scraper import (
+from scraping.scraper import (
     AC_KEYWORDS,
     CONDITION_MAP,
     NO_ELEVATOR_PHRASES,
