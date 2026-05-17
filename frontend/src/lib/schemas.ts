@@ -25,6 +25,10 @@ export type SellReason = (typeof sellReasons)[number]
 export const sellTimelines = ['asap', '3_months', '6_months', '12_months', 'flexible'] as const
 export type SellTimeline = (typeof sellTimelines)[number]
 
+/** Fotocasa-style rent-out timeline (when valuation_intent is rent_out). */
+export const rentTimelines = ['asap', '1_3_months', '3_6_months', 'over_6_months'] as const
+export type RentTimeline = (typeof rentTimelines)[number]
+
 const featuresSchema = z.object({
   pool: z.boolean(),
   terrace: z.boolean(),
@@ -57,20 +61,29 @@ export const step4Schema = z
     valuationIntent: z.enum(valuationIntents),
     sellReason: z.enum(sellReasons).optional(),
     sellTimeline: z.enum(sellTimelines).optional(),
+    rentTimeline: z.enum(rentTimelines).optional(),
   })
   .superRefine((data, ctx) => {
-    if (data.valuationIntent !== 'sell') return
-    if (!data.sellReason) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['sellReason'],
-        message: 'Required',
-      })
+    if (data.valuationIntent === 'sell') {
+      if (!data.sellReason) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['sellReason'],
+          message: 'Required',
+        })
+      }
+      if (!data.sellTimeline) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['sellTimeline'],
+          message: 'Required',
+        })
+      }
     }
-    if (!data.sellTimeline) {
+    if (data.valuationIntent === 'rent_out' && !data.rentTimeline) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['sellTimeline'],
+        path: ['rentTimeline'],
         message: 'Required',
       })
     }

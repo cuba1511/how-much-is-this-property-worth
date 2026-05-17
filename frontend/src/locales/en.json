@@ -28,6 +28,8 @@
     "sellReasonError": "Please select a reason",
     "sellTimelineLabel": "When do you want to sell?",
     "sellTimelineError": "Please select a timeframe",
+    "rentTimelineLabel": "When do you want to rent it out?",
+    "rentTimelineError": "Please select a timeframe",
     "options": {
       "sell": "You want to sell it",
       "buy": "You want to buy it",
@@ -49,6 +51,12 @@
       "6_months": "Within 6 months",
       "12_months": "Within a year",
       "flexible": "No rush / flexible"
+    },
+    "rentTimelines": {
+      "asap": "As soon as possible",
+      "1_3_months": "Within 1 to 3 months",
+      "3_6_months": "Within 3 to 6 months",
+      "over_6_months": "More than 6 months"
     }
   },
   "catastro": {

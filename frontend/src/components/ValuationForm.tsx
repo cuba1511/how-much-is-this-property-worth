@@ -98,6 +98,7 @@ export function ValuationForm({ onResult, onError, initialResolvedAddress = null
       valuationIntent: undefined as unknown as ValuationRequestForm['valuationIntent'],
       sellReason: undefined,
       sellTimeline: undefined,
+      rentTimeline: undefined,
     },
     mode: 'onTouched',
   })
@@ -164,6 +165,7 @@ export function ValuationForm({ onResult, onError, initialResolvedAddress = null
         valuationIntent: values.valuationIntent,
         sellReason: values.sellReason,
         sellTimeline: values.sellTimeline,
+        rentTimeline: values.rentTimeline,
       })
       if (!r.success) {
         setIssueErrors(r.error.issues)
@@ -202,6 +204,7 @@ export function ValuationForm({ onResult, onError, initialResolvedAddress = null
         valuationIntent,
         sellReason,
         sellTimeline,
+        rentTimeline,
         ...apiFields
       } = data
       const valuationRequest: ValuationRequest = {
@@ -212,6 +215,7 @@ export function ValuationForm({ onResult, onError, initialResolvedAddress = null
         valuation_intent: valuationIntent,
         sell_reason: sellReason,
         sell_timeline: sellTimeline,
+        rent_timeline: rentTimeline,
         selected_address: resolvedAddress ?? undefined,
         selected_cadastral_unit: selectedUnit ?? undefined,
       }

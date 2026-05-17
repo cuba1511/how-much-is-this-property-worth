@@ -6,6 +6,7 @@ SellReason = Literal[
     "upgrade", "downsize", "investment", "inheritance", "relocation", "other"
 ]
 SellTimeline = Literal["asap", "3_months", "6_months", "12_months", "flexible"]
+RentTimeline = Literal["asap", "1_3_months", "3_6_months", "over_6_months"]
 
 
 class ResolvedAddress(BaseModel):
@@ -72,6 +73,9 @@ class ValuationRequest(BaseModel):
     sell_timeline: Optional[SellTimeline] = Field(
         None, description="Required when valuation_intent is sell"
     )
+    rent_timeline: Optional[RentTimeline] = Field(
+        None, description="Required when valuation_intent is rent_out"
+    )
 
 
 class LeadInfo(BaseModel):
@@ -130,6 +134,7 @@ class ValuationRecord(BaseModel):
     valuation_intent: Optional[ValuationIntent] = None
     sell_reason: Optional[SellReason] = None
     sell_timeline: Optional[SellTimeline] = None
+    rent_timeline: Optional[RentTimeline] = None
     cadastral_reference: Optional[str] = None
     property_type: Optional[str] = None
     property_condition: Optional[str] = None

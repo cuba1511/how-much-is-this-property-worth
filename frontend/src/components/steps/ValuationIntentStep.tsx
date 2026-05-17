@@ -1,7 +1,8 @@
 import { useFormContext } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
+import { IntentFieldSelect } from '@/components/IntentFieldSelect'
 import type { ValuationRequestForm, ValuationIntent } from '@/lib/schemas'
-import { sellReasons, sellTimelines } from '@/lib/schemas'
+import { rentTimelines, sellReasons, sellTimelines } from '@/lib/schemas'
 
 const INTENT_OPTIONS: ValuationIntent[] = [
   'sell',
@@ -21,6 +22,7 @@ export function ValuationIntentStep({ submitting = false }: ValuationIntentStepP
   const intent = watch('valuationIntent')
   const sellReason = watch('sellReason')
   const sellTimeline = watch('sellTimeline')
+  const rentTimeline = watch('rentTimeline')
 
   function selectIntent(value: ValuationIntent) {
     if (submitting) return
@@ -28,6 +30,9 @@ export function ValuationIntentStep({ submitting = false }: ValuationIntentStepP
     if (value !== 'sell') {
       setValue('sellReason', undefined)
       setValue('sellTimeline', undefined)
+    }
+    if (value !== 'rent_out') {
+      setValue('rentTimeline', undefined)
     }
   }
 
@@ -38,7 +43,7 @@ export function ValuationIntentStep({ submitting = false }: ValuationIntentStepP
         <p className="mt-0.5 text-sm text-ink-secondary">{t('intent.subtitle')}</p>
       </div>
 
-      <ul className="divide-y divide-line rounded-lg border border-line">
+      <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line">
         {INTENT_OPTIONS.map((value) => {
           const selected = intent === value
           return (
@@ -47,7 +52,7 @@ export function ValuationIntentStep({ submitting = false }: ValuationIntentStepP
                 type="button"
                 disabled={submitting}
                 onClick={() => selectIntent(value)}
-                className={`flex w-full items-center justify-between gap-md px-md py-3 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                className={`flex w-full items-center justify-between gap-md px-md py-3.5 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                   selected ? 'bg-primary/5' : 'hover:bg-surface-tint'
                 }`}
               >
@@ -55,8 +60,8 @@ export function ValuationIntentStep({ submitting = false }: ValuationIntentStepP
                   {t(`intent.options.${value}`)}
                 </span>
                 <span
-                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${
-                    selected ? 'border-primary bg-primary' : 'border-ink-muted'
+                  className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
+                    selected ? 'border-primary bg-primary' : 'border-ink-muted/60'
                   }`}
                   aria-hidden
                 >
@@ -65,60 +70,49 @@ export function ValuationIntentStep({ submitting = false }: ValuationIntentStepP
               </button>
 
               {value === 'sell' && selected && (
-                <div className="space-y-sm border-t border-line bg-surface-tint/50 px-md py-md">
-                  <div className="flex flex-col gap-xs">
-                    <label htmlFor="sell-reason" className="text-xs font-medium text-ink">
-                      {t('intent.sellReasonLabel')}
-                    </label>
-                    <select
-                      id="sell-reason"
-                      disabled={submitting}
-                      value={sellReason ?? ''}
-                      onChange={(e) =>
-                        setValue('sellReason', e.target.value as ValuationRequestForm['sellReason'], {
-                          shouldValidate: true,
-                        })
-                      }
-                      className="rounded-lg border border-line bg-surface px-sm py-2 text-sm text-ink outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
-                    >
-                      <option value="">{t('intent.selectPlaceholder')}</option>
-                      {sellReasons.map((r) => (
-                        <option key={r} value={r}>
-                          {t(`intent.sellReasons.${r}`)}
-                        </option>
-                      ))}
-                    </select>
-                    {errors.sellReason && (
-                      <p className="text-xs text-destructive">{t('intent.sellReasonError')}</p>
-                    )}
-                  </div>
+                <div className="space-y-md border-t border-line bg-surface-tint/40 px-md py-md">
+                  <IntentFieldSelect
+                    id="sell-reason"
+                    label={t('intent.sellReasonLabel')}
+                    value={sellReason}
+                    options={sellReasons}
+                    optionLabel={(r) => t(`intent.sellReasons.${r}`)}
+                    onChange={(r) =>
+                      setValue('sellReason', r, { shouldValidate: true })
+                    }
+                    disabled={submitting}
+                    error={errors.sellReason ? t('intent.sellReasonError') : undefined}
+                  />
+                  <IntentFieldSelect
+                    id="sell-timeline"
+                    label={t('intent.sellTimelineLabel')}
+                    value={sellTimeline}
+                    options={sellTimelines}
+                    optionLabel={(tl) => t(`intent.sellTimelines.${tl}`)}
+                    onChange={(tl) =>
+                      setValue('sellTimeline', tl, { shouldValidate: true })
+                    }
+                    disabled={submitting}
+                    error={errors.sellTimeline ? t('intent.sellTimelineError') : undefined}
+                  />
+                </div>
+              )}
 
-                  <div className="flex flex-col gap-xs">
-                    <label htmlFor="sell-timeline" className="text-xs font-medium text-ink">
-                      {t('intent.sellTimelineLabel')}
-                    </label>
-                    <select
-                      id="sell-timeline"
-                      disabled={submitting}
-                      value={sellTimeline ?? ''}
-                      onChange={(e) =>
-                        setValue('sellTimeline', e.target.value as ValuationRequestForm['sellTimeline'], {
-                          shouldValidate: true,
-                        })
-                      }
-                      className="rounded-lg border border-line bg-surface px-sm py-2 text-sm text-ink outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
-                    >
-                      <option value="">{t('intent.selectPlaceholder')}</option>
-                      {sellTimelines.map((tl) => (
-                        <option key={tl} value={tl}>
-                          {t(`intent.sellTimelines.${tl}`)}
-                        </option>
-                      ))}
-                    </select>
-                    {errors.sellTimeline && (
-                      <p className="text-xs text-destructive">{t('intent.sellTimelineError')}</p>
-                    )}
-                  </div>
+              {value === 'rent_out' && selected && (
+                <div className="border-t border-line bg-surface-tint/40 px-md py-md">
+                  <IntentFieldSelect
+                    id="rent-timeline"
+                    label={t('intent.rentTimelineLabel')}
+                    value={rentTimeline}
+                    options={rentTimelines}
+                    optionLabel={(tl) => t(`intent.rentTimelines.${tl}`)}
+                    onChange={(tl) =>
+                      setValue('rentTimeline', tl, { shouldValidate: true })
+                    }
+                    disabled={submitting}
+                    centeredLabel
+                    error={errors.rentTimeline ? t('intent.rentTimelineError') : undefined}
+                  />
                 </div>
               )}
             </li>
@@ -132,3 +126,4 @@ export function ValuationIntentStep({ submitting = false }: ValuationIntentStepP
     </div>
   )
 }
+

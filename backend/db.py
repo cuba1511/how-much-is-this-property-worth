@@ -46,6 +46,7 @@ _VALUATION_EXTRA_COLUMNS: tuple[tuple[str, str], ...] = (
     ("valuation_intent", "TEXT"),
     ("sell_reason", "TEXT"),
     ("sell_timeline", "TEXT"),
+    ("rent_timeline", "TEXT"),
     ("cadastral_reference", "TEXT"),
     ("property_type", "TEXT"),
     ("property_condition", "TEXT"),
@@ -80,6 +81,7 @@ SCHEMA_STATEMENTS = (
         valuation_intent    TEXT,
         sell_reason         TEXT,
         sell_timeline       TEXT,
+        rent_timeline       TEXT,
         cadastral_reference TEXT,
         property_type       TEXT,
         property_condition  TEXT,
@@ -170,6 +172,7 @@ def _valuation_column_values(request: ValuationRequest) -> dict[str, Any]:
         "valuation_intent": request.valuation_intent,
         "sell_reason": request.sell_reason,
         "sell_timeline": request.sell_timeline,
+        "rent_timeline": request.rent_timeline,
         "cadastral_reference": unit.cadastral_reference if unit else None,
         "property_type": request.property_type,
         "property_condition": request.property_condition,
@@ -207,11 +210,11 @@ def insert_valuation(
             """
             INSERT INTO valuations (
                 lead_id, address, municipio, estimated_eur,
-                valuation_intent, sell_reason, sell_timeline, cadastral_reference,
+                valuation_intent, sell_reason, sell_timeline, rent_timeline, cadastral_reference,
                 property_type, property_condition, m2, bedrooms, bathrooms,
                 request_json, response_json
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 lead_id,
@@ -221,6 +224,7 @@ def insert_valuation(
                 cols["valuation_intent"],
                 cols["sell_reason"],
                 cols["sell_timeline"],
+                cols["rent_timeline"],
                 cols["cadastral_reference"],
                 cols["property_type"],
                 cols["property_condition"],
