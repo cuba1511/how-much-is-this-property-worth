@@ -1,4 +1,5 @@
 import type {
+  CadastralUnitsResponse,
   LeadInfo,
   LeadResponse,
   ResolvedAddress,
@@ -141,4 +142,29 @@ export async function autocompleteAddresses(
   }
 
   return res.json() as Promise<ResolvedAddress[]>
+}
+
+export async function lookupCadastralUnits(
+  address: ResolvedAddress,
+  signal?: AbortSignal,
+): Promise<CadastralUnitsResponse> {
+  const res = await fetch(`${API_BASE}/api/catastro/units/lookup`, {
+    method: 'POST',
+    headers: SHARED_HEADERS,
+    body: JSON.stringify(address),
+    signal,
+  })
+
+  if (!res.ok) {
+    let detail = ''
+    try {
+      const body = (await res.json()) as { detail?: string }
+      if (body?.detail) detail = `: ${body.detail}`
+    } catch {
+      /* ignore */
+    }
+    throw new Error(`Catastro lookup error ${res.status}${detail}`)
+  }
+
+  return res.json() as Promise<CadastralUnitsResponse>
 }

@@ -11,7 +11,23 @@
   "steps": {
     "property": "Property",
     "location": "Location",
-    "details": "Details"
+    "details": "Details",
+    "identification": "The property",
+    "characteristics": "Characteristics"
+  },
+  "catastro": {
+    "loading": "Looking up units in the cadastre…",
+    "lookupError": "We could not reach the cadastre. You can continue without a cadastral reference.",
+    "noUnits": "No cadastre units found for this address. You can still continue.",
+    "unitConfirmed": "Property identified: {{label}}",
+    "selectTitle": "Select the property",
+    "selectHint": "There are several units at this address. Choose the one you want to value.",
+    "block": "Block",
+    "staircase": "Staircase",
+    "floor": "Floor",
+    "door": "Door",
+    "selectUnitError": "Select a unit from the list to continue",
+    "needStreetNumber": "The address must include a street number to identify the property"
   },
   "impacts": {
     "propertiesSold": "+265,000 properties sold worldwide in the last 5 years",

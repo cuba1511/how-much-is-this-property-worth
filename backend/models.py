@@ -56,6 +56,7 @@ class ValuationRequest(BaseModel):
     property_condition: Optional[str] = Field(None, description="Property condition (obra_nueva, buen_estado, a_reformar)")
     features: Optional[PropertyFeatures] = None
     selected_address: Optional[ResolvedAddress] = None
+    selected_cadastral_unit: Optional["CadastralUnit"] = None
 
 
 class LeadInfo(BaseModel):

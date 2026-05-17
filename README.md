@@ -19,11 +19,40 @@ See [docs/structure.md](docs/structure.md) for folder layout, env files, and wha
 
 The core flow starts from the property address. From that location, the system looks for comparable properties, recent transactions, and local market signals to calculate a current sale price estimate using nearby references and similar asset characteristics.
 
+## Valuation flow (Fotocasa-style)
+
+The wizard identifies the exact property first (via the Spanish **Catastro**), then collects characteristics, then runs the Idealista-based estimate.
+
+```mermaid
+flowchart TD
+  subgraph step1 [Paso 1 — El inmueble]
+    T{Dirección o RC?}
+    T -->|Dirección| AC[Autocomplete]
+    AC --> CAT[POST /api/catastro/units/lookup]
+    T -->|RC| RCAPI[Consulta por RC - fase 3]
+    CAT --> N{Cuántas unidades?}
+    N -->|0| MANUAL[Aviso / planta manual]
+    N -->|1| OK[Unidad seleccionada]
+    N -->|>1| PICK[UnitSelectionStep - estilo foto]
+    PICK --> OK
+  end
+  step1 --> step2[Paso 2 — Características]
+  step2 --> step3[Lead + Idealista + resultado]
+```
+
+| Step | UI label | What happens |
+|------|----------|----------------|
+| 1 | El inmueble | Address autocomplete → Catastro lookup → pick floor/door if needed |
+| 2 | Características | Type, condition, m², bedrooms, bathrooms, extras |
+| 3 | Result | Lead capture → comparables scrape → estimated price |
+
+**Catastro API:** free public service `Consulta_DNPLOC` ([docs](https://ovc.catastro.meh.es/ovcservweb/OVCSWLocalizacionRC/OVCCallejero.asmx?op=Consulta_DNPLOC)). Backend: `GET /api/catastro/units`, `POST /api/catastro/units/lookup`.
+
 ## How It Works
 
 The user enters the property address and the system:
 
-1. identifies the property's location;
+1. identifies the property's location and cadastral unit (when available);
 2. finds nearby comparables;
 3. filters them by relevant characteristics such as square meters, bedrooms, and bathrooms;
 4. combines comparable listings with recent closings and local market behavior;

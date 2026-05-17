@@ -1,3 +1,18 @@
+export interface CadastralUnit {
+  cadastral_reference: string
+  block?: string | null
+  staircase?: string | null
+  floor?: string | null
+  door?: string | null
+  built_area_m2?: number | null
+  label: string
+}
+
+export interface CadastralUnitsResponse {
+  units: CadastralUnit[]
+  query: Record<string, string>
+}
+
 export interface ResolvedAddress {
   label: string
   lat: number
@@ -45,6 +60,7 @@ export interface ValuationRequest {
   property_condition?: string | null
   features?: PropertyFeatures | null
   selected_address?: ResolvedAddress | null
+  selected_cadastral_unit?: CadastralUnit | null
   lead?: LeadInfo
 }
 

@@ -5,26 +5,29 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import {
   ChevronLeft,
   ChevronRight,
-  TrendingUp,
-  Clock,
   MapPin,
   BarChart3,
+  Home,
   type LucideIcon,
 } from 'lucide-react'
 import { StepIndicator } from '@/components/StepIndicator'
-import { PropertyTypeStep } from '@/components/steps/PropertyTypeStep'
-import { AddressStep } from '@/components/steps/AddressStep'
-import { PropertyDetailsStep } from '@/components/steps/PropertyDetailsStep'
+import { PropertyIdentificationStep } from '@/components/steps/PropertyIdentificationStep'
+import { CharacteristicsStep } from '@/components/steps/CharacteristicsStep'
 import { LeadDialog, type LeadData } from '@/components/LeadDialog'
 import {
   valuationRequestSchema,
   step1Schema,
   step2Schema,
-  step3Schema,
   type ValuationRequestForm,
 } from '@/lib/schemas'
 import { submitLead, ValuationError } from '@/lib/api'
-import type { LeadInfo, ResolvedAddress, ValuationRequest, ValuationResponse } from '@/lib/types'
+import type {
+  CadastralUnit,
+  LeadInfo,
+  ResolvedAddress,
+  ValuationRequest,
+  ValuationResponse,
+} from '@/lib/types'
 
 interface ImpactItem { icon: LucideIcon; key: string }
 
@@ -32,22 +35,17 @@ interface StepConfig { labelKey: string; impacts: ImpactItem[] }
 
 const STEPS: StepConfig[] = [
   {
-    labelKey: 'steps.property',
-    impacts: [
-      { icon: TrendingUp, key: 'impacts.propertiesSold' },
-      { icon: Clock, key: 'impacts.avgSaleTime' },
-    ],
-  },
-  {
-    labelKey: 'steps.location',
+    labelKey: 'steps.identification',
     impacts: [
       { icon: MapPin, key: 'impacts.locationValue' },
       { icon: BarChart3, key: 'impacts.realTimePrices' },
     ],
   },
   {
-    labelKey: 'steps.details',
-    impacts: [],
+    labelKey: 'steps.characteristics',
+    impacts: [
+      { icon: Home, key: 'impacts.precisionMatters' },
+    ],
   },
 ]
 
@@ -60,8 +58,11 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
   const { t } = useTranslation()
   const [currentStep, setCurrentStep] = useState(0)
   const [resolvedAddress, setResolvedAddress] = useState<ResolvedAddress | null>(null)
+  const [selectedUnit, setSelectedUnit] = useState<CadastralUnit | null>(null)
+  const [cadastralUnitsCount, setCadastralUnitsCount] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [leadDialogOpen, setLeadDialogOpen] = useState(false)
+  const [unitError, setUnitError] = useState<string | null>(null)
 
   const methods = useForm<ValuationRequestForm>({
     resolver: zodResolver(valuationRequestSchema),
@@ -86,21 +87,36 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
 
   async function validateCurrentStep(): Promise<boolean> {
     const values = methods.getValues()
+    setUnitError(null)
 
     if (currentStep === 0) {
-      const r = step1Schema.safeParse({ propertyType: values.propertyType, features: values.features })
-      if (!r.success) { setIssueErrors(r.error.issues); return false }
-    } else if (currentStep === 1) {
-      const r = step2Schema.safeParse({ address: values.address })
-      if (!r.success) { setIssueErrors(r.error.issues); return false }
-    } else {
-      const r = step3Schema.safeParse({
-        propertyCondition: values.propertyCondition,
-        m2: values.m2,
-        bedrooms: values.bedrooms,
-        bathrooms: values.bathrooms,
-      })
-      if (!r.success) { setIssueErrors(r.error.issues); return false }
+      const r = step1Schema.safeParse({ address: values.address })
+      if (!r.success) {
+        setIssueErrors(r.error.issues)
+        return false
+      }
+      if (!resolvedAddress?.house_number) {
+        setUnitError(t('catastro.needStreetNumber'))
+        return false
+      }
+      if (cadastralUnitsCount > 1 && !selectedUnit) {
+        setUnitError(t('catastro.selectUnitError'))
+        return false
+      }
+      return true
+    }
+
+    const r = step2Schema.safeParse({
+      propertyType: values.propertyType,
+      features: values.features,
+      propertyCondition: values.propertyCondition,
+      m2: values.m2,
+      bedrooms: values.bedrooms,
+      bathrooms: values.bathrooms,
+    })
+    if (!r.success) {
+      setIssueErrors(r.error.issues)
+      return false
     }
     return true
   }
@@ -117,6 +133,8 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
   }
 
   async function onSubmit(_data: ValuationRequestForm) {
+    const valid = await validateCurrentStep()
+    if (!valid) return
     setLeadDialogOpen(true)
   }
 
@@ -131,10 +149,8 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
         property_condition: propertyCondition,
         features,
         selected_address: resolvedAddress ?? undefined,
+        selected_cadastral_unit: selectedUnit ?? undefined,
       }
-      // Frontend uses camelCase (`fullName`) for form state; the backend
-      // contract is snake_case (`full_name`). Mapping happens here so the
-      // rest of the app keeps the natural TS style.
       const wireLead: LeadInfo = {
         full_name: formLead.fullName,
         email: formLead.email,
@@ -165,21 +181,30 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
         <StepIndicator steps={STEPS.map(s => ({ label: t(s.labelKey) }))} current={currentStep} />
 
         <div className="min-h-[320px]">
-          {currentStep === 0 && <PropertyTypeStep submitting={submitting} />}
-          {currentStep === 1 && (
-            <AddressStep
-              resolvedAddress={resolvedAddress}
-              onResolvedAddress={setResolvedAddress}
-              submitting={submitting}
-            />
+          {currentStep === 0 && (
+            <>
+              <PropertyIdentificationStep
+                resolvedAddress={resolvedAddress}
+                onResolvedAddress={setResolvedAddress}
+                selectedUnit={selectedUnit}
+                onSelectedUnit={(unit) => {
+                  setSelectedUnit(unit)
+                  setUnitError(null)
+                }}
+                onUnitsCountChange={setCadastralUnitsCount}
+                submitting={submitting}
+              />
+              {unitError && (
+                <p className="mt-sm text-xs text-destructive">{unitError}</p>
+              )}
+            </>
           )}
-          {currentStep === 2 && <PropertyDetailsStep submitting={submitting} />}
+          {currentStep === 1 && <CharacteristicsStep submitting={submitting} />}
         </div>
 
-        {/* Impact phrases */}
         {STEPS[currentStep].impacts.length > 0 && (
           <aside
-            aria-label={t('steps.' + ['property', 'location', 'details'][currentStep])}
+            aria-label={t(STEPS[currentStep].labelKey)}
             className="flex flex-col gap-sm rounded-2xl border border-primary/15 bg-primary/5 px-md py-md"
           >
             {STEPS[currentStep].impacts.map(({ icon: Icon, key }, i) => (
@@ -191,7 +216,6 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
           </aside>
         )}
 
-        {/* Navigation */}
         <div className="mt-xs flex items-center justify-between gap-sm">
           {currentStep > 0 ? (
             <button

@@ -11,7 +11,23 @@
   "steps": {
     "property": "Propiedad",
     "location": "Ubicación",
-    "details": "Detalles"
+    "details": "Detalles",
+    "identification": "El inmueble",
+    "characteristics": "Características"
+  },
+  "catastro": {
+    "loading": "Buscando inmuebles en el Catastro…",
+    "lookupError": "No pudimos consultar el Catastro. Puedes continuar sin referencia catastral.",
+    "noUnits": "No encontramos unidades en el Catastro para esta dirección. Puedes continuar igualmente.",
+    "unitConfirmed": "Inmueble identificado: {{label}}",
+    "selectTitle": "Selecciona el inmueble",
+    "selectHint": "En esta dirección hay varios inmuebles. Elige el que quieres valorar.",
+    "block": "Bloque",
+    "staircase": "Escalera",
+    "floor": "Planta",
+    "door": "Puerta",
+    "selectUnitError": "Selecciona un inmueble de la lista para continuar",
+    "needStreetNumber": "La dirección debe incluir número de portal para identificar el inmueble"
   },
   "impacts": {
     "propertiesSold": "+265.000 propiedades vendidas en todo el mundo en los últimos 5 años",
