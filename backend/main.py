@@ -13,6 +13,7 @@ import time
 from contextlib import asynccontextmanager
 from time import perf_counter
 
+import httpx
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
@@ -21,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from typing import Optional
 
 import db
+from catastro import address_to_catastro_query, fetch_units_by_address, fetch_units_by_street
 from geocoding import (
     get_municipio_from_address,
     municipio_from_resolved_address,
@@ -28,6 +30,8 @@ from geocoding import (
     suggest_addresses,
 )
 from models import (
+    CadastralUnit,
+    CadastralUnitsResponse,
     ComparablesDataset,
     DatasetRow,
     LeadInfo,
@@ -299,6 +303,56 @@ async def reverse_address(
     except Exception as exc:
         logger.error(f"Reverse geocoding failed: {exc}", exc_info=True)
         raise HTTPException(status_code=502, detail="Reverse geocoding unavailable")
+
+
+@app.get("/api/catastro/units", response_model=list[CadastralUnit])
+async def list_cadastral_units(
+    province: str = Query(..., min_length=1),
+    municipality: str = Query(..., min_length=1),
+    road: str = Query(..., min_length=1),
+    number: str = Query(..., min_length=1),
+    road_type: str = Query("CL", min_length=1, max_length=5),
+):
+    """List Catastro units (escalera/planta/puerta) at a street number."""
+    try:
+        return await fetch_units_by_street(
+            province=province.strip().upper(),
+            municipality=municipality.strip().upper(),
+            road_type=road_type.strip().upper(),
+            road=road.strip().upper(),
+            number=number.strip(),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except httpx.HTTPError as exc:
+        logger.error("Catastro units lookup failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="Catastro service unavailable")
+
+
+@app.post("/api/catastro/units/lookup", response_model=CadastralUnitsResponse)
+async def lookup_cadastral_units(address: ResolvedAddress):
+    """
+    Resolve a geocoded address to Catastro units at that street number.
+    Used after address autocomplete to disambiguate floor/door (Fotocasa-style).
+    """
+    try:
+        query = address_to_catastro_query(address)
+        units = await fetch_units_by_address(address)
+        return CadastralUnitsResponse(
+            units=units,
+            query={
+                "province": query.province,
+                "municipality": query.municipality,
+                "road_type": query.road_type,
+                "road": query.road,
+                "number": query.number,
+            },
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except httpx.HTTPError as exc:
+        logger.error("Catastro lookup failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="Catastro service unavailable")
 
 
 @app.post("/api/valuation", response_model=ValuationResponse)

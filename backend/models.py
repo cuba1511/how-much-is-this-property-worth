@@ -20,6 +20,26 @@ class ResolvedAddress(BaseModel):
     precision: Optional[str] = None
 
 
+class CadastralUnit(BaseModel):
+    """One registered property at a street number (Catastro Consulta_DNPLOC)."""
+
+    cadastral_reference: str
+    block: Optional[str] = None
+    staircase: Optional[str] = None
+    floor: Optional[str] = None
+    door: Optional[str] = None
+    built_area_m2: Optional[float] = None
+    label: str = Field(..., description="Human-readable unit label for UI")
+
+
+class CadastralUnitsResponse(BaseModel):
+    units: list[CadastralUnit]
+    query: dict[str, str] = Field(
+        ...,
+        description="Normalized Catastro query (province, municipality, road_type, road, number)",
+    )
+
+
 class PropertyFeatures(BaseModel):
     pool: bool = False
     terrace: bool = False
