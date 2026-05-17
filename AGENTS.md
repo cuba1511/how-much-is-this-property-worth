@@ -27,26 +27,51 @@ Input (address, m2, beds, baths)
 - **Geocoding**: Nominatim (OpenStreetMap) — no API key needed
 - **Frontend**: Vanilla HTML + Tailwind CSS (CDN)
 
-## Key files
-| File | Purpose |
-|------|---------|
-| `backend/main.py` | FastAPI app, routes, stats calculation |
-| `backend/scraper.py` | Idealista scraper via Bright Data (SERP collection) |
-| `backend/listing_detail.py` | Parallel per-listing detail enrichment (bathrooms, features, description) |
-| `backend/regression.py` | OLS regression with intercept (numpy lstsq) on [m², habitaciones, baños] |
-| `backend/geocoder.py` | Address → municipio (Nominatim) |
-| `backend/models.py` | Pydantic models |
-| `frontend/index.html` | Single-page UI |
+## Layout
+```
+backend/
+├── main.py              FastAPI app, routes, OLS-vs-baseline arbitration, honest CI
+├── models.py            Pydantic models (cross-cutting types — incl. LeadInfo, LeadResponse)
+├── db.py                SQLite persistence (leads + valuations, WAL mode)
+├── data/                Runtime DB file (gitignored)
+│
+├── scraping/            Idealista data collection (Bright Data CDP + Playwright)
+│   ├── scraper.py       SERP scraper
+│   └── listing_detail.py  Per-listing detail enrichment (bathrooms, features, description)
+│
+├── valuation/           Pure business logic — no I/O
+│   ├── regression.py    OLS with intercept (numpy lstsq) + predict_from_regression()
+│   └── market_transactions.py  Mock layer for closing-price / negotiation signals
+│
+├── geocoding/
+│   └── geocoder.py      Address → municipio (Nominatim/OSM)
+│
+├── notifications/
+│   └── email_sender.py  Resend transactional email + branded HTML body
+│
+└── report/              Branded PDF generation
+    ├── template.html    Jinja2 template (PropHero brand tokens, A4)
+    ├── renderer.py      ValuationResponse → HTML
+    └── pdf.py           HTML → PDF via local Playwright Chromium
+
+frontend/                React + Vite + Tailwind UI (production)
+legacy/old-frontend/     Legacy vanilla HTML — kept for reference, not built
+tests/evaluation/        Calibration harness against appraiser ground-truth
+```
+
+## Documentation
+- [`docs/email-report.md`](docs/email-report.md) — lead + PDF + email pipeline (`/api/lead`, `/api/report/pdf`)
+- [`docs/market-transactions.md`](docs/market-transactions.md) — transactions data layer
+- [`docs/apps-script.md`](docs/apps-script.md) — Apps Script integration
+- [`tests/evaluation/README.md`](tests/evaluation/README.md) — calibration harness against ground-truth appraiser CSV
 
 ## Running locally
 ```bash
-cd backend
-pip install -r requirements.txt
-playwright install chromium
-cp ../.env.example .env
-python main.py
-# → http://localhost:8001
+make install      # python venv + pip deps + chromium + npm + cp .env.example
+make db           # create backend/data/prophero.db
+make dev          # API on :8001 + Vite dev server on :5173
 ```
+Other targets: `make backend`, `make frontend`, `make clean`, `make help`.
 
 ## Bright Data
 - Zone: `idealista` (already configured for Idealista anti-bot bypass)

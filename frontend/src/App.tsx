@@ -86,7 +86,7 @@ function App() {
         )}
       </main>
 
-      {data && <FloatingChat leadName={data.lead?.fullName} />}
+      {data && <FloatingChat leadName={data.lead?.full_name} />}
     </>
   )
 }

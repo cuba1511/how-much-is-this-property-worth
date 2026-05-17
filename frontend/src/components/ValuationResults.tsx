@@ -91,6 +91,7 @@ export function ValuationResults({ result, request, lead, onReset }: ValuationRe
       {/* 8. Conversion Signals */}
       <ConversionSignalsBlock
         lead={lead}
+        request={request}
         totalTransactions={market_transactions?.summary?.total_transactions}
       />
     </div>

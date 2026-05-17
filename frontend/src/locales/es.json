@@ -159,6 +159,10 @@
       "expiresIn": "Esta análisis caduca en 24h · te enviamos una copia a tu email",
       "talkToAdvisor": "Hablar con un advisor PropHero",
       "requestPdf": "Recibir PDF detallado",
+      "downloadPdf": "Descargar PDF",
+      "downloadingPdf": "Generando PDF…",
+      "downloadError": "No se pudo descargar el PDF. Inténtalo de nuevo.",
+      "emailSent": "Te enviamos el reporte a {{email}}",
       "greeting": "Hola {{name}}, tu análisis de mercado está listo",
       "basedOn": "Basado en {{count}} transacciones reales"
     }

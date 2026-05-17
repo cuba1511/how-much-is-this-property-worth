@@ -17,9 +17,16 @@ export interface ResolvedAddress {
 }
 
 export interface LeadInfo {
-  fullName: string
+  full_name: string
   email: string
   phone: string
+}
+
+export interface LeadResponse {
+  lead_id: number
+  valuation_id: number
+  valuation: ValuationResponse
+  email_scheduled: boolean
 }
 
 export interface PropertyFeatures {
@@ -77,6 +84,8 @@ export interface ValuationStats {
   estimated_value?: number | null
   price_range_low?: number | null
   price_range_high?: number | null
+  estimation_method?: 'ols_lstsq' | 'avg_ppm2' | null
+  confidence_method?: 'sample_std' | 'flat_pct' | null
 }
 
 export interface MarketTransactionChartPoint {

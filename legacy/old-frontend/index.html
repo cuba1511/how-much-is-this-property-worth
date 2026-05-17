@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>¿Cuánto vale tu casa?</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    crossorigin=""
+  />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .gradient-text {
+      background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .card-hover {
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .card-hover:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+    }
+    .spinner {
+      border: 3px solid rgba(255,255,255,0.3);
+      border-radius: 50%;
+      border-top-color: white;
+      width: 20px;
+      height: 20px;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .stat-card {
+      background: linear-gradient(135deg, #f0f4ff 0%, #faf5ff 100%);
+    }
+    .listing-img {
+      width: 100%;
+      height: 160px;
+      object-fit: cover;
+      background: #e5e7eb;
+    }
+    .fade-in {
+      animation: fadeIn 0.5s ease forwards;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    #addressMap {
+      height: 260px;
+    }
+    .leaflet-container {
+      border-radius: 1rem;
+    }
+    .suggestion-panel {
+      position: relative;
+      z-index: 30;
+      width: 100%;
+      max-height: 16rem;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+  <!-- Header -->
+  <header class="bg-white border-b border-gray-100 sticky top-0 z-10">
+    <div class="max-w-5xl mx-auto px-4 py-4 flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center">
+        <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+        </svg>
+      </div>
+      <span class="font-bold text-gray-800 text-lg">PropHero <span class="text-gray-400 font-normal text-sm">· Valoración</span></span>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <section class="max-w-5xl mx-auto px-4 pt-12 pb-8">
+    <h1 class="text-4xl font-extrabold text-gray-900 leading-tight">
+      ¿Cuánto vale<br/>
+      <span class="gradient-text">tu casa?</span>
+    </h1>
+    <p class="mt-3 text-gray-500 text-lg max-w-xl">
+      Introduce los datos de tu propiedad y te mostramos comparables reales de
+      <strong>Idealista</strong> para estimar su valor de mercado.
+    </p>
+  </section>
+
+  <!-- Form -->
+  <section class="max-w-5xl mx-auto px-4 pb-10">
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+      <form id="valuationForm" class="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+        <!-- Address -->
+        <div class="md:col-span-2">
+          <label class="block text-sm font-semibold text-gray-700 mb-1.5">
+            Dirección completa
+          </label>
+          <div class="relative">
+            <input
+              type="text"
+              id="address"
+              placeholder="Calle Gran Vía 28, Madrid"
+              required
+              autocomplete="off"
+              class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-800 placeholder-gray-400"
+            />
+            <div id="addressSuggestions" class="suggestion-panel hidden mt-2 rounded-2xl border border-gray-200 bg-white shadow-xl overflow-hidden"></div>
+          </div>
+          <div id="selectedAddressBox" class="hidden mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+            <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700">Ubicación seleccionada</p>
+            <p id="selectedAddressText" class="mt-1 text-sm text-emerald-900 font-medium"></p>
+          </div>
+          <div class="mt-3">
+            <div id="addressMap" class="w-full border border-gray-200 shadow-sm"></div>
+          </div>
+          <p class="text-xs text-gray-400 mt-2">
+            Puedes escribir y elegir una sugerencia, o hacer click en el mapa para autocompletar la dirección.
+          </p>
+        </div>
+
+        <!-- M2 -->
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1.5">
+            Superficie (m²)
+          </label>
+          <input
+            type="number"
+            id="m2"
+            placeholder="85"
+            min="1"
+            required
+            class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-800 placeholder-gray-400"
+          />
+        </div>
+
+        <!-- Bedrooms -->
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1.5">
+            Habitaciones
+          </label>
+          <select
+            id="bedrooms"
+            required
+            class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-800 bg-white"
+          >
+            <option value="">Selecciona</option>
+            <option value="1">1 habitación</option>
+            <option value="2">2 habitaciones</option>
+            <option value="3">3 habitaciones</option>
+            <option value="4">4 habitaciones</option>
+            <option value="5">5+ habitaciones</option>
+          </select>
+        </div>
+
+        <!-- Bathrooms -->
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1.5">
+            Baños
+          </label>
+          <select
+            id="bathrooms"
+            required
+            class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-800 bg-white"
+          >
+            <option value="">Selecciona</option>
+            <option value="1">1 baño</option>
+            <option value="2">2 baños</option>
+            <option value="3">3 baños</option>
+            <option value="4">4+ baños</option>
+          </select>
+        </div>
+
+        <!-- Submit -->
+        <div class="md:col-span-2">
+          <button
+            type="submit"
+            id="submitBtn"
+            class="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold text-base hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+          >
+            <span id="btnText">Estimar valor</span>
+            <div id="btnSpinner" class="spinner hidden"></div>
+          </button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <!-- Error -->
+  <div id="errorBox" class="hidden max-w-5xl mx-auto px-4 pb-6">
+    <div class="bg-red-50 border border-red-200 rounded-xl p-4 flex gap-3 items-start">
+      <svg class="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      <p id="errorMsg" class="text-red-700 text-sm font-medium"></p>
+    </div>
+  </div>
+
+  <!-- Search progress -->
+  <div id="progressBox" class="hidden max-w-5xl mx-auto px-4 pb-6">
+    <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+      <p class="text-sm font-semibold text-blue-900 mb-1">Buscando comparables en Idealista</p>
+      <p id="progressMsg" class="text-sm text-blue-700">Preparando búsqueda…</p>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <section id="results" class="hidden max-w-5xl mx-auto px-4 pb-16 fade-in">
+
+    <!-- Municipio badge -->
+    <div class="flex items-center gap-2 mb-6">
+      <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+      </svg>
+      <span id="municipioLabel" class="text-sm text-gray-500 font-medium"></span>
+      <a id="idealistaLink" href="#" target="_blank"
+        class="text-xs text-blue-500 hover:underline ml-2">Ver en Idealista →</a>
+    </div>
+
+    <div id="searchMeta" class="hidden bg-white border border-gray-100 rounded-xl p-4 mb-6"></div>
+
+    <!-- Stats -->
+    <div id="statsGrid" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8"></div>
+
+    <!-- Estimated value hero card -->
+    <div id="estimateCard" class="hidden bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-6 text-white mb-8 fade-in">
+      <p class="text-blue-100 text-sm font-medium mb-1">Valor estimado de tu propiedad</p>
+      <p id="estimateValue" class="text-4xl font-extrabold tracking-tight"></p>
+      <p id="estimateRange" class="text-blue-200 text-sm mt-1"></p>
+      <p class="text-blue-100 text-xs mt-3">Basado en <span id="estimateCount"></span> comparables · precio medio/m² aplicado a tus <span id="estimateM2"></span> m²</p>
+    </div>
+
+    <!-- Comparables dataset -->
+    <div id="datasetSection" class="hidden mb-8">
+      <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-3">
+        <div>
+          <h2 class="text-xl font-bold text-gray-800">Dataset de comparables</h2>
+          <p class="text-sm text-gray-500 mt-1">
+            Tabla con las características usadas para la valoración. Una fila por comparable, máximo 10.
+          </p>
+        </div>
+        <span id="datasetBadge" class="self-start text-xs rounded-full border border-gray-200 bg-gray-50 text-gray-700 px-3 py-1.5 font-semibold"></span>
+      </div>
+      <div id="datasetWarning" class="hidden bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800 mb-3"></div>
+      <div class="bg-white border border-gray-100 rounded-2xl overflow-hidden">
+        <div class="overflow-x-auto">
+          <table id="datasetTable" class="w-full text-sm"></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Regression coefficients -->
+    <div id="regressionSection" class="hidden mb-8">
+      <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-3">
+        <div>
+          <h2 class="text-xl font-bold text-gray-800">Contribución por característica</h2>
+          <p class="text-sm text-gray-500 mt-1">
+            Ridge regression sin intercepto (alpha optimizado por Leave-One-Out CV) sobre el dataset de comparables. Coeficientes regularizados; R² reportado en validación cruzada.
+          </p>
+        </div>
+        <span id="regressionBadge" class="self-start text-xs rounded-full border border-gray-200 bg-gray-50 text-gray-700 px-3 py-1.5 font-semibold"></span>
+      </div>
+      <div id="personalizedValuationHero" class="hidden mb-4"></div>
+      <div id="regressionWarning" class="hidden bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800 mb-3"></div>
+      <div id="regressionGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+    </div>
+
+    <!-- Market transactions -->
+    <div id="marketTransactionsSection" class="hidden mb-8">
+      <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-4">
+        <div>
+          <h2 class="text-xl font-bold text-gray-800">Mercado real</h2>
+          <p class="text-sm text-gray-500 mt-1">
+            Asking price vs closing price y margen de negociación en comparables recientes.
+          </p>
+        </div>
+        <div id="marketTransactionsBadge" class="hidden self-start text-xs rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 px-3 py-1.5 font-semibold"></div>
+      </div>
+
+      <div id="marketTransactionsStats" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4"></div>
+      <div id="marketTransactionsInsight" class="hidden bg-white border border-gray-100 rounded-2xl p-4 mb-4"></div>
+      <div id="marketTransactionsChart" class="hidden bg-white border border-gray-100 rounded-2xl p-4 mb-4"></div>
+      <div id="marketTransactionsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"></div>
+    </div>
+
+    <!-- Listings grid -->
+    <h2 class="text-xl font-bold text-gray-800 mb-4">Comparables en Idealista</h2>
+    <div id="listingsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"></div>
+
+    <!-- No listings -->
+    <div id="noListings" class="hidden text-center py-12 text-gray-400">
+      <svg class="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+          d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      <p class="font-medium">No encontramos comparables para estos filtros.</p>
+      <p class="text-sm mt-1">Intenta con menos filtros o una dirección más amplia.</p>
+    </div>
+  </section>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script type="module" src="/static/js/app.js"></script>
+</body>
+</html>

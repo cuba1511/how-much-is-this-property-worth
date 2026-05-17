@@ -38,6 +38,36 @@ class ValuationRequest(BaseModel):
     selected_address: Optional[ResolvedAddress] = None
 
 
+class LeadInfo(BaseModel):
+    """End-user contact captured at submission time."""
+
+    full_name: str = Field(..., min_length=1, max_length=120)
+    email: str = Field(..., min_length=3, max_length=200)
+    phone: str = Field(..., min_length=4, max_length=40)
+
+
+class LeadSubmission(BaseModel):
+    """Payload for POST /api/lead — bundles lead + valuation request together
+    so the frontend can submit once and have the backend orchestrate everything
+    (valuation → PDF → email → persistence)."""
+
+    lead: LeadInfo
+    valuation_request: ValuationRequest
+
+
+class LeadResponse(BaseModel):
+    """Acknowledgement returned to the frontend immediately. The email send
+    happens in a BackgroundTask so the UX doesn't block on 5-15s of network."""
+
+    lead_id: int
+    valuation_id: int
+    valuation: "ValuationResponse"
+    email_scheduled: bool = Field(
+        ...,
+        description="True when an email send was queued. False when RESEND_API_KEY is unset (dev mode).",
+    )
+
+
 class MunicipioInfo(BaseModel):
     name: str
     slug: str
@@ -108,6 +138,21 @@ class ValuationStats(BaseModel):
     estimated_value: Optional[int] = None
     price_range_low: Optional[int] = None
     price_range_high: Optional[int] = None
+    estimation_method: Optional[str] = Field(
+        None,
+        description=(
+            "How estimated_value was produced. One of: 'ols_lstsq' (OLS regression "
+            "on m²/hab/baños), 'avg_ppm2' (fallback when regression is unreliable), "
+            "or None when no estimate could be produced."
+        ),
+    )
+    confidence_method: Optional[str] = Field(
+        None,
+        description=(
+            "How price_range_low/high were derived. 'sample_std' = ±1σ of "
+            "comparables' €/m²; 'flat_pct' = legacy ±10% heuristic."
+        ),
+    )
 
 
 class RegressionCoefficient(BaseModel):
@@ -236,3 +281,9 @@ class SimpleValuationResponse(BaseModel):
             "the mocked market-transactions layer (Phase 2 will replace with real data)."
         ),
     )
+
+
+# LeadResponse holds a forward reference to ValuationResponse — resolve it now
+# that all models in this file are defined. Pydantic v2 requires this when the
+# referenced model lives below the referer in source order.
+LeadResponse.model_rebuild()

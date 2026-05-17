@@ -23,8 +23,8 @@ import {
   step3Schema,
   type ValuationRequestForm,
 } from '@/lib/schemas'
-import { valuateProperty, ValuationError } from '@/lib/api'
-import type { ResolvedAddress, ValuationResponse } from '@/lib/types'
+import { submitLead, ValuationError } from '@/lib/api'
+import type { LeadInfo, ResolvedAddress, ValuationRequest, ValuationResponse } from '@/lib/types'
 
 interface ImpactItem { icon: LucideIcon; key: string }
 
@@ -52,7 +52,7 @@ const STEPS: StepConfig[] = [
 ]
 
 interface ValuationFormProps {
-  onResult: (result: ValuationResponse, request: import('@/lib/types').ValuationRequest, lead?: import('@/lib/types').LeadInfo) => void
+  onResult: (result: ValuationResponse, request: ValuationRequest, lead?: LeadInfo) => void
   onError: (message: string) => void
 }
 
@@ -120,22 +120,32 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
     setLeadDialogOpen(true)
   }
 
-  async function handleLeadSubmit(lead: LeadData) {
+  async function handleLeadSubmit(formLead: LeadData) {
     setSubmitting(true)
     try {
       const data = methods.getValues()
       const { propertyType, features, propertyCondition, ...apiFields } = data
-      const requestPayload = {
+      const valuationRequest: ValuationRequest = {
         ...apiFields,
         property_type: propertyType,
         property_condition: propertyCondition,
         features,
         selected_address: resolvedAddress ?? undefined,
-        lead,
       }
-      const result = await valuateProperty(requestPayload)
+      // Frontend uses camelCase (`fullName`) for form state; the backend
+      // contract is snake_case (`full_name`). Mapping happens here so the
+      // rest of the app keeps the natural TS style.
+      const wireLead: LeadInfo = {
+        full_name: formLead.fullName,
+        email: formLead.email,
+        phone: formLead.phone,
+      }
+      const result = await submitLead({
+        lead: wireLead,
+        valuation_request: valuationRequest,
+      })
       setLeadDialogOpen(false)
-      onResult(result, requestPayload, lead)
+      onResult(result.valuation, valuationRequest, wireLead)
     } catch (err) {
       const code = err instanceof ValuationError ? err.code : 'server'
       onError(t(`form.error.${code}`))

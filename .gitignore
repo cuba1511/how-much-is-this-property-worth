@@ -1,7 +1,22 @@
 .venv/
+venv/
 __pycache__/
 *.pyc
 .env
 .DS_Store
+node_modules/
 data/
 design-tokensLast version/*
+
+# Evaluation harness — generated reports + response cache
+tests/evaluation/reports/*
+!tests/evaluation/reports/.gitkeep
+tests/evaluation/.cache/
+
+# SQLite databases (leads + valuations live here)
+backend/data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+frontend/.vite/deps/*
