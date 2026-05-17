@@ -59,6 +59,13 @@ legacy/old-frontend/     Legacy vanilla HTML — kept for reference, not built
 tests/evaluation/        Calibration harness against appraiser ground-truth
 ```
 
+## Persistence (SQLite)
+
+- File: `backend/data/prophero.db` (see `make db`)
+- **Models:** `LeadRecord`, `ValuationRecord` in `models.py`; writes via `db.py`
+- **Leads table:** contact fields only
+- **Valuations table:** denormalized columns (`valuation_intent`, `sell_*`, `cadastral_reference`, `property_type`, `m2`, …) plus full `request_json` / `response_json` snapshots
+
 ## Documentation
 - [`docs/email-report.md`](docs/email-report.md) — lead + PDF + email pipeline (`/api/lead`, `/api/report/pdf`)
 - [`docs/market-transactions.md`](docs/market-transactions.md) — transactions data layer

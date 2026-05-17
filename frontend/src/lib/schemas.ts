@@ -9,6 +9,22 @@ export type PropertyCondition = (typeof propertyConditions)[number]
 export const featureKeys = ['pool', 'terrace', 'elevator', 'parking'] as const
 export type FeatureKey = (typeof featureKeys)[number]
 
+export const valuationIntents = ['sell', 'buy', 'rent_out', 'rent', 'info'] as const
+export type ValuationIntent = (typeof valuationIntents)[number]
+
+export const sellReasons = [
+  'upgrade',
+  'downsize',
+  'investment',
+  'inheritance',
+  'relocation',
+  'other',
+] as const
+export type SellReason = (typeof sellReasons)[number]
+
+export const sellTimelines = ['asap', '3_months', '6_months', '12_months', 'flexible'] as const
+export type SellTimeline = (typeof sellTimelines)[number]
+
 const featuresSchema = z.object({
   pool: z.boolean(),
   terrace: z.boolean(),
@@ -35,6 +51,34 @@ export const step3Schema = z.object({
   bathrooms: z.number().int().min(1).max(5),
 })
 
-export const valuationRequestSchema = step1Schema.merge(step2Schema).merge(step3Schema)
+/** Paso 4 — Para qué necesitas la valoración */
+export const step4Schema = z
+  .object({
+    valuationIntent: z.enum(valuationIntents),
+    sellReason: z.enum(sellReasons).optional(),
+    sellTimeline: z.enum(sellTimelines).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.valuationIntent !== 'sell') return
+    if (!data.sellReason) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['sellReason'],
+        message: 'Required',
+      })
+    }
+    if (!data.sellTimeline) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['sellTimeline'],
+        message: 'Required',
+      })
+    }
+  })
+
+export const valuationRequestSchema = step1Schema
+  .merge(step2Schema)
+  .merge(step3Schema)
+  .merge(step4Schema)
 
 export type ValuationRequestForm = z.infer<typeof valuationRequestSchema>

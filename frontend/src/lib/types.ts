@@ -59,6 +59,9 @@ export interface ValuationRequest {
   property_type?: string | null
   property_condition?: string | null
   features?: PropertyFeatures | null
+  valuation_intent?: string | null
+  sell_reason?: string | null
+  sell_timeline?: string | null
   selected_address?: ResolvedAddress | null
   selected_cadastral_unit?: CadastralUnit | null
   lead?: LeadInfo

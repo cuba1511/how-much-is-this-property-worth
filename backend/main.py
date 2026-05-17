@@ -732,7 +732,7 @@ async def post_lead(
     Step 4 runs after the response is sent. The frontend can show "Te enviamos
     el reporte a {email}" right away without waiting on Playwright + Resend.
     """
-    request_payload = submission.valuation_request.model_dump()
+    request_payload = submission.valuation_request.model_dump(mode="json")
 
     lead_id = db.insert_lead(
         full_name=submission.lead.full_name,
@@ -745,11 +745,20 @@ async def post_lead(
 
     valuation_id = db.insert_valuation(
         lead_id=lead_id,
-        address=submission.valuation_request.address,
+        request=submission.valuation_request,
         municipio=valuation.municipio.name,
         estimated_eur=valuation.stats.estimated_value,
-        request_payload=request_payload,
-        response_payload=valuation.model_dump(),
+        response_payload=valuation.model_dump(mode="json"),
+    )
+    logger.info(
+        "Valuation persisted id=%d intent=%s rc=%s",
+        valuation_id,
+        submission.valuation_request.valuation_intent,
+        (
+            submission.valuation_request.selected_cadastral_unit.cadastral_reference
+            if submission.valuation_request.selected_cadastral_unit
+            else None
+        ),
     )
 
     email_scheduled = bool(os.environ.get("RESEND_API_KEY"))

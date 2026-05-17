@@ -1,5 +1,11 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Any, Literal, Optional
+
+ValuationIntent = Literal["sell", "buy", "rent_out", "rent", "info"]
+SellReason = Literal[
+    "upgrade", "downsize", "investment", "inheritance", "relocation", "other"
+]
+SellTimeline = Literal["asap", "3_months", "6_months", "12_months", "flexible"]
 
 
 class ResolvedAddress(BaseModel):
@@ -57,6 +63,15 @@ class ValuationRequest(BaseModel):
     features: Optional[PropertyFeatures] = None
     selected_address: Optional[ResolvedAddress] = None
     selected_cadastral_unit: Optional["CadastralUnit"] = None
+    valuation_intent: Optional[ValuationIntent] = Field(
+        None, description="Why the user requested a valuation (Fotocasa-style intent step)"
+    )
+    sell_reason: Optional[SellReason] = Field(
+        None, description="Required when valuation_intent is sell"
+    )
+    sell_timeline: Optional[SellTimeline] = Field(
+        None, description="Required when valuation_intent is sell"
+    )
 
 
 class LeadInfo(BaseModel):
@@ -87,6 +102,48 @@ class LeadResponse(BaseModel):
         ...,
         description="True when an email send was queued. False when RESEND_API_KEY is unset (dev mode).",
     )
+
+
+# ---------------------------------------------------------------------------
+# SQLite row models (see backend/db.py — denormalized columns + JSON snapshots)
+# ---------------------------------------------------------------------------
+
+
+class LeadRecord(BaseModel):
+    """Persisted lead from POST /api/lead."""
+
+    id: int
+    full_name: str
+    email: str
+    phone: str
+    created_at: str
+
+
+class ValuationRecord(BaseModel):
+    """Persisted valuation: queryable columns plus full request/response JSON."""
+
+    id: int
+    lead_id: Optional[int] = None
+    address: str
+    municipio: Optional[str] = None
+    estimated_eur: Optional[int] = None
+    valuation_intent: Optional[ValuationIntent] = None
+    sell_reason: Optional[SellReason] = None
+    sell_timeline: Optional[SellTimeline] = None
+    cadastral_reference: Optional[str] = None
+    property_type: Optional[str] = None
+    property_condition: Optional[str] = None
+    m2: Optional[int] = None
+    bedrooms: Optional[int] = None
+    bathrooms: Optional[int] = None
+    request_json: dict[str, Any] = Field(
+        ...,
+        description="Full ValuationRequest snapshot (includes selected_address, features, etc.)",
+    )
+    response_json: dict[str, Any] = Field(..., description="Full ValuationResponse snapshot")
+    email_sent: bool = False
+    email_error: Optional[str] = None
+    created_at: str
 
 
 class MunicipioInfo(BaseModel):

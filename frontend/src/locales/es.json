@@ -13,7 +13,41 @@
     "location": "Ubicación",
     "details": "Detalles",
     "identification": "El inmueble",
-    "characteristics": "Características"
+    "characteristics": "Características",
+    "purpose": "Objetivo",
+    "contact": "Tus datos"
+  },
+  "intent": {
+    "title": "¿Para qué necesitas la valoración?",
+    "subtitle": "Te mostraremos los datos que más te interesan.",
+    "selectPlaceholder": "Selecciona",
+    "intentError": "Selecciona una opción",
+    "sellReasonLabel": "¿Cuál es el motivo?",
+    "sellReasonError": "Selecciona un motivo",
+    "sellTimelineLabel": "¿Cuándo quieres venderlo?",
+    "sellTimelineError": "Selecciona un plazo",
+    "options": {
+      "sell": "Quieres venderlo",
+      "buy": "Quieres comprarlo",
+      "rent_out": "Quieres ponerlo en alquiler",
+      "rent": "Quieres alquilarlo",
+      "info": "Sólo quieres información"
+    },
+    "sellReasons": {
+      "upgrade": "Ampliar vivienda",
+      "downsize": "Reducir vivienda",
+      "investment": "Inversión",
+      "inheritance": "Herencia",
+      "relocation": "Traslado",
+      "other": "Otro"
+    },
+    "sellTimelines": {
+      "asap": "Lo antes posible",
+      "3_months": "En los próximos 3 meses",
+      "6_months": "En los próximos 6 meses",
+      "12_months": "En el próximo año",
+      "flexible": "Sin prisa / flexible"
+    }
   },
   "catastro": {
     "loading": "Buscando inmuebles en el Catastro…",
@@ -184,8 +218,8 @@
     }
   },
   "lead": {
-    "title": "Último paso",
-    "description": "Déjanos tus datos para enviarte el informe de valoración.",
+    "title": "Tus datos de contacto",
+    "description": "Te enviaremos el informe de valoración y podremos asesorarte si lo necesitas.",
     "name": "Nombre completo",
     "namePlaceholder": "Juan García",
     "nameError": "Introduce tu nombre",

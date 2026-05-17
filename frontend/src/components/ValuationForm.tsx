@@ -9,6 +9,7 @@ import {
   BarChart3,
   Home,
   Ruler,
+  Target,
   type LucideIcon,
 } from 'lucide-react'
 import { StepIndicator } from '@/components/StepIndicator'
@@ -16,12 +17,15 @@ import { SelectedAddressBanner } from '@/components/SelectedAddressBanner'
 import { PropertyIdentificationStep } from '@/components/steps/PropertyIdentificationStep'
 import { PropertyTypeStep } from '@/components/steps/PropertyTypeStep'
 import { PropertyDetailsStep } from '@/components/steps/PropertyDetailsStep'
-import { LeadDialog, type LeadData } from '@/components/LeadDialog'
+import { ValuationIntentStep } from '@/components/steps/ValuationIntentStep'
+import { LeadStep } from '@/components/steps/LeadStep'
+import type { LeadData } from '@/components/LeadDialog'
 import {
   valuationRequestSchema,
   step1Schema,
   step2Schema,
   step3Schema,
+  step4Schema,
   type ValuationRequestForm,
 } from '@/lib/schemas'
 import { submitLead, ValuationError } from '@/lib/api'
@@ -53,6 +57,14 @@ const STEPS: StepConfig[] = [
     labelKey: 'steps.details',
     impacts: [{ icon: Ruler, key: 'impacts.resultTime' }],
   },
+  {
+    labelKey: 'steps.purpose',
+    impacts: [{ icon: Target, key: 'impacts.precisionMatters' }],
+  },
+  {
+    labelKey: 'steps.contact',
+    impacts: [],
+  },
 ]
 
 interface ValuationFormProps {
@@ -67,7 +79,6 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
   const [selectedUnit, setSelectedUnit] = useState<CadastralUnit | null>(null)
   const [cadastralUnitsCount, setCadastralUnitsCount] = useState(0)
   const [submitting, setSubmitting] = useState(false)
-  const [leadDialogOpen, setLeadDialogOpen] = useState(false)
   const [unitError, setUnitError] = useState<string | null>(null)
 
   const methods = useForm<ValuationRequestForm>({
@@ -80,11 +91,15 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
       m2: undefined as unknown as number,
       bedrooms: 0,
       bathrooms: 1,
+      valuationIntent: undefined as unknown as ValuationRequestForm['valuationIntent'],
+      sellReason: undefined,
+      sellTimeline: undefined,
     },
     mode: 'onTouched',
   })
 
   const showAddressBanner = Boolean(resolvedAddress) && currentStep > 0
+  const isLastStep = currentStep === STEPS.length - 1
 
   function setIssueErrors(issues: { path: PropertyKey[]; message: string }[]) {
     for (const issue of issues) {
@@ -126,16 +141,33 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
       return true
     }
 
-    const r = step3Schema.safeParse({
-      propertyCondition: values.propertyCondition,
-      m2: values.m2,
-      bedrooms: values.bedrooms,
-      bathrooms: values.bathrooms,
-    })
-    if (!r.success) {
-      setIssueErrors(r.error.issues)
-      return false
+    if (currentStep === 2) {
+      const r = step3Schema.safeParse({
+        propertyCondition: values.propertyCondition,
+        m2: values.m2,
+        bedrooms: values.bedrooms,
+        bathrooms: values.bathrooms,
+      })
+      if (!r.success) {
+        setIssueErrors(r.error.issues)
+        return false
+      }
+      return true
     }
+
+    if (currentStep === 3) {
+      const r = step4Schema.safeParse({
+        valuationIntent: values.valuationIntent,
+        sellReason: values.sellReason,
+        sellTimeline: values.sellTimeline,
+      })
+      if (!r.success) {
+        setIssueErrors(r.error.issues)
+        return false
+      }
+      return true
+    }
+
     return true
   }
 
@@ -147,25 +179,33 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
   }
 
   function handleBack() {
-    if (currentStep > 0) setCurrentStep((s) => s - 1)
-  }
-
-  async function onSubmit(_data: ValuationRequestForm) {
-    const valid = await validateCurrentStep()
-    if (!valid) return
-    setLeadDialogOpen(true)
+    if (currentStep > 0 && !submitting) setCurrentStep((s) => s - 1)
   }
 
   async function handleLeadSubmit(formLead: LeadData) {
+    const valid = await validateCurrentStep()
+    if (!valid) return
+
     setSubmitting(true)
     try {
       const data = methods.getValues()
-      const { propertyType, features, propertyCondition, ...apiFields } = data
+      const {
+        propertyType,
+        features,
+        propertyCondition,
+        valuationIntent,
+        sellReason,
+        sellTimeline,
+        ...apiFields
+      } = data
       const valuationRequest: ValuationRequest = {
         ...apiFields,
         property_type: propertyType,
         property_condition: propertyCondition,
         features,
+        valuation_intent: valuationIntent,
+        sell_reason: sellReason,
+        sell_timeline: sellTimeline,
         selected_address: resolvedAddress ?? undefined,
         selected_cadastral_unit: selectedUnit ?? undefined,
       }
@@ -178,12 +218,10 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
         lead: wireLead,
         valuation_request: valuationRequest,
       })
-      setLeadDialogOpen(false)
       onResult(result.valuation, valuationRequest, wireLead)
     } catch (err) {
       const code = err instanceof ValuationError ? err.code : 'server'
       onError(t(`form.error.${code}`))
-      setLeadDialogOpen(false)
     } finally {
       setSubmitting(false)
     }
@@ -191,18 +229,14 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
 
   return (
     <FormProvider {...methods}>
-      <form
-        onSubmit={methods.handleSubmit(onSubmit)}
-        noValidate
-        className="flex flex-col gap-lg"
-      >
+      <div className="flex flex-col gap-lg">
         <StepIndicator steps={STEPS.map(s => ({ label: t(s.labelKey) }))} current={currentStep} />
 
         {showAddressBanner && resolvedAddress && (
           <SelectedAddressBanner address={resolvedAddress} unit={selectedUnit} />
         )}
 
-        <div className="min-h-[280px]">
+        <div className="min-h-[240px]">
           {currentStep === 0 && (
             <>
               <PropertyIdentificationStep
@@ -222,12 +256,14 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
             </>
           )}
           {currentStep === 1 && <PropertyTypeStep submitting={submitting} />}
-          {currentStep === 2 && (
-            <PropertyDetailsStep submitting={submitting} showSubmit />
+          {currentStep === 2 && <PropertyDetailsStep submitting={submitting} showSubmit={false} />}
+          {currentStep === 3 && <ValuationIntentStep submitting={submitting} />}
+          {currentStep === 4 && (
+            <LeadStep onSubmit={handleLeadSubmit} submitting={submitting} />
           )}
         </div>
 
-        {STEPS[currentStep].impacts.length > 0 && (
+        {STEPS[currentStep].impacts.length > 0 && !submitting && (
           <aside
             aria-label={t(STEPS[currentStep].labelKey)}
             className="flex flex-col gap-sm rounded-2xl border border-primary/15 bg-primary/5 px-md py-md"
@@ -241,22 +277,22 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
           </aside>
         )}
 
-        <div className="mt-xs flex items-center justify-between gap-sm">
-          {currentStep > 0 ? (
-            <button
-              type="button"
-              onClick={handleBack}
-              disabled={submitting}
-              className="btn-ghost disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <ChevronLeft className="h-4 w-4" />
-              {t('form.back')}
-            </button>
-          ) : (
-            <span />
-          )}
+        {!isLastStep && (
+          <div className="mt-xs flex items-center justify-between gap-sm">
+            {currentStep > 0 ? (
+              <button
+                type="button"
+                onClick={handleBack}
+                disabled={submitting}
+                className="btn-ghost disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                {t('form.back')}
+              </button>
+            ) : (
+              <span />
+            )}
 
-          {currentStep < STEPS.length - 1 && (
             <button
               type="button"
               onClick={handleNext}
@@ -266,16 +302,18 @@ export function ValuationForm({ onResult, onError }: ValuationFormProps) {
               {t('form.next')}
               <ChevronRight className="h-4 w-4" />
             </button>
-          )}
-        </div>
-      </form>
+          </div>
+        )}
 
-      <LeadDialog
-        open={leadDialogOpen}
-        onOpenChange={setLeadDialogOpen}
-        onSubmit={handleLeadSubmit}
-        submitting={submitting}
-      />
+        {currentStep > 0 && isLastStep && !submitting && (
+          <div className="mt-xs">
+            <button type="button" onClick={handleBack} className="btn-ghost">
+              <ChevronLeft className="h-4 w-4" />
+              {t('form.back')}
+            </button>
+          </div>
+        )}
+      </div>
     </FormProvider>
   )
 }

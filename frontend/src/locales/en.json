@@ -13,7 +13,41 @@
     "location": "Location",
     "details": "Details",
     "identification": "The property",
-    "characteristics": "Characteristics"
+    "characteristics": "Characteristics",
+    "purpose": "Purpose",
+    "contact": "Your details"
+  },
+  "intent": {
+    "title": "Why do you need a valuation?",
+    "subtitle": "We'll show you the data that matters most to you.",
+    "selectPlaceholder": "Select",
+    "intentError": "Please select an option",
+    "sellReasonLabel": "What is the reason?",
+    "sellReasonError": "Please select a reason",
+    "sellTimelineLabel": "When do you want to sell?",
+    "sellTimelineError": "Please select a timeframe",
+    "options": {
+      "sell": "You want to sell it",
+      "buy": "You want to buy it",
+      "rent_out": "You want to rent it out",
+      "rent": "You want to rent it",
+      "info": "You just want information"
+    },
+    "sellReasons": {
+      "upgrade": "Upsize",
+      "downsize": "Downsize",
+      "investment": "Investment",
+      "inheritance": "Inheritance",
+      "relocation": "Relocation",
+      "other": "Other"
+    },
+    "sellTimelines": {
+      "asap": "As soon as possible",
+      "3_months": "Within 3 months",
+      "6_months": "Within 6 months",
+      "12_months": "Within a year",
+      "flexible": "No rush / flexible"
+    }
   },
   "catastro": {
     "loading": "Looking up units in the cadastre…",
@@ -184,8 +218,8 @@
     }
   },
   "lead": {
-    "title": "Last step",
-    "description": "Leave your details so we can send you the valuation report.",
+    "title": "Your contact details",
+    "description": "We'll send your valuation report and can follow up if you need advice.",
     "name": "Full name",
     "namePlaceholder": "John Smith",
     "nameError": "Enter your name",
