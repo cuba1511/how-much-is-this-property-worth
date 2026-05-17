@@ -54,8 +54,8 @@ backend/
     ├── renderer.py      ValuationResponse → HTML
     └── pdf.py           HTML → PDF via local Playwright Chromium
 
-frontend2/               React + Vite + Tailwind UI (production)
-frontend/                Legacy vanilla HTML — kept for reference
+frontend/                React + Vite + Tailwind UI (production)
+legacy/old-frontend/     Legacy vanilla HTML — kept for reference, not built
 tests/evaluation/        Calibration harness against appraiser ground-truth
 ```
 
