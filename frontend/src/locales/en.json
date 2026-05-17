@@ -6,7 +6,7 @@
     "subtitle": "Enter your property details and we'll show you real comparables to estimate its market value.",
     "badge": "Smart valuation",
     "ctaCaption": "Free · result in under 60s",
-    "addressPlaceholder": "Search your address...",
+    "addressPlaceholder": "Search for an address in Spain...",
     "continue": "Continue",
     "imageAlt": "Apartment building"
   },
@@ -109,7 +109,7 @@
   },
   "address": {
     "label": "Address",
-    "placeholder": "Search your address...",
+    "placeholder": "Search for an address in Spain...",
     "error": "Enter a valid address",
     "confirmed": "Address confirmed",
     "searchLabel": "Search address",

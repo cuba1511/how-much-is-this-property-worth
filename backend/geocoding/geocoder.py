@@ -72,6 +72,45 @@ def normalize_text(text: str) -> str:
     return slugify(text or "").replace("-", " ")
 
 
+# Mainland, Baleares, Canarias, Ceuta y Melilla — used when providers omit country.
+_SPAIN_BBOX = (-18.5, 27.5, 4.5, 43.9)  # min_lon, min_lat, max_lon, max_lat
+_SPAIN_COUNTRY_NAMES = frozenset({"españa", "spain", "espana"})
+
+
+def is_spain_coordinates(lat: float, lon: float) -> bool:
+    min_lon, min_lat, max_lon, max_lat = _SPAIN_BBOX
+    return min_lat <= lat <= max_lat and min_lon <= lon <= max_lon
+
+
+def is_spain_country_name(country: str | None) -> bool:
+    if not country:
+        return False
+    return country.strip().lower() in _SPAIN_COUNTRY_NAMES
+
+
+def is_spain_nominatim_result(result: dict) -> bool:
+    addr = result.get("address") or {}
+    country = addr.get("country")
+    if country:
+        return is_spain_country_name(country)
+    try:
+        lat = float(result["lat"])
+        lon = float(result["lon"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    return is_spain_coordinates(lat, lon)
+
+
+def is_spain_resolved_address(address: ResolvedAddress) -> bool:
+    if address.country and not is_spain_country_name(address.country):
+        return False
+    return is_spain_coordinates(address.lat, address.lon)
+
+
+def filter_spain_resolved_addresses(addresses: list[ResolvedAddress]) -> list[ResolvedAddress]:
+    return [address for address in addresses if is_spain_resolved_address(address)]
+
+
 def nominatim_headers() -> dict:
     return {
         "User-Agent": "HouseValuationMVP/1.0 (contact@prophero.com)"
@@ -158,24 +197,6 @@ async def search_nominatim(query: str, *, limit: int) -> list[dict]:
         "addressdetails": 1,
         "limit": limit,
         "countrycodes": "es",
-    }
-
-    async with httpx.AsyncClient(timeout=15.0, trust_env=False) as client:
-        response = await client.get(
-            "https://nominatim.openstreetmap.org/search",
-            params=params,
-            headers=nominatim_headers(),
-        )
-        response.raise_for_status()
-        return response.json()
-
-
-async def search_nominatim_unrestricted(query: str, *, limit: int) -> list[dict]:
-    params = {
-        "q": query,
-        "format": "json",
-        "addressdetails": 1,
-        "limit": limit,
     }
 
     async with httpx.AsyncClient(timeout=15.0, trust_env=False) as client:
@@ -295,12 +316,14 @@ def _photon_headers() -> dict:
 
 async def search_photon(query: str, *, limit: int) -> list[ResolvedAddress]:
     """Autocomplete-friendly geocoder backed by Komoot's Photon (OSM data)."""
+    min_lon, min_lat, max_lon, max_lat = _SPAIN_BBOX
     params = {
         "q": query,
         "limit": limit,
         # Photon only supports default/de/en/fr. "default" returns names in their
         # native language (perfect for ES results).
         "lang": "default",
+        "bbox": f"{min_lon},{min_lat},{max_lon},{max_lat}",
     }
 
     async with httpx.AsyncClient(timeout=10.0, trust_env=False) as client:
@@ -317,12 +340,10 @@ async def search_photon(query: str, *, limit: int) -> list[ResolvedAddress]:
     seen_labels: set[str] = set()
     for feature in features:
         props = feature.get("properties") or {}
-        # Restrict to Spanish results — the rest of the pipeline (Idealista
-        # slug, valuations) only handles ES.
         if props.get("countrycode") and props["countrycode"] != "ES":
             continue
         resolved = _photon_feature_to_resolved(feature)
-        if not resolved or resolved.label in seen_labels:
+        if not resolved or not is_spain_resolved_address(resolved) or resolved.label in seen_labels:
             continue
         seen_labels.add(resolved.label)
         suggestions.append(resolved)
@@ -560,7 +581,7 @@ async def search_maptiler(query: str, *, limit: int) -> list[ResolvedAddress]:
     seen: set[str] = set()
     for feature in features:
         resolved = _maptiler_feature_to_resolved(feature)
-        if not resolved:
+        if not resolved or not is_spain_resolved_address(resolved):
             continue
         key = resolved.provider_id or resolved.label
         if key in seen:
@@ -642,7 +663,7 @@ async def search_locationiq(query: str, *, limit: int) -> list[ResolvedAddress]:
         if not isinstance(item, dict):
             continue
         resolved = _locationiq_to_resolved(item)
-        if not resolved:
+        if not resolved or not is_spain_resolved_address(resolved):
             continue
         key = resolved.provider_id or resolved.label
         if key in seen:
@@ -737,12 +758,12 @@ async def _photon_chain(normalized_query: str, capped_limit: int) -> list[Resolv
 
 async def _nominatim_chain(normalized_query: str, capped_limit: int) -> list[ResolvedAddress]:
     results = await search_nominatim(normalized_query, limit=capped_limit)
-    if not results:
-        results = await search_nominatim_unrestricted(normalized_query, limit=capped_limit)
 
     suggestions: list[ResolvedAddress] = []
     seen_labels: set[str] = set()
     for result in results:
+        if not is_spain_nominatim_result(result):
+            continue
         suggestion = resolved_address_from_nominatim(result)
         if suggestion.label in seen_labels:
             continue
@@ -828,7 +849,9 @@ async def suggest_addresses(query: str, limit: int = 5) -> list[ResolvedAddress]
     _autocomplete_inflight[cache_key] = future
 
     try:
-        result = await _suggest_addresses_uncached(normalized_query, capped_limit)
+        result = filter_spain_resolved_addresses(
+            await _suggest_addresses_uncached(normalized_query, capped_limit)
+        )
         await _cache_put(cache_key, result)
         if not future.done():
             future.set_result(result)
@@ -842,10 +865,15 @@ async def suggest_addresses(query: str, limit: int = 5) -> list[ResolvedAddress]
 
 
 async def reverse_geocode(lat: float, lon: float) -> ResolvedAddress:
+    if not is_spain_coordinates(lat, lon):
+        raise ValueError("Coordinates are outside Spain")
     result = await reverse_nominatim(lat, lon)
     if not result:
         raise ValueError("Could not resolve coordinates to an address")
-    return resolved_address_from_nominatim(result)
+    resolved = resolved_address_from_nominatim(result)
+    if not is_spain_resolved_address(resolved):
+        raise ValueError("Coordinates are outside Spain")
+    return resolved
 
 
 async def get_municipio_from_address(address: str) -> MunicipioInfo:
@@ -854,13 +882,14 @@ async def get_municipio_from_address(address: str) -> MunicipioInfo:
     a MunicipioInfo with the name and Idealista URL slug.
     """
     hints = extract_address_hints(address)
-    results = await search_nominatim(address, limit=8)
+    results = [
+        result
+        for result in await search_nominatim(address, limit=8)
+        if is_spain_nominatim_result(result)
+    ]
 
     if not results:
-        results = await search_nominatim_unrestricted(address, limit=8)
-
-    if not results:
-        raise ValueError(f"Could not geocode address: {address}")
+        raise ValueError(f"Could not geocode address in Spain: {address}")
 
     best_result = pick_best_nominatim_result(results, address)
 

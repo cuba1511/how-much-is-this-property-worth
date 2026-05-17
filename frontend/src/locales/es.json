@@ -6,7 +6,7 @@
     "subtitle": "Introduce los datos de tu propiedad y te mostramos comparables reales para estimar su valor de mercado.",
     "badge": "Valoración inteligente",
     "ctaCaption": "Gratis · resultado en menos de 60s",
-    "addressPlaceholder": "Busca tu dirección...",
+    "addressPlaceholder": "Busca una dirección en España...",
     "continue": "Continuar",
     "imageAlt": "Edificio de viviendas"
   },
@@ -109,7 +109,7 @@
   },
   "address": {
     "label": "Dirección",
-    "placeholder": "Busca tu dirección...",
+    "placeholder": "Busca una dirección en España...",
     "error": "Introduce una dirección válida",
     "confirmed": "Dirección confirmada",
     "searchLabel": "Buscar dirección",
