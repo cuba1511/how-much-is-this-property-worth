@@ -18,3 +18,4 @@ backend/data/
 *.db-journal
 *.db-wal
 *.db-shm
+frontend/.vite/deps/*
