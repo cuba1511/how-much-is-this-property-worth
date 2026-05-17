@@ -2,6 +2,19 @@
 
 ![How much is this house worth MVP](docs/imgs/how-much-is-this-house-worth.png)
 
+## Quick start
+
+```bash
+make install
+make db
+make dev
+```
+
+- API: http://localhost:8001  
+- UI: http://localhost:5173  
+
+See [docs/structure.md](docs/structure.md) for folder layout, env files, and what to ignore at the repo root.
+
 ## Project Description
 
 `how-much-is-this-property-worth` is a residential property valuation tool focused on sale price estimation. The goal is to estimate what a property is worth today based on market evidence in the surrounding area, answering a simple owner question: **"How much is this property worth, and how much could I sell it for today?"**

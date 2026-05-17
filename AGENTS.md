@@ -18,14 +18,14 @@ Input (address, m2, beds, baths)
  └─► Stats calculator → estimated value
  └─► Linear regression (OLS with intercept) on [m², habitaciones, baños]
      → per-feature contribution + personalized prediction
- └─► FastAPI response → HTML frontend
+ └─► FastAPI response → React frontend
 ```
 
 ## Stack
 - **Backend**: FastAPI + Python 3.11+
 - **Scraping**: Playwright (async) connected to Bright Data Scraping Browser via CDP
 - **Geocoding**: Nominatim (OpenStreetMap) — no API key needed
-- **Frontend**: Vanilla HTML + Tailwind CSS (CDN)
+- **Frontend**: React 19 + Vite + Tailwind + shadcn/ui (`frontend/`)
 
 ## Layout
 ```

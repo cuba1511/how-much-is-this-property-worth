@@ -28,12 +28,12 @@ completed: 2026-05-13
 
 ## Key Files Created/Modified
 
-- `frontend2/src/lib/types.ts` (created)
-- `frontend2/src/lib/schemas.ts` (created)
-- `frontend2/src/lib/api.ts` (created)
-- `frontend2/.env.example` (updated)
-- `frontend2/index.html` (lang + title)
-- `frontend2/src/index.css` (removed text-align center)
+- `frontend/src/lib/types.ts` (created)
+- `frontend/src/lib/schemas.ts` (created)
+- `frontend/src/lib/api.ts` (created)
+- `frontend/.env.example` (updated)
+- `frontend/index.html` (lang + title)
+- `frontend/src/index.css` (removed text-align center)
 - Deleted: App.css, react.svg, vite.svg, hero.png, TabBar.tsx, tabs.tsx
 
 ## Verification

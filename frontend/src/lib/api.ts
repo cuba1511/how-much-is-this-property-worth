@@ -7,7 +7,7 @@ import type {
 } from './types'
 
 export const API_BASE =
-  import.meta.env.VITE_API_URL ?? 'https://3b41-195-158-89-154.ngrok-free.app'
+  import.meta.env.VITE_API_URL ?? 'http://localhost:8001'
 
 const SHARED_HEADERS = {
   'Content-Type': 'application/json',

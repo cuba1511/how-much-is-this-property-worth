@@ -50,8 +50,8 @@ Deliver a PropHero-branded landing page shell with a hero section showing the "�
 - `.planning/ROADMAP.md` — Phase dependencies and success criteria
 
 ### Design System (already scaffolded)
-- `frontend2/tailwind.config.js` — PropHero color tokens, typography, spacing, shadows, border-radius
-- `frontend2/src/index.css` — CSS custom properties (PropHero palette), shadcn/ui HSL variables, button component classes
+- `frontend/tailwind.config.js` — PropHero color tokens, typography, spacing, shadows, border-radius
+- `frontend/src/index.css` — CSS custom properties (PropHero palette), shadcn/ui HSL variables, button component classes
 
 ### Existing Reference Implementation
 - `frontend/index.html` — Original vanilla HTML frontend showing UX flow, form layout, and Spanish copy

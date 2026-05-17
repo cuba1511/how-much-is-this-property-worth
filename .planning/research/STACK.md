@@ -110,7 +110,7 @@ Input onChange → useDebouncedCallback(350ms) → fetch /api/addresses/autocomp
 ## Installation
 
 ```bash
-cd frontend2
+cd frontend
 
 # Form handling
 npm install react-hook-form zod @hookform/resolvers

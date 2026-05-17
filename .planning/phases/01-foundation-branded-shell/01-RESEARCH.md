@@ -85,7 +85,7 @@ None — discussion stayed within phase scope
 
 **Installation:**
 ```bash
-cd frontend2 && npm install zod
+cd frontend && npm install zod
 ```
 
 **Version verification:**
@@ -220,9 +220,9 @@ export async function valuateProperty(
 ### Pitfall 2: Forgetting to Change HTML lang Attribute
 **What goes wrong:** `index.html` currently has `lang="en"` but BRAND-04 requires Spanish.
 **Why it happens:** The scaffold was generated with English defaults.
-**How to avoid:** Change `<html lang="en">` to `<html lang="es">` in `frontend2/index.html`. Also update the `<title>` tag.
+**How to avoid:** Change `<html lang="en">` to `<html lang="es">` in `frontend/index.html`. Also update the `<title>` tag.
 **Warning signs:** Accessibility audit failures, screen readers announcing wrong language.
-**Confidence:** HIGH [VERIFIED: frontend2/index.html line 2]
+**Confidence:** HIGH [VERIFIED: frontend/index.html line 2]
 
 ### Pitfall 3: Leaving text-align: center on #root
 **What goes wrong:** Hero content appears centered instead of left-aligned per D-02 / UI-SPEC.
@@ -342,7 +342,7 @@ Source: `backend/main.py` route definitions [VERIFIED: codebase]
 
 | # | Claim | Section | Risk if Wrong |
 |---|-------|---------|---------------|
-| A1 | `VITE_API_URL` env var is the correct name for the backend base URL | Code Examples (API Client) | Low — `.env.example` exists in frontend2; planner should verify the variable name matches |
+| A1 | `VITE_API_URL` env var is the correct name for the backend base URL | Code Examples (API Client) | Low — `.env.example` exists in frontend; planner should verify the variable name matches |
 | A2 | No other components depend on `@radix-ui/react-tabs` besides TabBar | Pitfall 4 | Low — if something else imports tabs, removing the package would break it. Verify before removing. |
 
 ## Open Questions
@@ -455,11 +455,11 @@ Source: `backend/main.py` route definitions [VERIFIED: codebase]
 ### Primary (HIGH confidence)
 - `backend/models.py` — Full Pydantic model definitions for API contract [VERIFIED: codebase]
 - `backend/main.py` — Route definitions, endpoint URLs [VERIFIED: codebase]
-- `frontend2/tailwind.config.js` — Design token configuration [VERIFIED: codebase]
-- `frontend2/src/index.css` — CSS custom properties, typography, button classes [VERIFIED: codebase]
-- `frontend2/package.json` — Installed dependencies and versions [VERIFIED: codebase]
-- `frontend2/index.html` — Current HTML scaffold, Google Fonts link [VERIFIED: codebase]
-- `frontend2/src/App.tsx` — Current demo code to be replaced [VERIFIED: codebase]
+- `frontend/tailwind.config.js` — Design token configuration [VERIFIED: codebase]
+- `frontend/src/index.css` — CSS custom properties, typography, button classes [VERIFIED: codebase]
+- `frontend/package.json` — Installed dependencies and versions [VERIFIED: codebase]
+- `frontend/index.html` — Current HTML scaffold, Google Fonts link [VERIFIED: codebase]
+- `frontend/src/App.tsx` — Current demo code to be replaced [VERIFIED: codebase]
 - npm registry — zod@4.4.3, vitest@4.1.6, lucide-react@1.14.0 [VERIFIED: npm view, 2026-05-13]
 
 ### Secondary (MEDIUM confidence)

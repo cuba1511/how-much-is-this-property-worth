@@ -275,7 +275,7 @@ createRoot(root).render(
 
 ### `index.html` (config) — MODIFY
 
-**Self-analog** — `frontend2/index.html` (lines 1-19):
+**Self-analog** — `frontend/index.html` (lines 1-19):
 ```html
 <!doctype html>
 <html lang="en">
@@ -302,7 +302,7 @@ createRoot(root).render(
 
 ### `src/index.css` (config/styles) — MODIFY
 
-**Self-analog** — `frontend2/src/index.css` (lines 154-164):
+**Self-analog** — `frontend/src/index.css` (lines 154-164):
 ```css
 #root {
   width: 1126px;
@@ -324,7 +324,7 @@ createRoot(root).render(
 ## Shared Patterns
 
 ### Path Alias (`@/`)
-**Source:** `frontend2/vite.config.ts` (line 9)
+**Source:** `frontend/vite.config.ts` (line 9)
 **Apply to:** All new `src/` files
 ```typescript
 // vite.config.ts configures @ → ./src
@@ -349,7 +349,7 @@ export function cn(...inputs: ClassValue[]) {
 ```
 
 ### Design Token Access
-**Source:** `frontend2/tailwind.config.js` + `src/index.css`
+**Source:** `frontend/tailwind.config.js` + `src/index.css`
 **Apply to:** All component files
 
 | Token | Tailwind Utility | Raw Value |
@@ -380,6 +380,6 @@ export function cn(...inputs: ClassValue[]) {
 
 ## Metadata
 
-**Analog search scope:** `frontend2/src/`, `backend/models.py`
+**Analog search scope:** `frontend/src/`, `backend/models.py`
 **Files scanned:** 12
 **Pattern extraction date:** 2026-05-13
