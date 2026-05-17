@@ -55,6 +55,26 @@ dev: $(VENV) $(FRONT)/node_modules
 	(cd $(FRONT) && npm run dev) & \
 	wait
 
+# ── VPS (Docker + Caddy) ─────────────────────────────────────────────────────
+
+.PHONY: vps-build vps-up vps-down vps-logs
+vps-build: $(FRONT)/node_modules
+	@echo "→ Building frontend for same-origin /api (VITE_API_URL empty)"
+	cd $(FRONT) && npm run build
+
+vps-up: vps-build
+	@[ -f deploy/.env ] || (echo "⚠  deploy/.env missing — cp deploy/env.example deploy/.env" && exit 1)
+	docker compose --env-file deploy/.env up -d --build
+	@echo ""
+	@echo "  ▶  Stack up. Test: curl http://127.0.0.1/health"
+	@echo "  ▶  Logs: make vps-logs"
+
+vps-down:
+	docker compose --env-file deploy/.env down
+
+vps-logs:
+	docker compose --env-file deploy/.env logs -f
+
 # ── Housekeeping ──────────────────────────────────────────────────────────────
 
 .PHONY: clean
@@ -79,10 +99,15 @@ help:
 	@echo "    make install     Install Python + Node deps and Playwright Chromium"
 	@echo "    make db          Create the SQLite file (backend/data/prophero.db)"
 	@echo ""
-	@echo "  Run"
+	@echo "  Run (local)"
 	@echo "    make dev         API + frontend side-by-side (recommended)"
 	@echo "    make backend     Only the FastAPI server → :8001"
 	@echo "    make frontend    Only the Vite dev server → :5173"
+	@echo ""
+	@echo "  Deploy (VPS)"
+	@echo "    make vps-up      Build UI + docker compose (needs deploy/.env)"
+	@echo "    make vps-down    Stop containers"
+	@echo "    make vps-logs    Follow api + caddy logs"
 	@echo ""
 	@echo "  Cleanup"
 	@echo "    make clean       Remove caches, build outputs, and the local DB"

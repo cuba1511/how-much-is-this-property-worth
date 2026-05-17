@@ -1,0 +1,48 @@
+# Single-VPS stack: Caddy (HTTPS + static UI) + FastAPI + SQLite volume.
+# Usage: see docs/deployment.md and `make vps-up`
+
+services:
+  api:
+    build: .
+    restart: unless-stopped
+    env_file: deploy/.env
+    environment:
+      HV_DB_PATH: /data/prophero.db
+      HV_ENV: production
+    volumes:
+      - prophero_data:/data
+    expose:
+      - "8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    env_file: deploy/.env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./frontend/dist:/srv:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  prophero_data:
+  caddy_data:
+  caddy_config:

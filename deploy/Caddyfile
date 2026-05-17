@@ -1,0 +1,27 @@
+# SITE_ADDRESS examples:
+#   tudominio.com          → HTTPS (Let's Encrypt) + redirect www
+#   :80                    → HTTP only (IP / first boot before DNS)
+{
+	email {$ACME_EMAIL}
+}
+
+{$SITE_ADDRESS} {
+	root * /srv
+	encode gzip
+
+	@api path /api/* /health
+	handle @api {
+		reverse_proxy api:8000 {
+			transport http {
+				dial_timeout 30s
+				read_timeout 300s
+				write_timeout 300s
+			}
+		}
+	}
+
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
+}

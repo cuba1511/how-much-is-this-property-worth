@@ -7,8 +7,11 @@ import type {
   ValuationResponse,
 } from './types'
 
+// Dev: localhost API. Production VPS: empty → same-origin /api via Caddy.
+// Vercel/Railway: set VITE_API_URL at build time in the host dashboard.
 export const API_BASE =
-  import.meta.env.VITE_API_URL ?? 'http://localhost:8001'
+  import.meta.env.VITE_API_URL ??
+  (import.meta.env.DEV ? 'http://localhost:8001' : '')
 
 const SHARED_HEADERS = {
   'Content-Type': 'application/json',

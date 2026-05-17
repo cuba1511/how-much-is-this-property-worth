@@ -1,0 +1,17 @@
+**/.venv
+**/venv
+**/node_modules
+**/__pycache__
+**/.git
+**/.cursor
+**/.planning
+**/dist
+**/.vite
+backend/data
+.env
+backend/.env
+frontend
+legacy
+tests/evaluation/reports
+*.md
+!backend/**/*.md

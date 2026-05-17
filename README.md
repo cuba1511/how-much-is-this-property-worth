@@ -13,6 +13,8 @@ make dev
 
 See [docs/structure.md](docs/structure.md) for folder layout, env files, and what to ignore at the repo root.
 
+**Deploy:** [docs/deployment.md](docs/deployment.md) — VPS único (~€5/mes): Docker + Caddy + SQLite.
+
 ## Project Description
 
 `how-much-is-this-property-worth` is a residential property valuation tool focused on sale price estimation. The goal is to estimate what a property is worth today based on market evidence in the surrounding area, answering a simple owner question: **"How much is this property worth, and how much could I sell it for today?"**
