@@ -18,17 +18,17 @@ created: 2026-05-13
 | Property | Value |
 |----------|-------|
 | **Framework** | vitest |
-| **Config file** | frontend2/vite.config.ts (vitest inline config or separate vitest.config.ts) |
-| **Quick run command** | `cd frontend2 && npx vitest run --reporter=verbose` |
-| **Full suite command** | `cd frontend2 && npx vitest run` |
+| **Config file** | frontend/vite.config.ts (vitest inline config or separate vitest.config.ts) |
+| **Quick run command** | `cd frontend && npx vitest run --reporter=verbose` |
+| **Full suite command** | `cd frontend && npx vitest run` |
 | **Estimated runtime** | ~5 seconds |
 
 ---
 
 ## Sampling Rate
 
-- **After every task commit:** Run `cd frontend2 && npx vitest run --reporter=verbose`
-- **After every plan wave:** Run `cd frontend2 && npx vitest run`
+- **After every task commit:** Run `cd frontend && npx vitest run --reporter=verbose`
+- **After every plan wave:** Run `cd frontend && npx vitest run`
 - **Before `/gsd-verify-work`:** Full suite must be green
 - **Max feedback latency:** 10 seconds
 
@@ -38,9 +38,9 @@ created: 2026-05-13
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 1-01-01 | 01 | 1 | BRAND-01 | — | N/A | visual | `cd frontend2 && npx vite build` | ❌ W0 | ⬜ pending |
-| 1-01-02 | 01 | 1 | BRAND-02 | — | N/A | visual | `cd frontend2 && npx vite build` | ❌ W0 | ⬜ pending |
-| 1-01-03 | 01 | 1 | BRAND-04 | — | N/A | visual | `cd frontend2 && npx vite build` | ❌ W0 | ⬜ pending |
+| 1-01-01 | 01 | 1 | BRAND-01 | — | N/A | visual | `cd frontend && npx vite build` | ❌ W0 | ⬜ pending |
+| 1-01-02 | 01 | 1 | BRAND-02 | — | N/A | visual | `cd frontend && npx vite build` | ❌ W0 | ⬜ pending |
+| 1-01-03 | 01 | 1 | BRAND-04 | — | N/A | visual | `cd frontend && npx vite build` | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 

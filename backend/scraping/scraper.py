@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 # Imported lazily inside scrape_idealista_listings to avoid an import cycle
 # (listing_detail imports helpers from this module).
 
-load_dotenv(Path(__file__).with_name(".env"))
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 SBR_WS_CDP = os.getenv("BRIGHT_DATA_CDP")
 

@@ -23,7 +23,7 @@ created: 2026-05-13
 | Icon library | lucide-react |
 | Font | Inter (system-ui fallback) |
 
-Source: `frontend2/components.json` — shadcn initialized, new-york style, cssVariables: true, lucide icons.
+Source: `frontend/components.json` — shadcn initialized, new-york style, cssVariables: true, lucide icons.
 
 ---
 
@@ -58,7 +58,7 @@ Font: Inter via CSS variable `--sans`. Already set in `index.css` `:root` block 
 
 Weights used: 400 (body text, subtitle) and 600 (headings, labels, CTA button).
 
-Source: `frontend2/src/index.css` lines 72–85 (`:root` font declaration + responsive breakpoint).
+Source: `frontend/src/index.css` lines 72–85 (`:root` font declaration + responsive breakpoint).
 
 ---
 

@@ -10,6 +10,11 @@ install: $(VENV) $(FRONT)/node_modules
 	$(PIP) install -q -r backend/requirements.txt
 	$(PYTHON) -m playwright install chromium
 	@[ -f backend/.env ] || (cp .env.example backend/.env && echo "✓ Created backend/.env from .env.example — edit it before running make dev")
+	@if [ -f .env ] && [ ! -s backend/.env ] 2>/dev/null; then \
+		echo "⚠  Tienes .env en la raíz pero backend/.env está vacío — copia las variables a backend/.env"; \
+	elif [ -f .env ]; then \
+		echo "ℹ  .env en la raíz detectado — el backend solo lee backend/.env (ver docs/structure.md)"; \
+	fi
 	@echo ""
 	@echo "✓ Install complete. Next: make db && make dev"
 
@@ -62,7 +67,7 @@ clean:
 
 .PHONY: clean-deps
 clean-deps: clean
-	rm -rf $(VENV) $(FRONT)/node_modules
+	rm -rf $(VENV) venv $(FRONT)/node_modules
 	@echo "✓ All deps removed. Re-run make install."
 
 # ── Help ──────────────────────────────────────────────────────────────────────

@@ -3,6 +3,11 @@ import hashlib
 import json
 import logging
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent / ".env")
 import statistics
 import time
 from contextlib import asynccontextmanager

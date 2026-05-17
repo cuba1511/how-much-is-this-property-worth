@@ -25,8 +25,8 @@ PropHero-branded landing page shell consisting of two components:
 
 ## Key Files Created/Modified
 
-- `frontend2/src/components/HeroSection.tsx` (created)
-- `frontend2/src/App.tsx` (rewritten)
+- `frontend/src/components/HeroSection.tsx` (created)
+- `frontend/src/App.tsx` (rewritten)
 
 ## Verification
 

@@ -70,7 +70,7 @@
 ## Recommended Project Structure
 
 ```
-frontend2/src/
+frontend/src/
 ├── App.tsx                      ← Root: composes sections
 ├── main.tsx                     ← Entry point (StrictMode, createRoot)
 ├── index.css                    ← Tailwind directives + CSS variables

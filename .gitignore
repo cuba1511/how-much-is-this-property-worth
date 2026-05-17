@@ -6,7 +6,8 @@ __pycache__/
 .DS_Store
 node_modules/
 data/
-design-tokensLast version/*
+# Figma token exports (reference only — tokens live in frontend/src/index.css)
+design-tokens/*
 
 # Evaluation harness — generated reports + response cache
 tests/evaluation/reports/*
@@ -19,4 +20,8 @@ backend/data/
 *.db-journal
 *.db-wal
 *.db-shm
-frontend/.vite/deps/*
+# Vite pre-bundle cache (never commit)
+frontend/.vite/
+frontend2/
+
+# Legacy folder name — removed in a08a7e2

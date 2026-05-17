@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A React landing page (`frontend2/`) where users input their property details and get a real-time market valuation. The page captures address (with autocomplete + map), bedrooms, bathrooms, and square meters, then hits the existing FastAPI backend to trigger the Idealista scraper. Built with PropHero's brand tokens on React + Vite + Tailwind + shadcn/ui.
+A React landing page (`frontend/`) where users input their property details and get a real-time market valuation. The page captures address (with autocomplete + map), bedrooms, bathrooms, and square meters, then hits the existing FastAPI backend to trigger the Idealista scraper. Built with PropHero's brand tokens on React + Vite + Tailwind + shadcn/ui.
 
 ## Core Value
 
@@ -37,14 +37,14 @@ Users can quickly and intuitively submit their property details through a polish
 ## Context
 
 - **Existing backend**: FastAPI at `localhost:8001` with `/api/valuate` endpoint, Nominatim geocoder, Idealista scraper via Bright Data
-- **Original frontend**: Vanilla HTML + Tailwind CDN at `frontend/index.html` — serves as reference for UX flow and behavior
-- **Frontend2 scaffold**: React 19 + Vite 8 + Tailwind 3.4 + shadcn/ui already set up with PropHero color tokens and design system variables
+- **Legacy frontend**: Vanilla HTML at `legacy/old-frontend/index.html` — reference only, not built
+- **Production frontend**: React 19 + Vite + Tailwind + shadcn/ui in `frontend/` (renamed from `frontend/` in a08a7e2)
 - **Address picker reference**: Existing vanilla JS implementation with autocomplete, suggestions panel, reverse geocode on map click, and marker management
 - **Language**: Spanish (es)
 
 ## Constraints
 
-- **Stack**: React + Vite + Tailwind + shadcn/ui (already scaffolded in `frontend2/`)
+- **Stack**: React + Vite + Tailwind + shadcn/ui (`frontend/`)
 - **Design system**: Must match PropHero brand — electric blue (#2050f6), cyan (#65c6eb), orange CTA (#f45504), Inter font
 - **API**: Nominatim for address autocomplete (free, no key needed), existing backend for valuation
 - **Map**: Leaflet for interactive map display
