@@ -6,7 +6,7 @@ import { UnitSelectionStep } from '@/components/steps/UnitSelectionStep'
 import { lookupCadastralUnits } from '@/lib/api'
 import type { CadastralUnit, ResolvedAddress } from '@/lib/types'
 
-type LookupStatus = 'idle' | 'loading' | 'done' | 'error'
+export type CatastroLookupStatus = 'idle' | 'loading' | 'done' | 'error'
 
 interface PropertyIdentificationStepProps {
   resolvedAddress: ResolvedAddress | null
@@ -14,6 +14,7 @@ interface PropertyIdentificationStepProps {
   selectedUnit: CadastralUnit | null
   onSelectedUnit: (unit: CadastralUnit | null) => void
   onUnitsCountChange?: (count: number) => void
+  onLookupStatusChange?: (status: CatastroLookupStatus) => void
   submitting?: boolean
 }
 
@@ -23,11 +24,12 @@ export function PropertyIdentificationStep({
   selectedUnit,
   onSelectedUnit,
   onUnitsCountChange,
+  onLookupStatusChange,
   submitting = false,
 }: PropertyIdentificationStepProps) {
   const { t } = useTranslation()
   const [units, setUnits] = useState<CadastralUnit[]>([])
-  const [lookupStatus, setLookupStatus] = useState<LookupStatus>('idle')
+  const [lookupStatus, setLookupStatus] = useState<CatastroLookupStatus>('idle')
   const [lookupError, setLookupError] = useState<string | null>(null)
   const lastFetchedRef = useRef<string | null>(null)
 
@@ -72,6 +74,10 @@ export function PropertyIdentificationStep({
 
     return () => controller.abort()
   }, [resolvedAddress, onSelectedUnit, onUnitsCountChange, t])
+
+  useEffect(() => {
+    onLookupStatusChange?.(lookupStatus)
+  }, [lookupStatus, onLookupStatusChange])
 
   const needsSelection = lookupStatus === 'done' && units.length > 1
   const singleUnit = lookupStatus === 'done' && units.length === 1

@@ -14,7 +14,11 @@ import {
 } from 'lucide-react'
 import { StepIndicator } from '@/components/StepIndicator'
 import { SelectedAddressBanner } from '@/components/SelectedAddressBanner'
-import { PropertyIdentificationStep } from '@/components/steps/PropertyIdentificationStep'
+import {
+  PropertyIdentificationStep,
+  type CatastroLookupStatus,
+} from '@/components/steps/PropertyIdentificationStep'
+import { canProceedFromIdentification } from '@/lib/identification-step'
 import { PropertyTypeStep } from '@/components/steps/PropertyTypeStep'
 import { PropertyDetailsStep } from '@/components/steps/PropertyDetailsStep'
 import { ValuationIntentStep } from '@/components/steps/ValuationIntentStep'
@@ -76,6 +80,7 @@ export function ValuationForm({ onResult, onError, initialResolvedAddress = null
   )
   const [selectedUnit, setSelectedUnit] = useState<CadastralUnit | null>(null)
   const [cadastralUnitsCount, setCadastralUnitsCount] = useState(0)
+  const [catastroLookupStatus, setCatastroLookupStatus] = useState<CatastroLookupStatus>('idle')
   const [submitting, setSubmitting] = useState(false)
   const [unitError, setUnitError] = useState<string | null>(null)
   const [leadDialogOpen, setLeadDialogOpen] = useState(false)
@@ -100,6 +105,13 @@ export function ValuationForm({ onResult, onError, initialResolvedAddress = null
 
   const showAddressBanner = Boolean(resolvedAddress) && currentStep > 0
   const isLastStep = currentStep === STEPS.length - 1
+  const step0Ready = canProceedFromIdentification(
+    resolvedAddress,
+    catastroLookupStatus,
+    cadastralUnitsCount,
+    selectedUnit,
+  )
+  const nextDisabled = currentStep === 0 && !step0Ready
 
   function setIssueErrors(issues: { path: PropertyKey[]; message: string }[]) {
     for (const issue of issues) {
@@ -120,6 +132,10 @@ export function ValuationForm({ onResult, onError, initialResolvedAddress = null
       }
       if (!resolvedAddress?.house_number) {
         setUnitError(t('catastro.needStreetNumber'))
+        return false
+      }
+      if (catastroLookupStatus === 'loading' || catastroLookupStatus === 'idle') {
+        setUnitError(t('catastro.waitForUnits'))
         return false
       }
       if (cadastralUnitsCount > 1 && !selectedUnit) {
@@ -256,6 +272,7 @@ export function ValuationForm({ onResult, onError, initialResolvedAddress = null
                   setUnitError(null)
                 }}
                 onUnitsCountChange={setCadastralUnitsCount}
+                onLookupStatusChange={setCatastroLookupStatus}
                 submitting={submitting}
               />
               {unitError && (
@@ -314,7 +331,12 @@ export function ValuationForm({ onResult, onError, initialResolvedAddress = null
                 <ChevronRight className="h-4 w-4" />
               </button>
             ) : (
-              <button type="button" onClick={handleNext} className="btn-primary">
+              <button
+                type="button"
+                onClick={handleNext}
+                disabled={nextDisabled}
+                className="btn-primary disabled:cursor-not-allowed disabled:opacity-50"
+              >
                 {t('form.next')}
                 <ChevronRight className="h-4 w-4" />
               </button>

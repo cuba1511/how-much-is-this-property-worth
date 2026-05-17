@@ -71,6 +71,7 @@
     "floor": "Planta",
     "door": "Puerta",
     "selectUnitError": "Selecciona un inmueble de la lista para continuar",
+    "waitForUnits": "Espera a que carguen los inmuebles de esta dirección antes de continuar",
     "needStreetNumber": "La dirección debe incluir número de portal para identificar el inmueble"
   },
   "impacts": {

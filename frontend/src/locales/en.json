@@ -71,6 +71,7 @@
     "floor": "Floor",
     "door": "Door",
     "selectUnitError": "Select a unit from the list to continue",
+    "waitForUnits": "Wait for the units at this address to load before continuing",
     "needStreetNumber": "The address must include a street number to identify the property"
   },
   "impacts": {
