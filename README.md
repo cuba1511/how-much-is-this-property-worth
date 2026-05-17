@@ -1,7 +1,5 @@
 # how-much-is-this-property-worth
 
-![How much is this house worth MVP](docs/imgs/how-much-is-this-house-worth.png)
-
 ## Quick start
 
 ```bash
