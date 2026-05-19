@@ -94,6 +94,7 @@ Lista completa en `deploy/env.example`.
 | `EC2_USER` | secret | `ubuntu` (Amazon Linux: `ec2-user`) |
 | `EC2_SSH_KEY` | secret | Contenido del `.pem` (private key) |
 | `EC2_APP_DIR` | secret | Ruta del clone, ej. `/home/ec2-user/how-much-is-this-property-worth` |
+| `EC2_REPO_URL` | variable o secret | URL para clonar si falta el repo en EC2 |
 | `SITE_ADDRESS` | variable o secret | Dominio para Caddy |
 | `ACME_EMAIL` | variable o secret | Email Let's Encrypt |
 | `BRIGHT_DATA_CDP` | secret | Bright Data |
@@ -106,7 +107,7 @@ Flujo:
 
 1. Actions exporta secrets/vars en el job.
 2. `appleboy/ssh-action` las pasa al shell remoto (`envs:`).
-3. En EC2: `git pull` → `./scripts/vps-deploy.sh` → `docker compose up` lee **el entorno del shell**, no ningún fichero `.env`.
+3. En EC2: clona el repo si falta → `git pull` → `./scripts/vps-deploy.sh` → `docker compose up` lee **el entorno del shell**, no ningún fichero `.env`.
 
 ### Primer deploy manual en EC2 (opcional)
 
