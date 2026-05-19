@@ -1,0 +1,62 @@
+# Deploy to EC2: SSH → git pull → docker compose with env from GitHub Environment.
+# No .env file on the server — secrets/vars are injected by Actions into the remote shell.
+
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-ec2-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    environment: production
+
+    env:
+      SITE_ADDRESS: ${{ vars.SITE_ADDRESS || secrets.SITE_ADDRESS }}
+      ACME_EMAIL: ${{ vars.ACME_EMAIL || secrets.ACME_EMAIL }}
+      BRIGHT_DATA_CDP: ${{ secrets.BRIGHT_DATA_CDP }}
+      BRIGHT_DATA_API_KEY: ${{ secrets.BRIGHT_DATA_API_KEY }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      RESEND_FROM_EMAIL: ${{ vars.RESEND_FROM_EMAIL || secrets.RESEND_FROM_EMAIL }}
+      HV_API_KEY: ${{ secrets.HV_API_KEY }}
+
+    steps:
+      - name: Deploy on EC2
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          command_timeout: 30m
+          envs: SITE_ADDRESS,ACME_EMAIL,BRIGHT_DATA_CDP,BRIGHT_DATA_API_KEY,RESEND_API_KEY,RESEND_FROM_EMAIL,HV_API_KEY
+          script: |
+            set -euo pipefail
+            cd "${{ secrets.EC2_APP_DIR }}"
+
+            git fetch origin main
+            git reset --hard origin/main
+
+            chmod +x scripts/vps-deploy.sh
+            ./scripts/vps-deploy.sh
+
+            docker image prune -f
+            sleep 5
+            curl -fsS http://127.0.0.1/health
+
+      - name: Health check (HTTPS)
+        env:
+          SITE_ADDRESS: ${{ vars.SITE_ADDRESS || secrets.SITE_ADDRESS }}
+        run: |
+          if [[ "$SITE_ADDRESS" == ":80" || -z "$SITE_ADDRESS" ]]; then
+            echo "Skipping public HTTPS check"
+            exit 0
+          fi
+          curl -fsS --retry 5 --retry-delay 5 "https://${SITE_ADDRESS}/health"

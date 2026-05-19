@@ -1,0 +1,54 @@
+# Single-VPS / EC2 stack. All config comes from the shell environment (GitHub Actions
+# secrets → SSH env → docker compose). No deploy/.env file on the server.
+
+services:
+  api:
+    build: .
+    restart: unless-stopped
+    environment:
+      HV_DB_PATH: /data/prophero.db
+      HV_ENV: production
+      BRIGHT_DATA_CDP: ${BRIGHT_DATA_CDP:?set BRIGHT_DATA_CDP}
+      BRIGHT_DATA_API_KEY: ${BRIGHT_DATA_API_KEY:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-}
+      HV_API_KEY: ${HV_API_KEY:-}
+    volumes:
+      - prophero_data:/data
+    expose:
+      - "8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./frontend/dist:/srv:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  prophero_data:
+  caddy_data:
+  caddy_config:

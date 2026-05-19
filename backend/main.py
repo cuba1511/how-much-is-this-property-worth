@@ -69,6 +69,19 @@ CI_FLOOR_EUR = 0
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+def _cors_origins() -> list[str]:
+    """Explicit origins in production (CORS_ORIGINS). Local dev defaults to ['*']."""
+    raw = os.environ.get("CORS_ORIGINS", "").strip()
+    if raw:
+        return [origin.strip() for origin in raw.split(",") if origin.strip()]
+    if os.environ.get("HV_ENV") == "production":
+        logger.warning(
+            "HV_ENV=production but CORS_ORIGINS is unset — browser requests from Vercel will be blocked"
+        )
+        return []
+    return ["*"]
+
 DATASET_MAX_ROWS = 10
 DATASET_MIN_ROWS = 3
 
@@ -256,22 +269,24 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+_cors = _cors_origins()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_cors,
+    allow_credentials="*" not in _cors,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
+# Legacy local path: serve Vite source only when present (not in production Docker image).
+_FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+_LEGACY_INDEX = _FRONTEND_DIR / "index.html"
+if _LEGACY_INDEX.is_file():
+    app.mount("/static", StaticFiles(directory=str(_FRONTEND_DIR)), name="static")
 
-app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
-
-
-@app.get("/", include_in_schema=False)
-async def serve_frontend():
-    return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+    @app.get("/", include_in_schema=False)
+    async def serve_frontend():
+        return FileResponse(str(_LEGACY_INDEX))
 
 
 @app.get("/health")
