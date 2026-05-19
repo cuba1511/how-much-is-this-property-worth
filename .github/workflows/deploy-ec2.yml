@@ -62,11 +62,7 @@ jobs:
             sleep 5
             curl -fsS http://127.0.0.1/health
 
-<<<<<<< HEAD
-      - name: Health check (HTTPS)
-=======
       - name: Health check (public)
->>>>>>> 759c82e (fix: bound public deploy health check)
         env:
           SITE_ADDRESS: ${{ vars.SITE_ADDRESS || secrets.SITE_ADDRESS }}
         run: |
@@ -84,12 +80,8 @@ jobs:
             HEALTH_URL="https://${SITE_ADDRESS%/}/health"
           fi
 
-<<<<<<< HEAD
-          curl -fsS --retry 5 --retry-delay 5 "$HEALTH_URL"
-=======
           echo "Checking public health endpoint..."
           curl --fail --show-error --location \
             --retry 3 --retry-all-errors --retry-delay 5 \
             --connect-timeout 10 --max-time 20 \
             "$HEALTH_URL"
->>>>>>> 759c82e (fix: bound public deploy health check)
