@@ -63,6 +63,8 @@ jobs:
             curl -fsS http://127.0.0.1/health
 
       - name: Health check (public)
+        id: public_health
+        continue-on-error: true
         env:
           SITE_ADDRESS: ${{ vars.SITE_ADDRESS || secrets.SITE_ADDRESS }}
         run: |
@@ -87,7 +89,7 @@ jobs:
             "$HEALTH_URL"
 
       - name: Caddy diagnostics
-        if: failure()
+        if: ${{ steps.public_health.outcome == 'failure' }}
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.EC2_HOST }}
