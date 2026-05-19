@@ -95,7 +95,7 @@ Lista completa en `deploy/env.example`.
 | `EC2_SSH_KEY` | secret | Contenido del `.pem` (private key) |
 | `EC2_APP_DIR` | secret | Ruta del clone, ej. `/home/ec2-user/how-much-is-this-property-worth` |
 | `EC2_REPO_URL` | variable o secret | URL para clonar si falta el repo en EC2 |
-| `SITE_ADDRESS` | variable o secret | Opcional. Dominio para Caddy; por IP usa `:80` por defecto |
+| `SITE_ADDRESS` | variable o secret | Opcional. Dominio para Caddy, preferiblemente sin `https://`; por IP usa `:80` por defecto |
 | `ACME_EMAIL` | variable o secret | Opcional. Email Let's Encrypt |
 | `BRIGHT_DATA_CDP` | secret | Bright Data |
 | `BRIGHT_DATA_API_KEY` | secret | Opcional |

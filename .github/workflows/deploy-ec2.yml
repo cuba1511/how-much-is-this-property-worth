@@ -66,8 +66,18 @@ jobs:
         env:
           SITE_ADDRESS: ${{ vars.SITE_ADDRESS || secrets.SITE_ADDRESS }}
         run: |
+          SITE_ADDRESS="${SITE_ADDRESS#"${SITE_ADDRESS%%[![:space:]]*}"}"
+          SITE_ADDRESS="${SITE_ADDRESS%"${SITE_ADDRESS##*[![:space:]]}"}"
+
           if [[ "$SITE_ADDRESS" == ":80" || -z "$SITE_ADDRESS" ]]; then
             echo "Skipping public HTTPS check"
             exit 0
           fi
-          curl -fsS --retry 5 --retry-delay 5 "https://${SITE_ADDRESS}/health"
+
+          if [[ "$SITE_ADDRESS" == http://* || "$SITE_ADDRESS" == https://* ]]; then
+            HEALTH_URL="${SITE_ADDRESS%/}/health"
+          else
+            HEALTH_URL="https://${SITE_ADDRESS%/}/health"
+          fi
+
+          curl -fsS --retry 5 --retry-delay 5 "$HEALTH_URL"
