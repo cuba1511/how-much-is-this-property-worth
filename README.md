@@ -13,7 +13,7 @@ make dev
 
 See [docs/structure.md](docs/structure.md) for folder layout, env files, and what to ignore at the repo root.
 
-**Deploy:** [docs/deployment.md](docs/deployment.md) — VPS único (~€5/mes): Docker + Caddy + SQLite.
+**Deploy:** [docs/deployment.md](docs/deployment.md) — EC2/VPS: Docker + Caddy; secrets en GitHub Actions (sin `.env` en servidor).
 
 ## Project Description
 

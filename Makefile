@@ -63,17 +63,17 @@ vps-build: $(FRONT)/node_modules
 	cd $(FRONT) && npm run build
 
 vps-up: vps-build
-	@[ -f deploy/.env ] || (echo "⚠  deploy/.env missing — cp deploy/env.example deploy/.env" && exit 1)
-	docker compose --env-file deploy/.env up -d --build
+	@test -n "$$SITE_ADDRESS" || (echo "⚠  Export SITE_ADDRESS, ACME_EMAIL, BRIGHT_DATA_CDP (see deploy/env.example)" && exit 1)
+	docker compose up -d --build
 	@echo ""
 	@echo "  ▶  Stack up. Test: curl http://127.0.0.1/health"
 	@echo "  ▶  Logs: make vps-logs"
 
 vps-down:
-	docker compose --env-file deploy/.env down
+	docker compose down
 
 vps-logs:
-	docker compose --env-file deploy/.env logs -f
+	docker compose logs -f
 
 # ── Housekeeping ──────────────────────────────────────────────────────────────
 

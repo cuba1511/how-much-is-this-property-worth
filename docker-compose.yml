@@ -1,14 +1,18 @@
-# Single-VPS stack: Caddy (HTTPS + static UI) + FastAPI + SQLite volume.
-# Usage: see docs/deployment.md and `make vps-up`
+# Single-VPS / EC2 stack. All config comes from the shell environment (GitHub Actions
+# secrets → SSH env → docker compose). No deploy/.env file on the server.
 
 services:
   api:
     build: .
     restart: unless-stopped
-    env_file: deploy/.env
     environment:
       HV_DB_PATH: /data/prophero.db
       HV_ENV: production
+      BRIGHT_DATA_CDP: ${BRIGHT_DATA_CDP:?set BRIGHT_DATA_CDP}
+      BRIGHT_DATA_API_KEY: ${BRIGHT_DATA_API_KEY:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-}
+      HV_API_KEY: ${HV_API_KEY:-}
     volumes:
       - prophero_data:/data
     expose:
@@ -29,7 +33,9 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
-    env_file: deploy/.env
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS}
+      ACME_EMAIL: ${ACME_EMAIL:-}
     ports:
       - "80:80"
       - "443:443"
