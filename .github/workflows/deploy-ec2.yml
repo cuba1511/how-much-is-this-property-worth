@@ -7,6 +7,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      reset_caddy_state:
+        description: "Wipe Caddy certificates and accounts (forces fresh Let's Encrypt issuance)"
+        type: boolean
+        default: false
 
 concurrency:
   group: deploy-ec2-production
@@ -27,6 +32,7 @@ jobs:
       RESEND_FROM_EMAIL: ${{ vars.RESEND_FROM_EMAIL || secrets.RESEND_FROM_EMAIL }}
       HV_API_KEY: ${{ secrets.HV_API_KEY }}
       EC2_REPO_URL: ${{ vars.EC2_REPO_URL || secrets.EC2_REPO_URL }}
+      RESET_CADDY_STATE: ${{ inputs.reset_caddy_state == true && 'true' || 'false' }}
 
     steps:
       - name: Deploy on EC2
@@ -37,7 +43,7 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           port: 22
           command_timeout: 30m
-          envs: SITE_ADDRESS,ACME_EMAIL,BRIGHT_DATA_CDP,BRIGHT_DATA_API_KEY,RESEND_API_KEY,RESEND_FROM_EMAIL,HV_API_KEY,EC2_REPO_URL
+          envs: SITE_ADDRESS,ACME_EMAIL,BRIGHT_DATA_CDP,BRIGHT_DATA_API_KEY,RESEND_API_KEY,RESEND_FROM_EMAIL,HV_API_KEY,EC2_REPO_URL,RESET_CADDY_STATE
           script: |
             set -euo pipefail
             APP_DIR="${{ secrets.EC2_APP_DIR }}"
@@ -54,6 +60,14 @@ jobs:
 
             git fetch origin main
             git reset --hard origin/main
+
+            if [[ "${RESET_CADDY_STATE:-false}" == "true" ]]; then
+              echo "→ Resetting Caddy state (certs + ACME accounts)"
+              docker compose stop caddy || true
+              docker compose rm -f caddy || true
+              docker volume rm -f "$(basename "$APP_DIR" | tr '[:upper:]' '[:lower:]')_caddy_data" 2>/dev/null || true
+              docker volume rm -f "$(basename "$APP_DIR" | tr '[:upper:]' '[:lower:]')_caddy_config" 2>/dev/null || true
+            fi
 
             chmod +x scripts/vps-deploy.sh
             ./scripts/vps-deploy.sh
@@ -89,7 +103,7 @@ jobs:
             "$HEALTH_URL"
 
       - name: Caddy diagnostics
-        if: ${{ steps.public_health.outcome == 'failure' }}
+        if: always()
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -110,5 +124,9 @@ jobs:
             fi
 
             echo ""
-            echo "Caddy logs:"
-            docker logs --tail=200 "$CADDY_CONTAINER"
+            echo "Caddy logs (last 200 lines):"
+            docker logs --tail=200 "$CADDY_CONTAINER" 2>&1 | tail -200
+
+            echo ""
+            echo "ACME issuer used (looking for 'staging' would indicate test certs):"
+            docker logs "$CADDY_CONTAINER" 2>&1 | grep -E 'acme-(staging-)?v02|certificate obtained|issuer' | tail -20 || echo "(no ACME entries)"

@@ -1,6 +1,10 @@
 # SITE_ADDRESS examples:
 #   tudominio.com          → HTTPS (Let's Encrypt) + redirect www
 #   :80                    → HTTP only (IP / first boot before DNS)
+{
+	email {$ACME_EMAIL}
+}
+
 {$SITE_ADDRESS} {
 	root * /srv
 	encode gzip
