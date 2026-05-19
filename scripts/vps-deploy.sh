@@ -6,8 +6,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-: "${SITE_ADDRESS:?SITE_ADDRESS is not set}"
-: "${ACME_EMAIL:?ACME_EMAIL is not set}"
+export SITE_ADDRESS="${SITE_ADDRESS:-:80}"
 : "${BRIGHT_DATA_CDP:?BRIGHT_DATA_CDP is not set}"
 
 if [[ ! -d frontend/node_modules ]]; then
@@ -24,5 +23,5 @@ docker compose up -d --build
 echo ""
 docker compose ps
 echo ""
-echo "Health: curl -sS http://127.0.0.1/health  (or https://${SITE_ADDRESS}/health)"
+echo "Health: curl -sS http://127.0.0.1/health"
 echo "Logs:   docker compose logs -f api"

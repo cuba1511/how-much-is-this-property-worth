@@ -56,8 +56,8 @@ Instala en la instancia: Docker, docker compose, Node 20+ (build del frontend), 
 
 | Variable | Dónde | Notas |
 |----------|--------|--------|
-| `SITE_ADDRESS` | GitHub var/secret | Dominio sin `https://`. Antes de DNS: `:80` |
-| `ACME_EMAIL` | GitHub var/secret | Let's Encrypt |
+| `SITE_ADDRESS` | GitHub var/secret | Opcional. Dominio sin `https://`; si falta usa `:80` |
+| `ACME_EMAIL` | GitHub var/secret | Opcional. Email Let's Encrypt cuando uses dominio |
 | `BRIGHT_DATA_CDP` | GitHub **secret** | Igual que local |
 | `RESEND_*`, `HV_API_KEY` | GitHub **secret** | Opcional |
 
@@ -73,7 +73,7 @@ En tu registrador, registro **A**:
 |--------|--------|
 | `@` o `app` | IP del VPS |
 
-Espera propagación. Configura `SITE_ADDRESS` y `ACME_EMAIL` en GitHub (abajo).
+Espera propagación. Cuando uses dominio, configura `SITE_ADDRESS` y opcionalmente `ACME_EMAIL` en GitHub (abajo).
 
 ---
 
@@ -95,8 +95,8 @@ Lista completa en `deploy/env.example`.
 | `EC2_SSH_KEY` | secret | Contenido del `.pem` (private key) |
 | `EC2_APP_DIR` | secret | Ruta del clone, ej. `/home/ec2-user/how-much-is-this-property-worth` |
 | `EC2_REPO_URL` | variable o secret | URL para clonar si falta el repo en EC2 |
-| `SITE_ADDRESS` | variable o secret | Dominio para Caddy |
-| `ACME_EMAIL` | variable o secret | Email Let's Encrypt |
+| `SITE_ADDRESS` | variable o secret | Opcional. Dominio para Caddy; por IP usa `:80` por defecto |
+| `ACME_EMAIL` | variable o secret | Opcional. Email Let's Encrypt |
 | `BRIGHT_DATA_CDP` | secret | Bright Data |
 | `BRIGHT_DATA_API_KEY` | secret | Opcional |
 | `RESEND_API_KEY` | secret | Opcional |
@@ -115,7 +115,7 @@ Solo si quieres probar sin Actions — exporta variables en la sesión SSH:
 
 ```bash
 export SITE_ADDRESS=valoracion.tudominio.com
-export ACME_EMAIL=tu@email.com
+export ACME_EMAIL=tu@email.com  # opcional
 export BRIGHT_DATA_CDP='wss://...'
 ./scripts/vps-deploy.sh
 ```
@@ -147,8 +147,6 @@ docker compose exec api cp /data/prophero.db /data/prophero.db.bak.$(date +%F)
 ## Probar en tu Mac (Docker local)
 
 ```bash
-export SITE_ADDRESS=:80
-export ACME_EMAIL=dev@local.test
 export BRIGHT_DATA_CDP='wss://...'
 make vps-up
 open http://127.0.0.1
