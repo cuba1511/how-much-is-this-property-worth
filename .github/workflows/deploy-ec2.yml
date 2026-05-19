@@ -26,6 +26,7 @@ jobs:
       RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
       RESEND_FROM_EMAIL: ${{ vars.RESEND_FROM_EMAIL || secrets.RESEND_FROM_EMAIL }}
       HV_API_KEY: ${{ secrets.HV_API_KEY }}
+      EC2_REPO_URL: ${{ vars.EC2_REPO_URL || secrets.EC2_REPO_URL }}
 
     steps:
       - name: Deploy on EC2
@@ -36,14 +37,17 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           port: 22
           command_timeout: 30m
-          envs: SITE_ADDRESS,ACME_EMAIL,BRIGHT_DATA_CDP,BRIGHT_DATA_API_KEY,RESEND_API_KEY,RESEND_FROM_EMAIL,HV_API_KEY
+          envs: SITE_ADDRESS,ACME_EMAIL,BRIGHT_DATA_CDP,BRIGHT_DATA_API_KEY,RESEND_API_KEY,RESEND_FROM_EMAIL,HV_API_KEY,EC2_REPO_URL
           script: |
             set -euo pipefail
             APP_DIR="${{ secrets.EC2_APP_DIR }}"
+            : "${APP_DIR:?EC2_APP_DIR is not set}"
 
             if [[ ! -d "$APP_DIR/.git" ]]; then
-              echo "Repository not found at $APP_DIR"
-              exit 1
+              : "${EC2_REPO_URL:?EC2_REPO_URL is not set}"
+              echo "Repository not found at $APP_DIR; cloning"
+              mkdir -p "$(dirname "$APP_DIR")"
+              git clone "$EC2_REPO_URL" "$APP_DIR"
             fi
 
             cd "$APP_DIR"
