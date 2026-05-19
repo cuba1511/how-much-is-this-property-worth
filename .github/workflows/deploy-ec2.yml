@@ -39,7 +39,14 @@ jobs:
           envs: SITE_ADDRESS,ACME_EMAIL,BRIGHT_DATA_CDP,BRIGHT_DATA_API_KEY,RESEND_API_KEY,RESEND_FROM_EMAIL,HV_API_KEY
           script: |
             set -euo pipefail
-            cd "${{ secrets.EC2_APP_DIR }}"
+            APP_DIR="${{ secrets.EC2_APP_DIR }}"
+
+            if [[ ! -d "$APP_DIR/.git" ]]; then
+              echo "Repository not found at $APP_DIR"
+              exit 1
+            fi
+
+            cd "$APP_DIR"
 
             git fetch origin main
             git reset --hard origin/main

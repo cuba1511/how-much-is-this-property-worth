@@ -93,7 +93,7 @@ Lista completa en `deploy/env.example`.
 | `EC2_HOST` | secret | IP o hostname de la instancia |
 | `EC2_USER` | secret | `ubuntu` (Amazon Linux: `ec2-user`) |
 | `EC2_SSH_KEY` | secret | Contenido del `.pem` (private key) |
-| `EC2_APP_DIR` | secret | Ruta del clone, ej. `/home/ubuntu/how-much-is-this-property-worth` |
+| `EC2_APP_DIR` | secret | Ruta del clone, ej. `/home/ec2-user/how-much-is-this-property-worth` |
 | `SITE_ADDRESS` | variable o secret | Dominio para Caddy |
 | `ACME_EMAIL` | variable o secret | Email Let's Encrypt |
 | `BRIGHT_DATA_CDP` | secret | Bright Data |
