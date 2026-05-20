@@ -10,6 +10,7 @@ if str(BACKEND) not in sys.path:
 from geocoding.geocoder import (
     _attach_user_house_number,
     _extract_trailing_house_number,
+    _photon_feature_to_resolved,
     _photon_label,
     _strip_postal_prefixes,
     _strip_postcode_from_label,
@@ -361,3 +362,87 @@ def test_attach_user_house_number_handles_none_number():
     out = _attach_user_house_number([sugg], None)
     assert out[0].house_number is None
     assert out[0].label == "Calle Mayor, Madrid"
+
+
+# ── _photon_feature_to_resolved: street-level matches populate `road` ───
+#
+# Regression for the second iteration of Joaquin's report: even after the
+# label/sanitization fixes, the autocomplete row showed "Calle Matías
+# Turrión, Ciudad Lineal…" without a portal. Root cause: Photon's
+# street-level features (`type == "street"`) expose the street name in
+# `name` rather than `street`, but the resolver only read `street`. Result:
+# `ResolvedAddress.road` was `None`, so `_attach_user_house_number` skipped
+# the suggestion (its guard requires `road`), and the frontend never
+# received a `house_number`, leaving "Continuar" disabled.
+
+
+def test_photon_feature_to_resolved_street_level_populates_road():
+    """Photon street-level features carry the street name in `name`.
+
+    Without this, `_attach_user_house_number` can't inject the user's
+    typed portal and the click never produces a usable Catastro query.
+    """
+    feature = {
+        "geometry": {"type": "Point", "coordinates": [-3.6587841, 40.4586466]},
+        "properties": {
+            "osm_type": "W",
+            "osm_id": 26114385,
+            "osm_key": "highway",
+            "osm_value": "residential",
+            "type": "street",
+            "name": "Calle Matías Turrión",
+            "locality": "Colina",
+            "district": "Ciudad Lineal",
+            "city": "Madrid",
+            "state": "Comunidad de Madrid",
+            "country": "España",
+            "postcode": "28016",
+        },
+    }
+    resolved = _photon_feature_to_resolved(feature)
+    assert resolved is not None
+    assert resolved.road == "Calle Matías Turrión"
+    assert resolved.house_number is None
+    assert resolved.city_district == "Ciudad Lineal"
+
+
+def test_photon_feature_to_resolved_portal_level_keeps_street_field():
+    """Portal-level features expose `street` separately from `name`; that
+    case must keep working — only the street-level branch was broken."""
+    feature = {
+        "geometry": {"type": "Point", "coordinates": [-3.7, 40.4]},
+        "properties": {
+            "osm_type": "N",
+            "osm_id": 1,
+            "type": "house",
+            "name": "Some Building Name",
+            "street": "Calle Mayor",
+            "housenumber": "12",
+            "city": "Madrid",
+            "country": "España",
+        },
+    }
+    resolved = _photon_feature_to_resolved(feature)
+    assert resolved is not None
+    assert resolved.road == "Calle Mayor"
+    assert resolved.house_number == "12"
+
+
+def test_photon_feature_to_resolved_does_not_use_name_for_non_street_types():
+    """Cities, regions, POIs etc. share the `name` field too — we must NOT
+    promote those to `road`, otherwise city-level matches would falsely
+    accept synthesized portals from `_attach_user_house_number`."""
+    feature = {
+        "geometry": {"type": "Point", "coordinates": [-3.7, 40.4]},
+        "properties": {
+            "osm_type": "R",
+            "osm_id": 2,
+            "type": "city",
+            "name": "Madrid",
+            "city": "Madrid",
+            "country": "España",
+        },
+    }
+    resolved = _photon_feature_to_resolved(feature)
+    assert resolved is not None
+    assert resolved.road is None

@@ -368,13 +368,23 @@ def _photon_feature_to_resolved(feature: dict) -> ResolvedAddress | None:
     osm_type = props.get("osm_type")
     provider_id = f"{osm_type}{osm_id}" if osm_id is not None and osm_type else None
 
+    # Photon only exposes a separate `street` field when the match has a
+    # specific `housenumber` (portal-level). For street-level matches it
+    # returns the street name in `name` and tags it with `type=="street"`.
+    # We treat both the same so downstream consumers (Catastro lookup,
+    # user-number synthesis in `_attach_user_house_number`) can rely on
+    # `road` being populated whenever we matched a street.
+    road = props.get("street")
+    if not road and props.get("type") == "street":
+        road = props.get("name")
+
     return ResolvedAddress(
         label=label,
         lat=lat,
         lon=lon,
         municipality=municipality or label,
         province=props.get("state"),
-        road=props.get("street"),
+        road=road,
         house_number=props.get("housenumber"),
         postcode=props.get("postcode"),
         neighbourhood=props.get("district"),
