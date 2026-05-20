@@ -7,11 +7,13 @@ import { UnitSelectionStep } from '@/components/steps/UnitSelectionStep'
 import { CadastralReferenceSearch } from '@/components/CadastralReferenceSearch'
 import { lookupCadastralUnits } from '@/lib/api'
 import type { ValuationRequestForm } from '@/lib/schemas'
-import type { CadastralUnit, ResolvedAddress } from '@/lib/types'
+import type {
+  CadastralUnit,
+  IdentificationMode,
+  ResolvedAddress,
+} from '@/lib/types'
 
 export type CatastroLookupStatus = 'idle' | 'loading' | 'done' | 'error'
-
-type IdentificationMode = 'address' | 'reference'
 
 interface PropertyIdentificationStepProps {
   resolvedAddress: ResolvedAddress | null
@@ -21,6 +23,15 @@ interface PropertyIdentificationStepProps {
   onUnitsCountChange?: (count: number) => void
   onLookupStatusChange?: (status: CatastroLookupStatus) => void
   submitting?: boolean
+  /** Mode the user picked in the Hero. Defaults to 'address' for direct loads. */
+  initialMode?: IdentificationMode
+  /** Pre-fetched units when the Hero already resolved a cadastral reference.
+   *  When non-empty, step 0 starts in 'done' state with these units listed
+   *  and skips the Catastro-by-address effect on first mount. */
+  initialUnits?: CadastralUnit[]
+  /** Catastro-formatted label of the resolved reference; used as a fallback
+   *  for the form's `address` field when geocoding failed. */
+  initialReferenceLabel?: string | null
 }
 
 export function PropertyIdentificationStep({
@@ -31,21 +42,54 @@ export function PropertyIdentificationStep({
   onUnitsCountChange,
   onLookupStatusChange,
   submitting = false,
+  initialMode = 'address',
+  initialUnits = [],
+  initialReferenceLabel = null,
 }: PropertyIdentificationStepProps) {
   const { t } = useTranslation()
   const { setValue } = useFormContext<ValuationRequestForm>()
-  const [mode, setMode] = useState<IdentificationMode>('address')
-  const [units, setUnits] = useState<CadastralUnit[]>([])
-  const [lookupStatus, setLookupStatus] = useState<CatastroLookupStatus>('idle')
+  const [mode, setMode] = useState<IdentificationMode>(initialMode)
+  const [units, setUnits] = useState<CadastralUnit[]>(initialUnits)
+  // If the Hero already pre-fetched a reference, treat step 0 as resolved on
+  // mount and skip the address-mode effect via this ref.
+  const seededFromReference =
+    initialMode === 'reference' && initialUnits.length > 0
+  const [lookupStatus, setLookupStatus] = useState<CatastroLookupStatus>(
+    seededFromReference ? 'done' : 'idle',
+  )
   const [lookupError, setLookupError] = useState<string | null>(null)
-  const [referenceGeocodeWarning, setReferenceGeocodeWarning] = useState(false)
+  const [referenceGeocodeWarning, setReferenceGeocodeWarning] = useState(
+    seededFromReference && !resolvedAddress,
+  )
+  // Track whether we already consumed the initial seed. Once the user
+  // interacts (switches tab, edits address, searches a new reference), this
+  // flips and the address-mode effect runs normally again.
+  const initialSeedConsumed = useRef(false)
   const lastFetchedRef = useRef<string | null>(null)
+
+  // Mirror the seeded reference label into the form so step 0 validation
+  // (which checks `address` is non-empty) passes without the user retyping
+  // anything when they came from the Hero in reference mode.
+  useEffect(() => {
+    if (!seededFromReference) return
+    const formAddress =
+      resolvedAddress?.label ?? initialReferenceLabel ?? ''
+    if (formAddress) {
+      setValue('address', formAddress, { shouldValidate: true })
+    }
+    // Run once on mount; subsequent address changes go through their own paths.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Address mode: when we have a confirmed address with a portal, hit Catastro
   // to list units. Reference mode skips this — units come pre-populated from
   // the /api/catastro/by-reference call.
   useEffect(() => {
     if (mode !== 'address') return
+    // Don't trample the seed coming from the Hero. The user has not interacted
+    // yet, so the prefilled resolvedAddress from a previous reference resolve
+    // would otherwise trigger a Catastro-by-address fetch we don't want.
+    if (!initialSeedConsumed.current && seededFromReference) return
     if (!resolvedAddress?.road || !resolvedAddress.house_number) {
       setUnits([])
       setLookupStatus('idle')
@@ -98,6 +142,9 @@ export function PropertyIdentificationStep({
       isParcel: boolean
       referenceLabel: string | null
     }) => {
+      // User actively re-searched a reference: the Hero seed (if any) is now
+      // stale and the address-mode effect can run normally again.
+      initialSeedConsumed.current = true
       lastFetchedRef.current = null
       setReferenceGeocodeWarning(!args.resolvedAddress && args.units.length > 0)
       setLookupError(null)
@@ -122,6 +169,7 @@ export function PropertyIdentificationStep({
   function handleModeChange(next: IdentificationMode) {
     if (next === mode) return
     // Reset state — switching mode invalidates whatever was selected before.
+    initialSeedConsumed.current = true
     setMode(next)
     setUnits([])
     setLookupStatus('idle')

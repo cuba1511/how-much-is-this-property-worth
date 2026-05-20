@@ -60,6 +60,28 @@ export interface CadastralReferenceLookupResponse {
   catastro_address_label?: string | null
 }
 
+/** Which input shape the user chose to identify the property: a street address
+ *  (Photon/Nominatim → Catastro lookup by portal) or a cadastral reference
+ *  (Catastro DNPRC → reverse geocode to a `ResolvedAddress`). Lives in types
+ *  because both the Hero and the in-form Step use it and it must survive the
+ *  hand-off between them. */
+export type IdentificationMode = 'address' | 'reference'
+
+/** Snapshot of what the user resolved in the Hero before opening the form.
+ *  When `mode === 'address'` only `address` is populated and the form will
+ *  query Catastro for units on step 0. When `mode === 'reference'` the
+ *  Hero already called `/api/catastro/by-reference`, so units (and possibly
+ *  the unique selected unit) are pre-populated and the form should NOT
+ *  refetch — it just hydrates step 0. */
+export interface IdentificationStartPayload {
+  mode: IdentificationMode
+  address: ResolvedAddress | null
+  units?: CadastralUnit[]
+  selectedUnit?: CadastralUnit | null
+  isParcel?: boolean
+  referenceLabel?: string | null
+}
+
 export interface PropertyFeatures {
   pool: boolean
   terrace: boolean

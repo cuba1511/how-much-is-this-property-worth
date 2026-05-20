@@ -7,9 +7,9 @@ import { ValuationForm } from '@/components/ValuationForm'
 import { ValuationResults } from '@/components/ValuationResults'
 import { FloatingChat } from '@/components/FloatingChat'
 import type {
+  IdentificationStartPayload,
   LeadInfo,
   LeadResponse,
-  ResolvedAddress,
   ValuationRequest,
   ValuationResponse,
 } from '@/lib/types'
@@ -30,7 +30,7 @@ function App() {
   const [pending, setPending] = useState<PendingLead | null>(null)
   const [apiError, setApiError] = useState<string | null>(null)
   const [started, setStarted] = useState(false)
-  const [prefillAddress, setPrefillAddress] = useState<ResolvedAddress | null>(null)
+  const [identification, setIdentification] = useState<IdentificationStartPayload | null>(null)
 
   function handleResult(result: ValuationResponse, request: ValuationRequest, lead?: LeadInfo) {
     setApiError(null)
@@ -55,14 +55,14 @@ function App() {
     setPending(null)
     setApiError(null)
     setStarted(false)
-    setPrefillAddress(null)
+    setIdentification(null)
     setTimeout(() => {
       window.scrollTo({ top: 0, behavior: 'smooth' })
     }, 100)
   }
 
-  function handleStart(address: ResolvedAddress) {
-    setPrefillAddress(address)
+  function handleStart(payload: IdentificationStartPayload) {
+    setIdentification(payload)
     setStarted(true)
     setTimeout(() => {
       document.getElementById('form-area')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -95,7 +95,7 @@ function App() {
                   onResult={handleResult}
                   onPending={handlePending}
                   onError={setApiError}
-                  initialResolvedAddress={prefillAddress}
+                  initialIdentification={identification}
                 />
               </div>
             </div>

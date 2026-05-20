@@ -33,6 +33,7 @@ import {
 import { submitLead, ValuationError } from '@/lib/api'
 import type {
   CadastralUnit,
+  IdentificationStartPayload,
   LeadInfo,
   LeadResponse,
   ResolvedAddress,
@@ -73,24 +74,41 @@ interface ValuationFormProps {
    *  state instead of the results dashboard. */
   onPending?: (lead: LeadInfo, response: LeadResponse) => void
   onError: (message: string) => void
-  initialResolvedAddress?: ResolvedAddress | null
+  /** Snapshot from the Hero (mode + resolved address + maybe pre-fetched units
+   *  when the user searched by cadastral reference). Step 0 hydrates from this
+   *  so we don't lose the work the user already did and don't re-query Catastro. */
+  initialIdentification?: IdentificationStartPayload | null
 }
 
 export function ValuationForm({
   onResult,
   onPending,
   onError,
-  initialResolvedAddress = null,
+  initialIdentification = null,
 }: ValuationFormProps) {
   const { t } = useTranslation()
+  const initialAddress = initialIdentification?.address ?? null
+  const initialMode = initialIdentification?.mode ?? 'address'
+  const initialUnits = initialIdentification?.units ?? []
+  const initialSelectedUnit = initialIdentification?.selectedUnit ?? null
+  const initialReferenceLabel = initialIdentification?.referenceLabel ?? null
+  // When the Hero already resolved a cadastral reference, step 0 is effectively
+  // done loading from Catastro. Marking lookup as 'done' lets the user advance
+  // immediately instead of seeing a misleading spinner.
+  const initialLookupStatus: CatastroLookupStatus =
+    initialMode === 'reference' && initialUnits.length > 0 ? 'done' : 'idle'
+
   const [currentStep, setCurrentStep] = useState(0)
   const [maxStepReached, setMaxStepReached] = useState(0)
   const [resolvedAddress, setResolvedAddress] = useState<ResolvedAddress | null>(
-    initialResolvedAddress,
+    initialAddress,
   )
-  const [selectedUnit, setSelectedUnit] = useState<CadastralUnit | null>(null)
-  const [cadastralUnitsCount, setCadastralUnitsCount] = useState(0)
-  const [catastroLookupStatus, setCatastroLookupStatus] = useState<CatastroLookupStatus>('idle')
+  const [selectedUnit, setSelectedUnit] = useState<CadastralUnit | null>(
+    initialSelectedUnit,
+  )
+  const [cadastralUnitsCount, setCadastralUnitsCount] = useState(initialUnits.length)
+  const [catastroLookupStatus, setCatastroLookupStatus] =
+    useState<CatastroLookupStatus>(initialLookupStatus)
   const [submitting, setSubmitting] = useState(false)
   const [unitError, setUnitError] = useState<string | null>(null)
   const [leadDialogOpen, setLeadDialogOpen] = useState(false)
@@ -100,7 +118,7 @@ export function ValuationForm({
     defaultValues: {
       propertyType: undefined as unknown as ValuationRequestForm['propertyType'],
       features: { pool: false, terrace: false, elevator: false, parking: false },
-      address: initialResolvedAddress?.label ?? '',
+      address: initialAddress?.label ?? initialReferenceLabel ?? '',
       propertyCondition: undefined as unknown as ValuationRequestForm['propertyCondition'],
       m2: undefined as unknown as number,
       bedrooms: 0,
@@ -302,6 +320,9 @@ export function ValuationForm({
                 onUnitsCountChange={setCadastralUnitsCount}
                 onLookupStatusChange={setCatastroLookupStatus}
                 submitting={submitting}
+                initialMode={initialMode}
+                initialUnits={initialUnits}
+                initialReferenceLabel={initialReferenceLabel}
               />
               {unitError && (
                 <p className="mt-sm text-xs text-destructive">{unitError}</p>

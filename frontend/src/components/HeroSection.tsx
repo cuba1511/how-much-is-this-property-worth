@@ -1,27 +1,110 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowRight, BarChart3, Clock, MapPin } from 'lucide-react'
+import {
+  ArrowRight,
+  BarChart3,
+  Clock,
+  FileSearch,
+  MapPin,
+} from 'lucide-react'
 import { AddressSearch } from '@/components/AddressSearch'
-import type { ResolvedAddress } from '@/lib/types'
+import { CadastralReferenceSearch } from '@/components/CadastralReferenceSearch'
+import type {
+  CadastralUnit,
+  IdentificationMode,
+  IdentificationStartPayload,
+  ResolvedAddress,
+} from '@/lib/types'
 
 interface HeroSectionProps {
-  onStart: (address: ResolvedAddress) => void
+  onStart: (payload: IdentificationStartPayload) => void
+}
+
+const MODE_STORAGE_KEY = 'hv:hero:identification-mode'
+
+function readPersistedMode(): IdentificationMode {
+  if (typeof window === 'undefined') return 'address'
+  try {
+    const raw = window.localStorage.getItem(MODE_STORAGE_KEY)
+    return raw === 'reference' ? 'reference' : 'address'
+  } catch {
+    return 'address'
+  }
+}
+
+interface ReferenceResolution {
+  resolvedAddress: ResolvedAddress | null
+  units: CadastralUnit[]
+  isParcel: boolean
+  referenceLabel: string | null
 }
 
 export function HeroSection({ onStart }: HeroSectionProps) {
   const { t } = useTranslation()
+  const [mode, setMode] = useState<IdentificationMode>(readPersistedMode)
   const [address, setAddress] = useState<ResolvedAddress | null>(null)
+  const [reference, setReference] = useState<ReferenceResolution | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const canContinue = Boolean(address?.house_number)
+  // Persist mode so reload + "Hacer otra valoración" come back to the
+  // search shape the user picked last time — sticky behavior across sessions.
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(MODE_STORAGE_KEY, mode)
+    } catch {
+      /* localStorage disabled (private mode, quota, etc.) — silently no-op. */
+    }
+  }, [mode])
+
+  const canContinue =
+    mode === 'address'
+      ? Boolean(address?.house_number)
+      : Boolean(reference && reference.units.length > 0)
+
+  function handleModeChange(next: IdentificationMode) {
+    if (next === mode) return
+    setMode(next)
+    setError(null)
+    // Don't blow away the other mode's draft — when the user toggles back we
+    // want their previous input to still be there. We only clear the error.
+  }
 
   function handleContinue() {
-    if (!address?.house_number) {
-      setError(t('catastro.needStreetNumber'))
+    if (mode === 'address') {
+      if (!address?.house_number) {
+        setError(t('catastro.needStreetNumber'))
+        return
+      }
+      setError(null)
+      onStart({ mode: 'address', address })
+      return
+    }
+    if (!reference || reference.units.length === 0) {
+      setError(t('catastro.reference.lookupError'))
+      return
+    }
+    if (!reference.resolvedAddress) {
+      // Reference matched but Nominatim couldn't ubicate it — the rest of the
+      // pipeline needs lat/lon, so we surface a warning and stop. User can
+      // either re-search a more precise reference or fall back to the address
+      // tab.
+      setError(t('catastro.reference.geocodeWarning'))
       return
     }
     setError(null)
-    onStart(address)
+    onStart({
+      mode: 'reference',
+      address: reference.resolvedAddress,
+      units: reference.units,
+      // Auto-select when there's exactly one unit AND it's not a parcel
+      // lookup (parcel = 14-char = multiple units possible inside).
+      selectedUnit:
+        reference.units.length === 1 && !reference.isParcel
+          ? reference.units[0]
+          : null,
+      isParcel: reference.isParcel,
+      referenceLabel: reference.referenceLabel,
+    })
   }
 
   return (
@@ -54,26 +137,66 @@ export function HeroSection({ onStart }: HeroSectionProps) {
             </p>
 
             <div className="mt-xs flex w-full flex-col gap-sm">
-              <div className="flex w-full flex-col gap-sm sm:flex-row sm:items-start">
-                <div className="min-w-0 flex-1">
-                  <AddressSearch
-                    onSelect={(addr) => {
-                      setAddress(addr)
-                      if (addr?.house_number) setError(null)
-                    }}
-                    placeholder={t('hero.addressPlaceholder')}
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={handleContinue}
-                  disabled={!canContinue}
-                  className="btn-primary flex shrink-0 items-center justify-center gap-2 whitespace-nowrap px-6 py-3 text-sm disabled:cursor-not-allowed disabled:opacity-50 sm:self-stretch"
-                >
-                  {t('hero.continue')}
-                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                </button>
+              <div
+                role="tablist"
+                aria-label={t('catastro.tabs.address')}
+                className="grid grid-cols-2 gap-2 rounded-2xl border border-line bg-surface-tint p-1"
+              >
+                <HeroModeTab
+                  active={mode === 'address'}
+                  onClick={() => handleModeChange('address')}
+                  icon={<MapPin className="h-4 w-4" />}
+                  label={t('catastro.tabs.address')}
+                />
+                <HeroModeTab
+                  active={mode === 'reference'}
+                  onClick={() => handleModeChange('reference')}
+                  icon={<FileSearch className="h-4 w-4" />}
+                  label={t('catastro.tabs.reference')}
+                />
               </div>
+
+              {mode === 'address' ? (
+                <div className="flex w-full flex-col gap-sm sm:flex-row sm:items-start">
+                  <div className="min-w-0 flex-1">
+                    <AddressSearch
+                      onSelect={(addr) => {
+                        setAddress(addr)
+                        if (addr?.house_number) setError(null)
+                      }}
+                      placeholder={t('hero.addressPlaceholder')}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleContinue}
+                    disabled={!canContinue}
+                    className="btn-primary flex shrink-0 items-center justify-center gap-2 whitespace-nowrap px-6 py-3 text-sm disabled:cursor-not-allowed disabled:opacity-50 sm:self-stretch"
+                  >
+                    {t('hero.continue')}
+                    <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex w-full flex-col gap-sm">
+                  <CadastralReferenceSearch
+                    onResolved={(args) => {
+                      setReference(args)
+                      setError(null)
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleContinue}
+                    disabled={!canContinue}
+                    className="btn-primary flex w-full shrink-0 items-center justify-center gap-2 whitespace-nowrap px-6 py-3 text-sm disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:self-start"
+                  >
+                    {t('hero.continue')}
+                    <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                </div>
+              )}
+
               {error && (
                 <p className="text-xs text-destructive" role="alert">
                   {error}
@@ -111,5 +234,31 @@ export function HeroSection({ onStart }: HeroSectionProps) {
         </div>
       </div>
     </section>
+  )
+}
+
+interface HeroModeTabProps {
+  active: boolean
+  onClick: () => void
+  icon: React.ReactNode
+  label: string
+}
+
+function HeroModeTab({ active, onClick, icon, label }: HeroModeTabProps) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={`flex items-center justify-center gap-2 rounded-xl px-sm py-2 text-sm font-medium transition-all ${
+        active
+          ? 'bg-surface text-ink shadow-card border border-line'
+          : 'text-ink-secondary hover:text-ink'
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
   )
 }
