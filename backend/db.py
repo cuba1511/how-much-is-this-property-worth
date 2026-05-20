@@ -248,6 +248,37 @@ def mark_email_sent(valuation_id: int, *, error: Optional[str] = None) -> None:
         conn.commit()
 
 
+def update_valuation_response(
+    *,
+    valuation_id: int,
+    municipio: Optional[str],
+    estimated_eur: Optional[int],
+    response_payload: dict[str, Any],
+) -> None:
+    """Overwrite the response JSON + headline columns of an existing valuation.
+
+    Used by `/api/lead` when the synchronous valuation didn't finish in time
+    and we persisted a placeholder row: the background retry calls this once
+    it has the real numbers, so the admin/SQLite view doesn't permanently
+    show the 'pending' stub.
+    """
+    with _connect() as conn:
+        conn.execute(
+            """
+            UPDATE valuations
+            SET municipio = ?, estimated_eur = ?, response_json = ?
+            WHERE id = ?
+            """,
+            (
+                municipio,
+                estimated_eur,
+                json.dumps(response_payload, ensure_ascii=False),
+                valuation_id,
+            ),
+        )
+        conn.commit()
+
+
 def _row_to_lead(row: sqlite3.Row) -> LeadRecord:
     return LeadRecord.model_validate(dict(row))
 

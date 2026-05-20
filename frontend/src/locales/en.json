@@ -72,7 +72,22 @@
     "door": "Door",
     "selectUnitError": "Select a unit from the list to continue",
     "waitForUnits": "Wait for the units at this address to load before continuing",
-    "needStreetNumber": "The address must include a street number to identify the property"
+    "needStreetNumber": "The address must include a street number to identify the property",
+    "tabs": {
+      "address": "Address",
+      "reference": "Cadastral reference"
+    },
+    "reference": {
+      "label": "Cadastral reference",
+      "hint": "Enter your property reference (20 chars) or the parcel reference (14). You can find it on your IBI tax receipt.",
+      "placeholder": "e.g. 9872023VH5797S0001WX",
+      "search": "Look up in Catastro",
+      "searching": "Querying Catastro…",
+      "lookupError": "We could not resolve that cadastral reference. Please check that it is complete.",
+      "geocodeWarning": "We found the property in Catastro but could not place it on the map. You can still continue.",
+      "addressResolved": "Property found: {{label}}",
+      "parcelHint": "This is a parcel reference: pick the specific unit in the next step."
+    }
   },
   "impacts": {
     "propertiesSold": "+265,000 properties sold worldwide in the last 5 years",
@@ -89,9 +104,16 @@
     "analyzing": "Analyzing market…",
     "serverError": "Error contacting the server",
     "error": {
-      "timeout": "The valuation is taking longer than expected. Please try again in a few seconds.",
+      "timeout": "The valuation is taking longer than expected. We saved your data and will email you the report in a few minutes.",
       "network": "We couldn't reach the server. Check your connection and try again.",
-      "server": "The server couldn't complete the valuation. Please try again in a moment."
+      "server": "The server couldn't complete the valuation. Please try again in a moment.",
+      "withDetail": "{{message}} ({{detail}})"
+    },
+    "pending": {
+      "title": "Thanks! Your details are safe.",
+      "description": "We're still analyzing your property. We'll email the full report as soon as it's ready.",
+      "emailHint": "You'll receive it at {{email}} in a few minutes.",
+      "reset": "Start a new valuation"
     }
   },
   "propertyType": {

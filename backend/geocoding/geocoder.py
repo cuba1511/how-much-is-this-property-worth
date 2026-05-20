@@ -60,26 +60,46 @@ def _strip_street_fillers(query: str) -> str:
 # Postal-code prefixes the user often pastes when copying an address verbatim
 # ("Calle Doctor Zamenhof, CP 28043"). Photon treats "cp" as a literal token
 # it cannot match, so a query with this suffix returns zero results even when
-# the street is in OSM. The CP itself (5 digits) is harmless — only the prefix
-# needs to be stripped. The leading `(?<![A-Za-z])` keeps us from chewing
-# letters off the middle of words ("ocp", "Lcp" etc. won't match).
+# the street is in OSM.
+#
+# We capture the prefix *and* its trailing digit run together (4–5 digits)
+# so the digits don't bleed into the trailing-house-number extractor: a user
+# typo like "cp 2027" (4 digits instead of 5) would otherwise be parsed as
+# portal 2027, blowing the whole pipeline. When the user explicitly types a
+# "cp" qualifier we want the digits treated as a postcode, full stop.
 _POSTAL_PREFIX_PATTERNS: tuple[re.Pattern[str], ...] = (
-    # "cp", "c.p", "c.p.", "c. p.", "c p" — followed by any run of dots/spaces
-    # that we also want to swallow so the digits land cleanly.
-    re.compile(r"(?<![A-Za-z])c\.?\s*p[\s.]*", re.IGNORECASE),
-    re.compile(r"(?<![A-Za-z])c[oó]digo\s+postal[\s.]*", re.IGNORECASE),
+    re.compile(
+        r"(?<![A-Za-z])c\.?\s*p[\s.,]*(?P<cp>\d{4,5})?",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?<![A-Za-z])c[oó]digo\s+postal[\s.,:-]*(?P<cp>\d{4,5})?",
+        re.IGNORECASE,
+    ),
 )
 
 
-def _strip_postal_prefixes(query: str) -> str:
-    """Drop 'cp', 'c.p.', 'código postal' tokens. The CP digits stay."""
+def _strip_postal_prefixes(query: str) -> tuple[str, str | None]:
+    """Drop 'cp'/'c.p.'/'código postal' tokens (and the digits that follow).
+
+    Returns `(cleaned_query, postcode_or_none)`. The captured postcode is
+    handed to ranking so a Madrid suggestion in the right CP can win over a
+    same-named street in a different district.
+    """
     if not query:
-        return query
+        return query, None
     cleaned = query
+    captured: str | None = None
     for pattern in _POSTAL_PREFIX_PATTERNS:
-        cleaned = pattern.sub(" ", cleaned)
+        def _consume(match: re.Match[str]) -> str:
+            nonlocal captured
+            cp_value = match.groupdict().get("cp")
+            if cp_value:
+                captured = cp_value
+            return " "
+        cleaned = pattern.sub(_consume, cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip(" ,")
-    return cleaned
+    return cleaned, captured
 
 
 # House-number-shaped token: 1-4 digits with an optional letter suffix
@@ -98,7 +118,8 @@ def _extract_trailing_house_number(query: str) -> str | None:
     """
     if not query:
         return None
-    cleaned = _strip_postal_prefixes(query).strip(" ,")
+    cleaned, _captured_cp = _strip_postal_prefixes(query)
+    cleaned = cleaned.strip(" ,")
     tokens = cleaned.split()
     for token in reversed(tokens):
         normalized = token.strip(",.")
@@ -967,6 +988,32 @@ def _attach_user_house_number(
     return rebuilt
 
 
+def _rank_by_postcode(
+    suggestions: list[ResolvedAddress],
+    postcode: str | None,
+) -> list[ResolvedAddress]:
+    """Stable-sort upstream results so suggestions matching the user CP win.
+
+    Photon/Nominatim CPs for Spanish addresses are imprecise (often the
+    municipality centroid CP rather than the actual street CP) but when they
+    *do* match we can use it to disambiguate same-named streets across
+    districts — e.g. "Calle Matías Turrión" lives in both Ciudad Lineal
+    (28017) and Hortaleza-ish (28027), and the user typing `cp 28027` is
+    telling us which one they mean."""
+    if not postcode:
+        return suggestions
+    matches: list[ResolvedAddress] = []
+    rest: list[ResolvedAddress] = []
+    for suggestion in suggestions:
+        if suggestion.postcode and suggestion.postcode == postcode:
+            matches.append(suggestion)
+        else:
+            rest.append(suggestion)
+    if not matches:
+        return suggestions
+    return [*matches, *rest]
+
+
 async def suggest_addresses(query: str, limit: int = 5) -> list[ResolvedAddress]:
     """
     Returns autocomplete suggestions for an address.
@@ -982,7 +1029,9 @@ async def suggest_addresses(query: str, limit: int = 5) -> list[ResolvedAddress]
     for a short TTL to avoid hammering throttled providers on each keystroke.
 
     Inputs are normalized before dispatch:
-    - "cp"/"c.p."/"código postal" prefixes are stripped (Photon can't match them).
+    - "cp"/"c.p."/"código postal" tokens *and the digits that follow* are
+      stripped (Photon can't match them; the digits are kept aside as a
+      ranking hint, see `_rank_by_postcode`).
     - A trailing portal number is extracted and applied to street-only matches
       whose upstream doesn't have per-number geocoding (common in Spanish OSM).
     """
@@ -990,9 +1039,9 @@ async def suggest_addresses(query: str, limit: int = 5) -> list[ResolvedAddress]
     if len(raw_query) < 3:
         return []
 
-    # Sanitize: strip postal-code prefixes that break Photon, and remember
-    # any trailing portal number so we can attach it to street-only matches.
-    sanitized_query = _strip_postal_prefixes(raw_query)
+    # Sanitize: strip the "cp ..." chunk (prefix + digits) and remember the
+    # CP separately so we can re-rank Photon's response with it.
+    sanitized_query, user_postcode = _strip_postal_prefixes(raw_query)
     user_house_number = _extract_trailing_house_number(raw_query)
     normalized_query = sanitized_query or raw_query
 
@@ -1004,11 +1053,13 @@ async def suggest_addresses(query: str, limit: int = 5) -> list[ResolvedAddress]
 
     cached = await _cache_get(cache_key)
     if cached is not None:
-        return _attach_user_house_number(list(cached), user_house_number)
+        ranked = _rank_by_postcode(list(cached), user_postcode)
+        return _attach_user_house_number(ranked, user_house_number)
 
     inflight = _autocomplete_inflight.get(cache_key)
     if inflight is not None:
-        return _attach_user_house_number(list(await inflight), user_house_number)
+        ranked = _rank_by_postcode(list(await inflight), user_postcode)
+        return _attach_user_house_number(ranked, user_house_number)
 
     loop = asyncio.get_running_loop()
     future: asyncio.Future[list[ResolvedAddress]] = loop.create_future()
@@ -1018,13 +1069,15 @@ async def suggest_addresses(query: str, limit: int = 5) -> list[ResolvedAddress]
         result = filter_spain_resolved_addresses(
             await _suggest_addresses_uncached(normalized_query, capped_limit)
         )
-        # Cache the upstream result *before* attaching the user's number so
-        # different portals on the same street don't poison each other in the
-        # cache ("matias turrion 12" and "matias turrion 18" hit the same key).
+        # Cache the upstream result *before* attaching the user's number / CP
+        # so different portals or CPs on the same street don't poison each
+        # other in the cache ("matias turrion 12" and "matias turrion 18"
+        # share an upstream lookup; only the post-processing differs).
         await _cache_put(cache_key, result)
         if not future.done():
             future.set_result(result)
-        return _attach_user_house_number(result, user_house_number)
+        ranked = _rank_by_postcode(result, user_postcode)
+        return _attach_user_house_number(ranked, user_house_number)
     except Exception as exc:
         if not future.done():
             future.set_exception(exc)

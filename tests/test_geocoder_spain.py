@@ -239,26 +239,38 @@ def test_photon_label_hides_wrong_madrid_postcodes():
 
 
 def test_strip_postal_prefixes_handles_cp_variants():
-    assert _strip_postal_prefixes("dr zamenhof cp 28043") == "dr zamenhof 28043"
-    assert _strip_postal_prefixes("dr zamenhof CP 28043") == "dr zamenhof 28043"
-    assert _strip_postal_prefixes("dr zamenhof c.p. 28043") == "dr zamenhof 28043"
-    assert _strip_postal_prefixes("dr zamenhof c.p 28043") == "dr zamenhof 28043"
+    # New contract: the CP prefix AND the digits are both stripped, and the
+    # captured CP is returned for downstream ranking. Photon never sees the
+    # `cp` token (it can't match it) nor the digits (they don't belong in
+    # the street query).
+    assert _strip_postal_prefixes("dr zamenhof cp 28043") == ("dr zamenhof", "28043")
+    assert _strip_postal_prefixes("dr zamenhof CP 28043") == ("dr zamenhof", "28043")
+    assert _strip_postal_prefixes("dr zamenhof c.p. 28043") == ("dr zamenhof", "28043")
+    assert _strip_postal_prefixes("dr zamenhof c.p 28043") == ("dr zamenhof", "28043")
+
+
+def test_strip_postal_prefixes_captures_typo_4digit_cp():
+    # User dropped a digit: "cp 2027" instead of "28027". Treat as CP (not as
+    # portal 2027) so the trailing-portal extractor doesn't get confused.
+    cleaned, cp = _strip_postal_prefixes("matias turrion cp 2027")
+    assert cleaned == "matias turrion"
+    assert cp == "2027"
 
 
 def test_strip_postal_prefixes_handles_codigo_postal_phrase():
-    assert (
-        _strip_postal_prefixes("calle mayor 12 código postal 28013")
-        == "calle mayor 12 28013"
+    assert _strip_postal_prefixes("calle mayor 12 código postal 28013") == (
+        "calle mayor 12",
+        "28013",
     )
-    assert (
-        _strip_postal_prefixes("calle mayor 12 codigo postal 28013")
-        == "calle mayor 12 28013"
+    assert _strip_postal_prefixes("calle mayor 12 codigo postal 28013") == (
+        "calle mayor 12",
+        "28013",
     )
 
 
 def test_strip_postal_prefixes_leaves_other_queries_alone():
-    assert _strip_postal_prefixes("calle mayor 12") == "calle mayor 12"
-    assert _strip_postal_prefixes("matias turrion") == "matias turrion"
+    assert _strip_postal_prefixes("calle mayor 12") == ("calle mayor 12", None)
+    assert _strip_postal_prefixes("matias turrion") == ("matias turrion", None)
 
 
 # ── Trailing house-number extraction ────────────────────────────────────

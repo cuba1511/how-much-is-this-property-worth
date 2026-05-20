@@ -22,7 +22,13 @@ from fastapi.staticfiles import StaticFiles
 from typing import Optional
 
 import db
-from catastro import address_to_catastro_query, fetch_units_by_address, fetch_units_by_street
+from catastro import (
+    CatastroByRCResult,
+    address_to_catastro_query,
+    fetch_property_by_reference,
+    fetch_units_by_address,
+    fetch_units_by_street,
+)
 from geocoding import (
     get_municipio_from_address,
     municipio_from_resolved_address,
@@ -30,6 +36,8 @@ from geocoding import (
     suggest_addresses,
 )
 from models import (
+    CadastralReferenceLookupRequest,
+    CadastralReferenceLookupResponse,
     CadastralUnit,
     CadastralUnitsResponse,
     ComparablesDataset,
@@ -370,6 +378,83 @@ async def lookup_cadastral_units(address: ResolvedAddress):
         raise HTTPException(status_code=502, detail="Catastro service unavailable")
 
 
+async def _geocode_catastro_address(result: CatastroByRCResult) -> Optional[ResolvedAddress]:
+    """Best-effort: feed the Catastro address into Nominatim so we get lat/lon
+    for the valuation pipeline. Returns None when no address came back from
+    Catastro or when geocoding fails — the UI can still proceed with just the
+    catastro label, only without the Idealista comparables stage."""
+    address = result.address
+    if not address:
+        return None
+
+    parts: list[str] = []
+    if address.road:
+        parts.append(address.road)
+    if address.number:
+        parts.append(address.number)
+    municipality = address.municipality or address.province
+    if municipality:
+        parts.append(municipality)
+    if address.postcode:
+        parts.append(address.postcode)
+    query = ", ".join(p for p in parts if p)
+    if not query:
+        return None
+
+    try:
+        municipio = await get_municipio_from_address(query)
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.warning("Geocoding fallback for Catastro address %r failed: %s", query, exc)
+        return None
+
+    return ResolvedAddress(
+        label=address.label or query,
+        lat=float(municipio.lat or 0),
+        lon=float(municipio.lon or 0),
+        municipality=municipio.name or municipality or "",
+        province=address.province or municipio.province,
+        road=address.road or municipio.road,
+        house_number=address.number,
+        postcode=address.postcode or municipio.postcode,
+        neighbourhood=municipio.neighbourhood,
+        quarter=municipio.quarter,
+        city_district=municipio.city_district,
+        country="España",
+        provider="catastro",
+        provider_id=result.reference,
+        precision="cadastral_reference",
+    )
+
+
+@app.post(
+    "/api/catastro/by-reference",
+    response_model=CadastralReferenceLookupResponse,
+    summary="Resolve a property directly from its cadastral reference (14 or 20 chars)",
+)
+async def lookup_by_cadastral_reference(
+    payload: CadastralReferenceLookupRequest,
+) -> CadastralReferenceLookupResponse:
+    """Alternative entry point to the valuation flow for users who already
+    know their Catastro RC. Returns the matching unit(s) plus a geocoded
+    `ResolvedAddress` ready to feed into `/api/lead` or `/api/valuation`."""
+    try:
+        result = await fetch_property_by_reference(payload.reference)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except httpx.HTTPError as exc:
+        logger.error("Catastro DNPRC lookup failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="Catastro service unavailable")
+
+    resolved_address = await _geocode_catastro_address(result)
+    return CadastralReferenceLookupResponse(
+        reference=result.reference,
+        is_parcel=result.is_parcel,
+        units=result.units,
+        resolved_address=resolved_address,
+        catastro_address_label=result.address.label if result.address else None,
+    )
+
+
 @app.post("/api/valuation", response_model=ValuationResponse)
 async def get_valuation(request: ValuationRequest):
     """
@@ -698,6 +783,14 @@ async def post_report_pdf(request: ValuationRequest) -> Response:
     )
 
 
+# Hard ceiling for the synchronous portion of /api/lead. The full valuation
+# pipeline (Bright Data scrape with CAPTCHA + detail enrichment) commonly
+# runs in 40-70s but can blow past 2 min on bad Idealista days. Past this
+# threshold we stop blocking the frontend, return a "pending" response, and
+# finish the work in a BackgroundTask (so the user still gets the email).
+LEAD_SYNC_VALUATION_TIMEOUT_S = 75.0
+
+
 async def _send_report_in_background(
     *,
     valuation_id: int,
@@ -726,6 +819,79 @@ async def _send_report_in_background(
         db.mark_email_sent(valuation_id, error=f"{type(exc).__name__}: {exc}")
 
 
+async def _retry_valuation_and_send_email(
+    *,
+    valuation_id: int,
+    lead: LeadInfo,
+    request: ValuationRequest,
+    request_payload: dict,
+) -> None:
+    """Re-run a valuation that didn't finish synchronously.
+
+    Used by `/api/lead` when the in-band pipeline either timed out or raised:
+    the lead has been ack'd to the user as 'pending', but we still want to
+    deliver the report by email. This coroutine runs without a hard deadline
+    so it has all the time it needs to clear Idealista CAPTCHAs etc.
+    """
+    try:
+        valuation = await get_valuation(request)
+    except HTTPException as exc:
+        logger.error(
+            "Background valuation retry failed for valuation %d (HTTP %s): %s",
+            valuation_id,
+            exc.status_code,
+            exc.detail,
+        )
+        db.mark_email_sent(valuation_id, error=f"valuation_retry_http_{exc.status_code}: {exc.detail}")
+        return
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.error(
+            "Background valuation retry crashed for valuation %d: %s",
+            valuation_id,
+            exc,
+            exc_info=True,
+        )
+        db.mark_email_sent(valuation_id, error=f"valuation_retry_crash: {type(exc).__name__}: {exc}")
+        return
+
+    # Backfill the now-completed payload onto the placeholder row so the
+    # admin/SQLite view shows the real result (not the pending stub).
+    try:
+        db.update_valuation_response(
+            valuation_id=valuation_id,
+            municipio=valuation.municipio.name,
+            estimated_eur=valuation.stats.estimated_value,
+            response_payload=valuation.model_dump(mode="json"),
+        )
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.warning(
+            "Could not backfill valuation %d response payload: %s",
+            valuation_id,
+            exc,
+        )
+
+    await _send_report_in_background(
+        valuation_id=valuation_id,
+        lead=lead,
+        valuation=valuation,
+        request_payload=request_payload,
+    )
+
+
+def _placeholder_response_payload(
+    request: ValuationRequest, *, reason: str
+) -> dict[str, object]:
+    """Stub `response_json` used when the synchronous valuation didn't finish.
+
+    Keeps the DB row well-formed (no NULL response_json) and gives ops a
+    quick way to spot pending rows in `sqlite3` without parsing JSON."""
+    return {
+        "status": "pending",
+        "reason": reason,
+        "request": request.model_dump(mode="json"),
+    }
+
+
 @app.post(
     "/api/lead",
     response_model=LeadResponse,
@@ -737,17 +903,27 @@ async def post_lead(
 ) -> LeadResponse:
     """Single-shot endpoint for the frontend submission flow.
 
-    Pipeline (synchronous portion, returned to client):
+    Happy path (status='ready'):
       1. Persist the lead in SQLite.
-      2. Run the full valuation (this is the slow part — same as /api/valuation).
+      2. Run the full valuation with a `LEAD_SYNC_VALUATION_TIMEOUT_S` ceiling.
       3. Persist the valuation tied to the lead.
-      4. Schedule the PDF render + email send as a BackgroundTask.
-      5. Return immediately with the valuation payload + ack.
+      4. Schedule PDF render + email send as a BackgroundTask.
+      5. Return with the valuation payload.
 
-    Step 4 runs after the response is sent. The frontend can show "Te enviamos
-    el reporte a {email}" right away without waiting on Playwright + Resend.
+    Slow / failed path (status='pending'):
+      - The lead is still persisted (we never lose contact info).
+      - A placeholder valuation row is inserted.
+      - A BackgroundTask retries the full pipeline and sends the email when
+        ready.
+      - The user gets an instant 200 with `valuation: null` so the UI can
+        show a "we'll email you" success state instead of an ERROR banner.
+
+    This is the fix for the "se queda trabado / aparece ERROR al generar el
+    reporte" feedback — slow scrapes no longer surface as failures to the
+    user, they degrade gracefully into the asynchronous path.
     """
     request_payload = submission.valuation_request.model_dump(mode="json")
+    email_scheduled = bool(os.environ.get("RESEND_API_KEY"))
 
     lead_id = db.insert_lead(
         full_name=submission.lead.full_name,
@@ -756,40 +932,106 @@ async def post_lead(
     )
     logger.info("Lead persisted id=%d (%s)", lead_id, submission.lead.email)
 
-    valuation = await get_valuation(submission.valuation_request)
+    valuation: Optional[ValuationResponse] = None
+    failure_reason: Optional[str] = None
+    try:
+        valuation = await asyncio.wait_for(
+            get_valuation(submission.valuation_request),
+            timeout=LEAD_SYNC_VALUATION_TIMEOUT_S,
+        )
+    except asyncio.TimeoutError:
+        failure_reason = "sync_timeout"
+        logger.warning(
+            "Lead %d valuation exceeded %.0fs — handing off to background retry",
+            lead_id,
+            LEAD_SYNC_VALUATION_TIMEOUT_S,
+        )
+    except HTTPException as exc:
+        failure_reason = f"http_{exc.status_code}"
+        logger.warning(
+            "Lead %d valuation failed (HTTP %s: %s) — handing off to background retry",
+            lead_id,
+            exc.status_code,
+            exc.detail,
+        )
+    except Exception as exc:  # pylint: disable=broad-except
+        failure_reason = f"crash_{type(exc).__name__}"
+        logger.error(
+            "Lead %d valuation crashed (%s) — handing off to background retry",
+            lead_id,
+            exc,
+            exc_info=True,
+        )
 
+    if valuation is not None:
+        valuation_id = db.insert_valuation(
+            lead_id=lead_id,
+            request=submission.valuation_request,
+            municipio=valuation.municipio.name,
+            estimated_eur=valuation.stats.estimated_value,
+            response_payload=valuation.model_dump(mode="json"),
+        )
+        logger.info(
+            "Valuation persisted id=%d intent=%s rc=%s",
+            valuation_id,
+            submission.valuation_request.valuation_intent,
+            (
+                submission.valuation_request.selected_cadastral_unit.cadastral_reference
+                if submission.valuation_request.selected_cadastral_unit
+                else None
+            ),
+        )
+
+        background_tasks.add_task(
+            _send_report_in_background,
+            valuation_id=valuation_id,
+            lead=submission.lead,
+            valuation=valuation,
+            request_payload=request_payload,
+        )
+
+        return LeadResponse(
+            lead_id=lead_id,
+            valuation_id=valuation_id,
+            valuation=valuation,
+            status="ready",
+            email_scheduled=email_scheduled,
+        )
+
+    # Pending path: persist a stub and hand the work to the background.
     valuation_id = db.insert_valuation(
         lead_id=lead_id,
         request=submission.valuation_request,
-        municipio=valuation.municipio.name,
-        estimated_eur=valuation.stats.estimated_value,
-        response_payload=valuation.model_dump(mode="json"),
-    )
-    logger.info(
-        "Valuation persisted id=%d intent=%s rc=%s",
-        valuation_id,
-        submission.valuation_request.valuation_intent,
-        (
-            submission.valuation_request.selected_cadastral_unit.cadastral_reference
-            if submission.valuation_request.selected_cadastral_unit
-            else None
+        municipio=None,
+        estimated_eur=None,
+        response_payload=_placeholder_response_payload(
+            submission.valuation_request, reason=failure_reason or "unknown"
         ),
     )
+    logger.info(
+        "Pending valuation persisted id=%d (reason=%s) — scheduling retry",
+        valuation_id,
+        failure_reason,
+    )
 
-    email_scheduled = bool(os.environ.get("RESEND_API_KEY"))
     background_tasks.add_task(
-        _send_report_in_background,
+        _retry_valuation_and_send_email,
         valuation_id=valuation_id,
         lead=submission.lead,
-        valuation=valuation,
+        request=submission.valuation_request,
         request_payload=request_payload,
     )
 
     return LeadResponse(
         lead_id=lead_id,
         valuation_id=valuation_id,
-        valuation=valuation,
+        valuation=None,
+        status="pending",
         email_scheduled=email_scheduled,
+        message=(
+            "Estamos terminando de analizar tu propiedad. Te enviaremos el informe completo "
+            "por email en unos minutos."
+        ),
     )
 
 

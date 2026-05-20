@@ -34,6 +34,7 @@ import { submitLead, ValuationError } from '@/lib/api'
 import type {
   CadastralUnit,
   LeadInfo,
+  LeadResponse,
   ResolvedAddress,
   ValuationRequest,
   ValuationResponse,
@@ -67,11 +68,20 @@ const STEPS: StepConfig[] = [
 
 interface ValuationFormProps {
   onResult: (result: ValuationResponse, request: ValuationRequest, lead?: LeadInfo) => void
+  /** Called when the backend acknowledges the lead but the valuation is still
+   *  running asynchronously. The frontend shows a "we'll email you" success
+   *  state instead of the results dashboard. */
+  onPending?: (lead: LeadInfo, response: LeadResponse) => void
   onError: (message: string) => void
   initialResolvedAddress?: ResolvedAddress | null
 }
 
-export function ValuationForm({ onResult, onError, initialResolvedAddress = null }: ValuationFormProps) {
+export function ValuationForm({
+  onResult,
+  onPending,
+  onError,
+  initialResolvedAddress = null,
+}: ValuationFormProps) {
   const { t } = useTranslation()
   const [currentStep, setCurrentStep] = useState(0)
   const [maxStepReached, setMaxStepReached] = useState(0)
@@ -243,10 +253,23 @@ export function ValuationForm({ onResult, onError, initialResolvedAddress = null
         lead: wireLead,
         valuation_request: valuationRequest,
       })
-      onResult(result.valuation, valuationRequest, wireLead)
+      if (result.status === 'ready' && result.valuation) {
+        onResult(result.valuation, valuationRequest, wireLead)
+      } else {
+        // Backend ran out of synchronous budget — lead is persisted, valuation
+        // continues in background, user will get the report by email. Render
+        // a friendly success screen instead of a scary error banner.
+        onPending?.(wireLead, result)
+      }
     } catch (err) {
       const code = err instanceof ValuationError ? err.code : 'server'
-      onError(t(`form.error.${code}`))
+      const baseMessage = t(`form.error.${code}`)
+      const detail = err instanceof ValuationError ? err.detail : undefined
+      onError(
+        detail
+          ? t('form.error.withDetail', { message: baseMessage, detail })
+          : baseMessage,
+      )
     } finally {
       setSubmitting(false)
     }

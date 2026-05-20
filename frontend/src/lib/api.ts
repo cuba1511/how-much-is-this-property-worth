@@ -1,4 +1,5 @@
 import type {
+  CadastralReferenceLookupResponse,
   CadastralUnitsResponse,
   LeadInfo,
   LeadResponse,
@@ -23,21 +24,29 @@ const FETCH_HEADERS: HeadersInit = {
   'ngrok-skip-browser-warning': 'true',
 }
 
-// Backend pipeline normally finishes in 40-70s but CAPTCHAs can push it further.
-// 120s is the hard ceiling — past this we surface a timeout instead of hanging forever.
-const VALUATION_TIMEOUT_MS = 120_000
+// Backend caps the synchronous portion of /api/lead at 75s (see
+// `LEAD_SYNC_VALUATION_TIMEOUT_S` in backend/main.py). 90s on the client
+// gives the backend headroom to respond with the 'pending' fallback before
+// the browser aborts; this is what keeps the analyzing modal from ever
+// hanging forever — even slow Bright Data sessions resolve to either
+// 'ready' or 'pending', never to a client-side AbortError.
+const VALUATION_TIMEOUT_MS = 90_000
 
 export type ValuationErrorCode = 'timeout' | 'network' | 'server'
 
 export class ValuationError extends Error {
   code: ValuationErrorCode
   status?: number
+  /** Server-supplied detail (e.g. FastAPI's `detail` field). When present
+   *  the UI can show this verbatim instead of a generic translated string. */
+  detail?: string
 
-  constructor(code: ValuationErrorCode, message: string, status?: number) {
+  constructor(code: ValuationErrorCode, message: string, status?: number, detail?: string) {
     super(message)
     this.name = 'ValuationError'
     this.code = code
     this.status = status
+    this.detail = detail
   }
 }
 
@@ -75,14 +84,19 @@ async function postJsonWithTimeout<T>(
   if (!res.ok) {
     // Try to surface FastAPI-style {"detail": "..."} bodies so the user sees
     // something more useful than just the HTTP code.
-    let detail = ''
+    let detail: string | undefined
     try {
       const body = (await res.json()) as { detail?: string }
-      if (body?.detail) detail = `: ${body.detail}`
+      if (body?.detail) detail = body.detail
     } catch {
       /* non-JSON body — ignore */
     }
-    throw new ValuationError('server', `API error ${res.status}${detail}`, res.status)
+    throw new ValuationError(
+      'server',
+      detail ? `API error ${res.status}: ${detail}` : `API error ${res.status}`,
+      res.status,
+      detail,
+    )
   }
 
   return res.json() as Promise<T>
@@ -170,4 +184,39 @@ export async function lookupCadastralUnits(
   }
 
   return res.json() as Promise<CadastralUnitsResponse>
+}
+
+/**
+ * Resolve a property directly from its cadastral reference (14 or 20 chars).
+ * Returns the matching unit(s) plus a geocoded `ResolvedAddress` ready to
+ * feed into the valuation pipeline (skips the address-autocomplete step).
+ */
+export async function lookupByCadastralReference(
+  reference: string,
+  signal?: AbortSignal,
+): Promise<CadastralReferenceLookupResponse> {
+  const res = await fetch(`${API_BASE}/api/catastro/by-reference`, {
+    method: 'POST',
+    headers: SHARED_HEADERS,
+    body: JSON.stringify({ reference }),
+    signal,
+  })
+
+  if (!res.ok) {
+    let detail: string | undefined
+    try {
+      const body = (await res.json()) as { detail?: string }
+      if (body?.detail) detail = body.detail
+    } catch {
+      /* ignore */
+    }
+    throw new ValuationError(
+      'server',
+      detail ?? `Catastro lookup error ${res.status}`,
+      res.status,
+      detail,
+    )
+  }
+
+  return res.json() as Promise<CadastralReferenceLookupResponse>
 }

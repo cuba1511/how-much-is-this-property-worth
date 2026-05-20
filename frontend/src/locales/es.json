@@ -72,7 +72,22 @@
     "door": "Puerta",
     "selectUnitError": "Selecciona un inmueble de la lista para continuar",
     "waitForUnits": "Espera a que carguen los inmuebles de esta dirección antes de continuar",
-    "needStreetNumber": "La dirección debe incluir número de portal para identificar el inmueble"
+    "needStreetNumber": "La dirección debe incluir número de portal para identificar el inmueble",
+    "tabs": {
+      "address": "Dirección",
+      "reference": "Referencia catastral"
+    },
+    "reference": {
+      "label": "Referencia catastral",
+      "hint": "Introduce la referencia de tu inmueble (20 caracteres) o de la parcela (14). La encuentras en tu recibo del IBI.",
+      "placeholder": "Ej: 9872023VH5797S0001WX",
+      "search": "Buscar en Catastro",
+      "searching": "Consultando Catastro…",
+      "lookupError": "No pudimos resolver esa referencia catastral. Comprueba que esté completa.",
+      "geocodeWarning": "Encontramos el inmueble en Catastro pero no pudimos ubicarlo en el mapa. Puedes continuar igualmente.",
+      "addressResolved": "Inmueble encontrado: {{label}}",
+      "parcelHint": "Es una referencia de parcela: selecciona el inmueble concreto en el siguiente paso."
+    }
   },
   "impacts": {
     "propertiesSold": "+265.000 propiedades vendidas en todo el mundo en los últimos 5 años",
@@ -89,9 +104,16 @@
     "analyzing": "Analizando mercado…",
     "serverError": "Error al contactar con el servidor",
     "error": {
-      "timeout": "La valoración está tardando más de lo esperado. Inténtalo de nuevo en unos segundos.",
+      "timeout": "La valoración está tardando más de lo esperado. Hemos guardado tus datos y te enviaremos el informe por email en unos minutos.",
       "network": "No pudimos contactar con el servidor. Comprueba tu conexión e inténtalo de nuevo.",
-      "server": "El servidor no pudo completar la valoración. Inténtalo de nuevo en un momento."
+      "server": "El servidor no pudo completar la valoración. Inténtalo de nuevo en un momento.",
+      "withDetail": "{{message}} ({{detail}})"
+    },
+    "pending": {
+      "title": "¡Gracias! Tus datos están a salvo.",
+      "description": "Estamos terminando de analizar tu propiedad. Te enviaremos el informe completo por email en cuanto esté listo.",
+      "emailHint": "Lo recibirás en {{email}} en unos minutos.",
+      "reset": "Hacer otra valoración"
     }
   },
   "propertyType": {

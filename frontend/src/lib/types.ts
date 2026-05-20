@@ -37,11 +37,27 @@ export interface LeadInfo {
   phone: string
 }
 
+export type LeadValuationStatus = 'ready' | 'pending' | 'failed'
+
 export interface LeadResponse {
   lead_id: number
   valuation_id: number
-  valuation: ValuationResponse
+  /**
+   * Null when `status !== 'ready'` — backend is finishing the valuation
+   * asynchronously and the user will receive the report by email.
+   */
+  valuation: ValuationResponse | null
+  status: LeadValuationStatus
   email_scheduled: boolean
+  message?: string | null
+}
+
+export interface CadastralReferenceLookupResponse {
+  reference: string
+  is_parcel: boolean
+  units: CadastralUnit[]
+  resolved_address: ResolvedAddress | null
+  catastro_address_label?: string | null
 }
 
 export interface PropertyFeatures {

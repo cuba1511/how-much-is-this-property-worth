@@ -47,6 +47,38 @@ class CadastralUnitsResponse(BaseModel):
     )
 
 
+class CadastralReferenceLookupRequest(BaseModel):
+    """Payload for POST /api/catastro/by-reference."""
+
+    reference: str = Field(
+        ...,
+        min_length=1,
+        max_length=40,
+        description="Catastro reference. 14 chars = parcela (returns all units), 20 chars = inmueble.",
+    )
+
+
+class CadastralReferenceLookupResponse(BaseModel):
+    """Outcome of resolving a cadastral reference straight to a property.
+
+    `resolved_address` is geocoded from the Catastro-supplied address so the
+    rest of the valuation pipeline (Idealista scraper, municipio metadata)
+    can run exactly like the address-search flow.
+    """
+
+    reference: str
+    is_parcel: bool = Field(
+        ...,
+        description="True when the user supplied a 14-char parcela RC — the UI should ask them to pick one of the units.",
+    )
+    units: list[CadastralUnit]
+    resolved_address: Optional["ResolvedAddress"] = None
+    catastro_address_label: Optional[str] = Field(
+        None,
+        description="Raw address string from Catastro (kept for display when geocoding fails).",
+    )
+
+
 class PropertyFeatures(BaseModel):
     pool: bool = False
     terrace: bool = False
@@ -95,16 +127,36 @@ class LeadSubmission(BaseModel):
     valuation_request: ValuationRequest
 
 
+LeadValuationStatus = Literal["ready", "pending", "failed"]
+
+
 class LeadResponse(BaseModel):
-    """Acknowledgement returned to the frontend immediately. The email send
-    happens in a BackgroundTask so the UX doesn't block on 5-15s of network."""
+    """Acknowledgement returned to the frontend.
+
+    Two-mode contract:
+      - status='ready'  → valuation finished in time, payload is in `valuation`.
+                          Frontend can render the results page immediately.
+      - status='pending' → valuation didn't finish synchronously (scraper timeout,
+                          Idealista CAPTCHA storm, etc.). The lead is saved and
+                          a background task will retry the full pipeline and
+                          email the report when it's ready. Frontend shows a
+                          friendly "we'll email you" success screen instead of
+                          an error banner — this is the case that used to look
+                          like a broken/stuck submit.
+      - status='failed' → reserved for future use (currently we always retry).
+    """
 
     lead_id: int
     valuation_id: int
-    valuation: "ValuationResponse"
+    valuation: Optional["ValuationResponse"] = None
+    status: LeadValuationStatus = "ready"
     email_scheduled: bool = Field(
         ...,
         description="True when an email send was queued. False when RESEND_API_KEY is unset (dev mode).",
+    )
+    message: Optional[str] = Field(
+        None,
+        description="Human-readable hint for the user. Populated when status != 'ready'.",
     )
 
 
