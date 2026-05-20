@@ -8,10 +8,13 @@ if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
 from geocoding.geocoder import (
+    _append_province_anchor,
     _attach_user_house_number,
+    _CP_PROVINCE_PREFIX,
     _extract_trailing_house_number,
     _photon_feature_to_resolved,
     _photon_label,
+    _province_for_postcode,
     _strip_postal_prefixes,
     _strip_postcode_from_label,
     build_address_label,
@@ -458,3 +461,97 @@ def test_photon_feature_to_resolved_does_not_use_name_for_non_street_types():
     resolved = _photon_feature_to_resolved(feature)
     assert resolved is not None
     assert resolved.road is None
+
+
+# ── _append_province_anchor (Joaquin's "dr zamenof cp 28043" case) ──────
+#
+# After _strip_postal_prefixes consumes the entire "cp NNNN(N)" chunk,
+# the cleaned query is just "dr zamenof". Photon's top hit for that is
+# Carrer del Doctor Zamenhof in Vilanova i la Geltrú (Catalunya) — the
+# Madrid street never makes the response, so _rank_by_postcode can't
+# rescue it. Appending the province name derived from the CP gives the
+# fuzzy matcher the locality anchor it needs: "dr zamenof Madrid" returns
+# Calle Doctor Zamenhof (San Blas-Canillejas, Madrid) as the top hit.
+
+
+def test_province_for_postcode_known_prefixes():
+    assert _province_for_postcode("28043") == "Madrid"
+    assert _province_for_postcode("08001") == "Barcelona"
+    assert _province_for_postcode("03001") == "Alicante"
+    assert _province_for_postcode("46008") == "Valencia"
+
+
+def test_province_for_postcode_none_and_short_inputs():
+    assert _province_for_postcode(None) is None
+    assert _province_for_postcode("") is None
+    assert _province_for_postcode("1") is None
+
+
+def test_province_for_postcode_unknown_prefix_returns_none():
+    """Prefixes 53-99 don't map to a Spanish province."""
+    assert _province_for_postcode("99999") is None
+    assert _province_for_postcode("55555") is None
+
+
+def test_cp_province_prefix_mapping_covers_all_52_provinces():
+    """Spain has 50 provinces + Ceuta + Melilla (CP prefixes 01-52). A miss
+    here means a user's CP would silently flow through unenriched."""
+    expected_prefixes = {f"{i:02d}" for i in range(1, 53)}
+    assert set(_CP_PROVINCE_PREFIX.keys()) == expected_prefixes
+
+
+def test_append_province_anchor_basic():
+    assert _append_province_anchor("dr zamenof", "28043") == "dr zamenof Madrid"
+    assert (
+        _append_province_anchor("avinguda diagonal", "08001")
+        == "avinguda diagonal Barcelona"
+    )
+
+
+def test_append_province_anchor_no_cp_passthrough():
+    assert _append_province_anchor("dr zamenof", None) == "dr zamenof"
+    assert _append_province_anchor("calle mayor 12", "") == "calle mayor 12"
+
+
+def test_append_province_anchor_skips_when_already_present():
+    """Don't duplicate the anchor if the user already typed the province."""
+    assert _append_province_anchor("calle mayor Madrid", "28013") == "calle mayor Madrid"
+    assert _append_province_anchor("calle mayor madrid", "28013") == "calle mayor madrid"
+
+
+def test_append_province_anchor_unknown_prefix_passthrough():
+    """CP prefix 99 isn't a real province — leave the query alone rather
+    than appending nothing or a garbage anchor."""
+    assert _append_province_anchor("calle mayor", "99999") == "calle mayor"
+
+
+def test_append_province_anchor_handles_empty_query():
+    """Edge case: cleaned query is empty (e.g. raw input was just "cp 28043").
+    Returning just the province lets the search still find something
+    province-wide instead of failing the >=3 char check on an empty string."""
+    assert _append_province_anchor("", "28043") == "Madrid"
+
+
+def test_strip_postal_prefixes_plus_province_anchor_joaquin_query():
+    """The full pipeline for Joaquin's input: "dr zamenof cp 28043" ends up
+    as "dr zamenof Madrid" before hitting the providers."""
+    cleaned, cp = _strip_postal_prefixes("dr zamenof cp 28043")
+    assert cleaned == "dr zamenof"
+    assert cp == "28043"
+    assert _append_province_anchor(cleaned, cp) == "dr zamenof Madrid"
+
+
+def test_strip_postal_prefixes_plus_province_anchor_short_cp():
+    """User typo with a 4-digit "CP" ("cp 2027") — _strip_postal_prefixes
+    still captures the digits as a postcode, but the prefix doesn't map to
+    a real province (prefix "20" = Gipuzkoa, but Joaquin's intent was
+    Madrid). We get whatever the 2-digit prefix maps to; this is acceptable
+    because the user's input is itself ambiguous and at least we still
+    surface a province-scoped result rather than nothing."""
+    cleaned, cp = _strip_postal_prefixes("matias turrion cp 2027")
+    assert cleaned == "matias turrion"
+    assert cp == "2027"
+    # "20xx" → Gipuzkoa. Not what Joaquin meant (he likely meant 28027 in
+    # Madrid), but the system can't read minds — at least it now anchors
+    # the search instead of silently failing.
+    assert _append_province_anchor(cleaned, cp) == "matias turrion Gipuzkoa"

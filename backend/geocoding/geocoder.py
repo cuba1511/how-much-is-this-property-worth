@@ -102,6 +102,105 @@ def _strip_postal_prefixes(query: str) -> tuple[str, str | None]:
     return cleaned, captured
 
 
+# Spanish postal-code province prefixes. The first two digits of every Spanish
+# CP identify the province. We use this to turn a numeric CP into a textual
+# anchor for the geocoder query.
+#
+# Why this matters: when a user types "dr zamenof cp 28043", just stripping
+# the "cp 28043" chunk leaves the query as "dr zamenof" — and Photon then
+# returns Carrer del Doctor Zamenhof in Vilanova i la Geltrú (Catalunya) as
+# the top hit, because that's the closest literal match in the whole country.
+# The user's CP told us this is Madrid, but the geocoder never saw that hint.
+#
+# Appending the province name ("Madrid") to the cleaned query gives Photon's
+# fuzzy matcher a textual locality anchor: confirmed empirically that
+# "dr zamenof Madrid" returns Calle Doctor Zamenhof (San Blas-Canillejas,
+# Madrid) as the top hit, recovering the right street even with the missing
+# 'h' in the surname.
+#
+# Note: this is complementary to `_rank_by_postcode`. Ranking only works when
+# the correct street is *already in the upstream response*; the province
+# anchor is what gets the right street *into* the response in the first place
+# for fuzzy/mistyped queries.
+_CP_PROVINCE_PREFIX: dict[str, str] = {
+    "01": "Álava",
+    "02": "Albacete",
+    "03": "Alicante",
+    "04": "Almería",
+    "05": "Ávila",
+    "06": "Badajoz",
+    "07": "Baleares",
+    "08": "Barcelona",
+    "09": "Burgos",
+    "10": "Cáceres",
+    "11": "Cádiz",
+    "12": "Castellón",
+    "13": "Ciudad Real",
+    "14": "Córdoba",
+    "15": "A Coruña",
+    "16": "Cuenca",
+    "17": "Girona",
+    "18": "Granada",
+    "19": "Guadalajara",
+    "20": "Gipuzkoa",
+    "21": "Huelva",
+    "22": "Huesca",
+    "23": "Jaén",
+    "24": "León",
+    "25": "Lleida",
+    "26": "La Rioja",
+    "27": "Lugo",
+    "28": "Madrid",
+    "29": "Málaga",
+    "30": "Murcia",
+    "31": "Navarra",
+    "32": "Ourense",
+    "33": "Asturias",
+    "34": "Palencia",
+    "35": "Las Palmas",
+    "36": "Pontevedra",
+    "37": "Salamanca",
+    "38": "Santa Cruz de Tenerife",
+    "39": "Cantabria",
+    "40": "Segovia",
+    "41": "Sevilla",
+    "42": "Soria",
+    "43": "Tarragona",
+    "44": "Teruel",
+    "45": "Toledo",
+    "46": "Valencia",
+    "47": "Valladolid",
+    "48": "Bizkaia",
+    "49": "Zamora",
+    "50": "Zaragoza",
+    "51": "Ceuta",
+    "52": "Melilla",
+}
+
+
+def _province_for_postcode(postcode: str | None) -> str | None:
+    """Map a Spanish CP to its province name, or None when unmappable."""
+    if not postcode or len(postcode) < 2:
+        return None
+    return _CP_PROVINCE_PREFIX.get(postcode[:2])
+
+
+def _append_province_anchor(query: str, postcode: str | None) -> str:
+    """Append the province name for `postcode` to `query` if missing.
+
+    Idempotent on repeated calls and no-op when the province name is already
+    present in the query (case-insensitive substring match), so that users
+    who already typed "Madrid" don't get a duplicated anchor."""
+    province = _province_for_postcode(postcode)
+    if not province:
+        return query
+    if province.lower() in query.lower():
+        return query
+    if not query:
+        return province
+    return f"{query} {province}"
+
+
 # House-number-shaped token: 1-4 digits with an optional letter suffix
 # (e.g. "12", "12B"). 5+ digits look like a CP and are intentionally excluded
 # by the >= 5 length check in `_extract_trailing_house_number`.
@@ -1032,6 +1131,11 @@ async def suggest_addresses(query: str, limit: int = 5) -> list[ResolvedAddress]
     - "cp"/"c.p."/"código postal" tokens *and the digits that follow* are
       stripped (Photon can't match them; the digits are kept aside as a
       ranking hint, see `_rank_by_postcode`).
+    - When the user gave a CP, the province name derived from its first two
+      digits is appended to the cleaned query as a fuzzy-matching anchor —
+      this is what lets "dr zamenof cp 28043" surface Calle Doctor Zamenhof
+      in Madrid (Photon's matcher needs textual locality to forgive the typo;
+      ranking alone can't help if the right street isn't in the response).
     - A trailing portal number is extracted and applied to street-only matches
       whose upstream doesn't have per-number geocoding (common in Spanish OSM).
     """
@@ -1040,8 +1144,10 @@ async def suggest_addresses(query: str, limit: int = 5) -> list[ResolvedAddress]
         return []
 
     # Sanitize: strip the "cp ..." chunk (prefix + digits) and remember the
-    # CP separately so we can re-rank Photon's response with it.
+    # CP separately so we can both re-rank Photon's response with it and use
+    # it to anchor the fuzzy matcher to the right province.
     sanitized_query, user_postcode = _strip_postal_prefixes(raw_query)
+    sanitized_query = _append_province_anchor(sanitized_query, user_postcode)
     user_house_number = _extract_trailing_house_number(raw_query)
     normalized_query = sanitized_query or raw_query
 
