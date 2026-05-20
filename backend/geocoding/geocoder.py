@@ -57,6 +57,63 @@ def _strip_street_fillers(query: str) -> str:
     return " ".join(kept).strip()
 
 
+# Postal-code prefixes the user often pastes when copying an address verbatim
+# ("Calle Doctor Zamenhof, CP 28043"). Photon treats "cp" as a literal token
+# it cannot match, so a query with this suffix returns zero results even when
+# the street is in OSM. The CP itself (5 digits) is harmless — only the prefix
+# needs to be stripped. The leading `(?<![A-Za-z])` keeps us from chewing
+# letters off the middle of words ("ocp", "Lcp" etc. won't match).
+_POSTAL_PREFIX_PATTERNS: tuple[re.Pattern[str], ...] = (
+    # "cp", "c.p", "c.p.", "c. p.", "c p" — followed by any run of dots/spaces
+    # that we also want to swallow so the digits land cleanly.
+    re.compile(r"(?<![A-Za-z])c\.?\s*p[\s.]*", re.IGNORECASE),
+    re.compile(r"(?<![A-Za-z])c[oó]digo\s+postal[\s.]*", re.IGNORECASE),
+)
+
+
+def _strip_postal_prefixes(query: str) -> str:
+    """Drop 'cp', 'c.p.', 'código postal' tokens. The CP digits stay."""
+    if not query:
+        return query
+    cleaned = query
+    for pattern in _POSTAL_PREFIX_PATTERNS:
+        cleaned = pattern.sub(" ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" ,")
+    return cleaned
+
+
+# House-number-shaped token: 1-4 digits with an optional letter suffix
+# (e.g. "12", "12B"). 5+ digits look like a CP and are intentionally excluded
+# by the >= 5 length check in `_extract_trailing_house_number`.
+_HOUSE_NUMBER_TOKEN_RE = re.compile(r"\d{1,4}[A-Za-z]?")
+
+
+def _extract_trailing_house_number(query: str) -> str | None:
+    """Pull a trailing portal number from a user query.
+
+    Walks tokens right-to-left, skipping 5+ digit CPs ("calle X 12 28027" →
+    portal "12"). Stops at the first non-numeric token (we only look at a
+    trailing run of digits to avoid pulling numbers from the middle of the
+    street name like "Calle 12 de Octubre 8" — there "8" wins, not "12").
+    """
+    if not query:
+        return None
+    cleaned = _strip_postal_prefixes(query).strip(" ,")
+    tokens = cleaned.split()
+    for token in reversed(tokens):
+        normalized = token.strip(",.")
+        if not normalized:
+            continue
+        # Skip trailing 5+ digit CPs but keep walking backwards.
+        if normalized.isdigit() and len(normalized) >= 5:
+            continue
+        if _HOUSE_NUMBER_TOKEN_RE.fullmatch(normalized):
+            return normalized
+        # Hit a non-numeric token (the street name) — no trailing portal.
+        return None
+    return None
+
+
 def slugify(text: str) -> str:
     """Convert a Spanish municipality name to an Idealista-compatible URL slug."""
     # Normalize unicode (decompose accented characters)
@@ -856,6 +913,50 @@ async def _suggest_addresses_uncached(
         return []
 
 
+def _attach_user_house_number(
+    suggestions: list[ResolvedAddress],
+    house_number: str | None,
+) -> list[ResolvedAddress]:
+    """Synthesize `house_number` on street-only matches when the user typed one.
+
+    OSM coverage of individual portals in Spain is patchy — many residential
+    streets exist in OSM as a polyline but without per-number nodes. When the
+    user clearly typed a number ("matias turrion 12"), trust their input over
+    the upstream gap so the rest of the pipeline (Catastro lookup, valuation)
+    can run. Catastro itself is the source of truth for portal existence — if
+    the portal doesn't exist on that street it'll surface a clear error.
+
+    Only fills in when the suggestion has a `road` (otherwise the number is
+    meaningless on a city-level match) and lacks its own `house_number`.
+    """
+    if not house_number:
+        return suggestions
+    rebuilt: list[ResolvedAddress] = []
+    for suggestion in suggestions:
+        if not suggestion.road or suggestion.house_number:
+            rebuilt.append(suggestion)
+            continue
+        new_label = suggestion.label
+        if house_number not in suggestion.label:
+            # Inject the number right after the road in the visible label.
+            road_idx = suggestion.label.find(suggestion.road)
+            if road_idx != -1:
+                end = road_idx + len(suggestion.road)
+                new_label = (
+                    suggestion.label[:end]
+                    + f" {house_number}"
+                    + suggestion.label[end:]
+                )
+            else:
+                new_label = f"{suggestion.label} {house_number}"
+        rebuilt.append(
+            suggestion.model_copy(
+                update={"house_number": house_number, "label": new_label}
+            )
+        )
+    return rebuilt
+
+
 async def suggest_addresses(query: str, limit: int = 5) -> list[ResolvedAddress]:
     """
     Returns autocomplete suggestions for an address.
@@ -869,8 +970,22 @@ async def suggest_addresses(query: str, limit: int = 5) -> list[ResolvedAddress]
     A small in-process TTL cache + in-flight dedupe absorbs autocomplete bursts
     (one cached prefix serves N keystrokes). Empty/error responses are cached
     for a short TTL to avoid hammering throttled providers on each keystroke.
+
+    Inputs are normalized before dispatch:
+    - "cp"/"c.p."/"código postal" prefixes are stripped (Photon can't match them).
+    - A trailing portal number is extracted and applied to street-only matches
+      whose upstream doesn't have per-number geocoding (common in Spanish OSM).
     """
-    normalized_query = query.strip()
+    raw_query = query.strip()
+    if len(raw_query) < 3:
+        return []
+
+    # Sanitize: strip postal-code prefixes that break Photon, and remember
+    # any trailing portal number so we can attach it to street-only matches.
+    sanitized_query = _strip_postal_prefixes(raw_query)
+    user_house_number = _extract_trailing_house_number(raw_query)
+    normalized_query = sanitized_query or raw_query
+
     if len(normalized_query) < 3:
         return []
 
@@ -879,11 +994,11 @@ async def suggest_addresses(query: str, limit: int = 5) -> list[ResolvedAddress]
 
     cached = await _cache_get(cache_key)
     if cached is not None:
-        return list(cached)
+        return _attach_user_house_number(list(cached), user_house_number)
 
     inflight = _autocomplete_inflight.get(cache_key)
     if inflight is not None:
-        return list(await inflight)
+        return _attach_user_house_number(list(await inflight), user_house_number)
 
     loop = asyncio.get_running_loop()
     future: asyncio.Future[list[ResolvedAddress]] = loop.create_future()
@@ -893,10 +1008,13 @@ async def suggest_addresses(query: str, limit: int = 5) -> list[ResolvedAddress]
         result = filter_spain_resolved_addresses(
             await _suggest_addresses_uncached(normalized_query, capped_limit)
         )
+        # Cache the upstream result *before* attaching the user's number so
+        # different portals on the same street don't poison each other in the
+        # cache ("matias turrion 12" and "matias turrion 18" hit the same key).
         await _cache_put(cache_key, result)
         if not future.done():
             future.set_result(result)
-        return result
+        return _attach_user_house_number(result, user_house_number)
     except Exception as exc:
         if not future.done():
             future.set_exception(exc)

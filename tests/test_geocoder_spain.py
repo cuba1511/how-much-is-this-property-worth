@@ -8,7 +8,10 @@ if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
 from geocoding.geocoder import (
+    _attach_user_house_number,
+    _extract_trailing_house_number,
     _photon_label,
+    _strip_postal_prefixes,
     _strip_postcode_from_label,
     build_address_label,
     filter_spain_resolved_addresses,
@@ -229,3 +232,132 @@ def test_photon_label_hides_wrong_madrid_postcodes():
     assert "28043" not in label
     assert "Calle Doctor Zamenhof" in label
     assert "San Blas - Canillejas" in label
+
+
+# ── Query sanitization (Joaquin types "cp 28043" → Photon returns 0) ────
+
+
+def test_strip_postal_prefixes_handles_cp_variants():
+    assert _strip_postal_prefixes("dr zamenhof cp 28043") == "dr zamenhof 28043"
+    assert _strip_postal_prefixes("dr zamenhof CP 28043") == "dr zamenhof 28043"
+    assert _strip_postal_prefixes("dr zamenhof c.p. 28043") == "dr zamenhof 28043"
+    assert _strip_postal_prefixes("dr zamenhof c.p 28043") == "dr zamenhof 28043"
+
+
+def test_strip_postal_prefixes_handles_codigo_postal_phrase():
+    assert (
+        _strip_postal_prefixes("calle mayor 12 código postal 28013")
+        == "calle mayor 12 28013"
+    )
+    assert (
+        _strip_postal_prefixes("calle mayor 12 codigo postal 28013")
+        == "calle mayor 12 28013"
+    )
+
+
+def test_strip_postal_prefixes_leaves_other_queries_alone():
+    assert _strip_postal_prefixes("calle mayor 12") == "calle mayor 12"
+    assert _strip_postal_prefixes("matias turrion") == "matias turrion"
+
+
+# ── Trailing house-number extraction ────────────────────────────────────
+
+
+def test_extract_trailing_house_number_basic():
+    assert _extract_trailing_house_number("matias turrion 12") == "12"
+    assert _extract_trailing_house_number("calle mayor 8") == "8"
+    assert _extract_trailing_house_number("gran via 102") == "102"
+
+
+def test_extract_trailing_house_number_with_letter_suffix():
+    assert _extract_trailing_house_number("calle mayor 12B") == "12B"
+
+
+def test_extract_trailing_house_number_skips_cp():
+    # "matias turrion cp 28027" → after CP strip: "matias turrion 28027" → no portal
+    assert _extract_trailing_house_number("matias turrion cp 28027") is None
+    # "matias turrion 12 cp 28027" → portal 12, CP 28027 trailing
+    assert _extract_trailing_house_number("matias turrion 12 cp 28027") == "12"
+    # "matias turrion 12 28027" (no cp keyword, just both numbers) → portal 12
+    assert _extract_trailing_house_number("matias turrion 12 28027") == "12"
+
+
+def test_extract_trailing_house_number_returns_none_when_missing():
+    assert _extract_trailing_house_number("matias turrion") is None
+    assert _extract_trailing_house_number("doctor zamenhof") is None
+
+
+def test_extract_trailing_house_number_only_looks_at_end():
+    # "Calle 12 de Octubre 8" — the trailing "8" wins, not the "12" in the name.
+    assert _extract_trailing_house_number("calle 12 de octubre 8") == "8"
+    # If only a number in the middle, we don't grab it.
+    assert _extract_trailing_house_number("calle 12 de octubre") is None
+
+
+# ── _attach_user_house_number ───────────────────────────────────────────
+
+
+def _street_suggestion(label: str, road: str) -> ResolvedAddress:
+    return ResolvedAddress(
+        label=label,
+        lat=40.46,
+        lon=-3.66,
+        municipality="Madrid",
+        province="Comunidad de Madrid",
+        road=road,
+        house_number=None,
+        country="España",
+        provider="photon",
+    )
+
+
+def test_attach_user_house_number_fills_in_when_missing():
+    sugg = _street_suggestion(
+        label="Calle Matías Turrión, Hortaleza, Madrid",
+        road="Calle Matías Turrión",
+    )
+    out = _attach_user_house_number([sugg], "12")
+    assert len(out) == 1
+    assert out[0].house_number == "12"
+    assert "Calle Matías Turrión 12" in out[0].label
+    assert "Hortaleza" in out[0].label
+
+
+def test_attach_user_house_number_no_op_when_already_present():
+    sugg = ResolvedAddress(
+        label="Calle Mayor 8, Madrid",
+        lat=40.4,
+        lon=-3.7,
+        municipality="Madrid",
+        road="Calle Mayor",
+        house_number="8",
+        country="España",
+        provider="photon",
+    )
+    out = _attach_user_house_number([sugg], "12")
+    # Pre-existing house number wins — never overwrite real upstream data.
+    assert out[0].house_number == "8"
+    assert "Calle Mayor 8" in out[0].label
+
+
+def test_attach_user_house_number_skips_when_no_road():
+    sugg = ResolvedAddress(
+        label="Madrid, Comunidad de Madrid",
+        lat=40.4,
+        lon=-3.7,
+        municipality="Madrid",
+        road=None,
+        country="España",
+        provider="photon",
+    )
+    out = _attach_user_house_number([sugg], "12")
+    # City-level match: a portal makes no sense, leave it untouched.
+    assert out[0].house_number is None
+    assert "12" not in out[0].label
+
+
+def test_attach_user_house_number_handles_none_number():
+    sugg = _street_suggestion("Calle Mayor, Madrid", "Calle Mayor")
+    out = _attach_user_house_number([sugg], None)
+    assert out[0].house_number is None
+    assert out[0].label == "Calle Mayor, Madrid"
