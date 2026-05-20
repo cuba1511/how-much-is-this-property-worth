@@ -222,6 +222,22 @@ async def search_nominatim(query: str, *, limit: int) -> list[dict]:
 PHOTON_ENDPOINT = "https://photon.komoot.io/api/"
 
 
+# Standalone 5-digit token, optionally followed by a comma + spaces. Used to
+# strip Spanish postal codes from provider-supplied labels (MapTiler/LocationIQ)
+# because the upstream CPs are often the municipality centroid CP, not the
+# street's, and showing them confuses users (tester feedback: "todos los CPs
+# están mal"). The CP is still preserved on `ResolvedAddress.postcode`.
+_POSTCODE_IN_LABEL_RE = re.compile(r"\b\d{5}\b,?\s*")
+
+
+def _strip_postcode_from_label(label: str) -> str:
+    cleaned = _POSTCODE_IN_LABEL_RE.sub("", label)
+    # Collapse the artefacts the strip may leave behind ("  ,  " or trailing ", ").
+    cleaned = re.sub(r"\s{2,}", " ", cleaned)
+    cleaned = re.sub(r",\s*,", ",", cleaned)
+    return cleaned.strip(" ,")
+
+
 def _photon_label(props: dict) -> str:
     segments: list[str] = []
 
@@ -232,6 +248,15 @@ def _photon_label(props: dict) -> str:
         segments.append(street_line)
     elif props.get("name"):
         segments.append(props["name"])
+
+    # District/neighbourhood disambiguates same-named streets in big cities
+    # (e.g. "Calle Matías Turrión" exists in both Ciudad Lineal and Hortaleza
+    # in Madrid). Photon returns this in `district`; we fall back to
+    # `locality` when district is missing. This used to be the CP's job, but
+    # OSM/Photon CPs in Spain are unreliable — district names aren't.
+    district = props.get("district") or props.get("locality")
+    if district and district not in segments:
+        segments.append(district)
 
     locality = (
         props.get("city")
@@ -246,9 +271,12 @@ def _photon_label(props: dict) -> str:
     if state and state != locality:
         segments.append(state)
 
-    postcode = props.get("postcode")
-    if postcode:
-        segments.append(postcode)
+    # NOTE: Photon often returns a coarse postcode for Spanish addresses
+    # (street-tagged in OSM, not portal-accurate as Correos publishes them).
+    # Showing it in the suggestion misleads users into thinking the address
+    # is wrong. The CP is not used for the Catastro query — only province,
+    # municipality, road and number are — so we drop it from the label. The
+    # real postcode (when correct) is still preserved on `address.postcode`.
 
     country = props.get("country")
     if country and country not in {"España", "Spain"}:
@@ -424,6 +452,17 @@ def build_address_label(addr: dict) -> str:
     if street:
         segments.append(street)
 
+    # City district / neighbourhood — same role as the district segment in
+    # `_photon_label`. Disambiguates same-named streets within big cities
+    # without relying on the unreliable Spanish postal code.
+    district = (
+        addr.get("city_district")
+        or addr.get("suburb")
+        or addr.get("neighbourhood")
+    )
+    if district and district not in segments:
+        segments.append(district)
+
     locality = (
         addr.get("city")
         or addr.get("town")
@@ -431,16 +470,18 @@ def build_address_label(addr: dict) -> str:
         or addr.get("municipality")
         or addr.get("county")
     )
-    if locality:
+    if locality and locality not in segments:
         segments.append(locality)
 
     province = addr.get("province") or addr.get("state")
     if province and province != locality:
         segments.append(province)
 
-    postcode = addr.get("postcode")
-    if postcode:
-        segments.append(postcode)
+    # Postcode intentionally omitted from the visible label — Nominatim's
+    # Spanish CPs are inherited from broader admin boundaries (often the
+    # municipality centroid) and contradict the actual street CP often
+    # enough that testers reported "todos los códigos postales están mal".
+    # `addr["postcode"]` is still preserved on the ResolvedAddress.
 
     country = addr.get("country")
     if country and country != "España":
@@ -536,7 +577,7 @@ def _maptiler_feature_to_resolved(feature: dict) -> ResolvedAddress | None:
         return None
 
     return ResolvedAddress(
-        label=place_name,
+        label=_strip_postcode_from_label(place_name),
         lat=lat,
         lon=lon,
         municipality=municipality or place_name,
@@ -615,7 +656,7 @@ def _locationiq_to_resolved(item: dict) -> ResolvedAddress | None:
     )
 
     return ResolvedAddress(
-        label=label,
+        label=_strip_postcode_from_label(label),
         lat=lat,
         lon=lon,
         municipality=municipality or label,
