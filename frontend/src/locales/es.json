@@ -136,7 +136,11 @@
     "confirmed": "Dirección confirmada",
     "searchLabel": "Buscar dirección",
     "clearSearch": "Limpiar búsqueda",
-    "suggestions": "Sugerencias de dirección"
+    "suggestions": "Sugerencias de dirección",
+    "needPortal": "Esta calle no incluye número de portal. Añade el portal para localizar el inmueble.",
+    "portalLabel": "Nº portal",
+    "portalPlaceholder": "Ej: 12",
+    "portalConfirm": "Confirmar"
   },
   "condition": {
     "label": "Estado de la propiedad",

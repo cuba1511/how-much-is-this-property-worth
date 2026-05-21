@@ -136,7 +136,11 @@
     "confirmed": "Address confirmed",
     "searchLabel": "Search address",
     "clearSearch": "Clear search",
-    "suggestions": "Address suggestions"
+    "suggestions": "Address suggestions",
+    "needPortal": "This street has no portal number. Add the portal to locate the property.",
+    "portalLabel": "Portal #",
+    "portalPlaceholder": "e.g. 12",
+    "portalConfirm": "Confirm"
   },
   "condition": {
     "label": "Property condition",

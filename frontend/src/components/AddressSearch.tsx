@@ -1,8 +1,34 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { MapPin, Check, Search, X } from 'lucide-react'
+import { AlertCircle, MapPin, Check, Search, X } from 'lucide-react'
 import { autocompleteAddresses } from '@/lib/api'
 import type { ResolvedAddress } from '@/lib/types'
+
+/** Merge a user-supplied portal into a street-only suggestion. The label is
+ *  rewritten to inject the number right after the road so the rest of the
+ *  pipeline (display, Catastro lookup, scraper) sees a coherent address. */
+function injectPortal(
+  base: ResolvedAddress,
+  portal: string,
+): ResolvedAddress {
+  const number = portal.trim()
+  if (!number) return base
+  let newLabel = base.label
+  if (!base.label.includes(number)) {
+    if (base.road) {
+      const idx = base.label.indexOf(base.road)
+      if (idx !== -1) {
+        const end = idx + base.road.length
+        newLabel = base.label.slice(0, end) + ` ${number}` + base.label.slice(end)
+      } else {
+        newLabel = `${base.label} ${number}`
+      }
+    } else {
+      newLabel = `${base.label} ${number}`
+    }
+  }
+  return { ...base, house_number: number, label: newLabel }
+}
 
 export interface AddressSearchProps {
   onSelect: (address: ResolvedAddress | null) => void
@@ -25,6 +51,10 @@ export function AddressSearch({
   const [loading, setLoading] = useState(false)
   const [selected, setSelected] = useState<ResolvedAddress | null>(defaultAddress)
   const [open, setOpen] = useState(false)
+  // Portal completion buffer for street-level matches (Photon often returns
+  // street polylines without `housenumber` in Spain). Cleared whenever
+  // `selected` changes — the freshly picked suggestion is the new baseline.
+  const [portalDraft, setPortalDraft] = useState('')
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -77,6 +107,7 @@ export function AddressSearch({
     setQuery(result.label)
     setSuggestions([])
     setOpen(false)
+    setPortalDraft('')
     onSelect(result)
   }
 
@@ -85,16 +116,32 @@ export function AddressSearch({
     setQuery('')
     setSuggestions([])
     setOpen(false)
+    setPortalDraft('')
     onSelect(null)
   }
 
   function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     if (selected) {
       setSelected(null)
+      setPortalDraft('')
       onSelect(null)
     }
     setQuery(e.target.value)
   }
+
+  /** Commit the typed portal back to the parent. We mutate the *visible*
+   *  selection optimistically so the user immediately sees the confirmed
+   *  state and the parent's Continue button enables. */
+  function commitPortal(rawPortal: string) {
+    const portal = rawPortal.trim()
+    if (!selected || !portal) return
+    const merged = injectPortal(selected, portal)
+    setSelected(merged)
+    setQuery(merged.label)
+    onSelect(merged)
+  }
+
+  const needsPortal = Boolean(selected && !selected.house_number)
 
   return (
     <div ref={containerRef} className="relative w-full">
@@ -102,13 +149,19 @@ export function AddressSearch({
         className={`flex items-center gap-sm border rounded-xl bg-surface px-md py-sm transition-all ${
           disabled
             ? 'opacity-60 cursor-not-allowed border-line'
-            : selected
-              ? 'border-primary ring-1 ring-primary/20'
-              : 'border-line focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/20'
+            : needsPortal
+              ? 'border-amber-300 ring-1 ring-amber-200'
+              : selected
+                ? 'border-primary ring-1 ring-primary/20'
+                : 'border-line focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/20'
         }`}
       >
         {selected ? (
-          <Check className="w-4 h-4 text-primary shrink-0" />
+          needsPortal ? (
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+          ) : (
+            <Check className="w-4 h-4 text-primary shrink-0" />
+          )
         ) : loading ? (
           <svg
             className="w-4 h-4 shrink-0 text-primary animate-spin"
@@ -148,10 +201,55 @@ export function AddressSearch({
         )}
       </div>
 
-      {selected && (
+      {selected && !needsPortal && (
         <div className="flex items-center gap-xs mt-xs px-sm">
           <MapPin className="w-3 h-3 text-primary" />
           <span className="text-xs text-primary font-medium">{t('address.confirmed')}</span>
+        </div>
+      )}
+
+      {needsPortal && (
+        <div className="mt-xs flex flex-col gap-xs rounded-xl border border-amber-200 bg-amber-50 px-md py-sm">
+          <div className="flex items-start gap-xs">
+            <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+            <p className="text-xs text-amber-900">{t('address.needPortal')}</p>
+          </div>
+          <div className="flex items-center gap-sm">
+            <label
+              htmlFor="address-portal-input"
+              className="text-xs font-medium text-amber-900"
+            >
+              {t('address.portalLabel')}
+            </label>
+            <input
+              id="address-portal-input"
+              type="text"
+              inputMode="numeric"
+              autoComplete="off"
+              value={portalDraft}
+              onChange={(e) =>
+                setPortalDraft(e.target.value.replace(/[^0-9A-Za-z]/g, '').slice(0, 6))
+              }
+              onBlur={() => commitPortal(portalDraft)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  commitPortal(portalDraft)
+                }
+              }}
+              placeholder={t('address.portalPlaceholder')}
+              className="w-20 rounded-md border border-amber-300 bg-white px-2 py-1 text-sm text-ink outline-none transition-all focus:border-amber-500 focus:ring-1 focus:ring-amber-200"
+              disabled={disabled}
+            />
+            <button
+              type="button"
+              onClick={() => commitPortal(portalDraft)}
+              disabled={disabled || !portalDraft.trim()}
+              className="rounded-md bg-amber-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {t('address.portalConfirm')}
+            </button>
+          </div>
         </div>
       )}
 
