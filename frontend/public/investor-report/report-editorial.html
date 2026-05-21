@@ -1,0 +1,1011 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Reporte Inversor · Prop Hero — Editorial</title>
+  <link rel="stylesheet" href="tokens.css" />
+  <link rel="stylesheet" href="report-base.css" />
+  <style>
+    /* ─────────────────────────────────────────────────────────────
+       Editorial layout — narrative-first, big-number lead
+       ───────────────────────────────────────────────────────────── */
+
+    body { background: var(--paper-2); }
+
+    .page { max-width: 1180px; padding-top: var(--s-5); }
+
+    /* ─────────────────────────────────────────────────────────────
+       Cover band — magazine-style
+       ───────────────────────────────────────────────────────────── */
+    .cover {
+      margin-top: var(--s-6);
+      position: relative;
+      padding: var(--s-9) 0 var(--s-7);
+      border-bottom: var(--border);
+    }
+    .cover__top {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: var(--s-5);
+      padding-bottom: var(--s-9);
+      margin-bottom: var(--s-7);
+      border-bottom: 1px dashed var(--ink-200);
+    }
+    .cover__rule {
+      font-family: var(--font-mono); font-size: var(--text-xs);
+      letter-spacing: var(--tracking-caps); text-transform: uppercase;
+      color: var(--ink-500);
+      display: inline-flex; align-items: center; gap: 10px;
+    }
+    .cover__rule b { color: var(--ink-900); font-weight: 500; }
+    .cover__rule .dot { width: 6px; height: 6px; border-radius: var(--r-full); background: var(--brand-500); }
+    .cover__seq {
+      justify-self: center;
+      font-family: var(--font-mono); font-size: var(--text-xs);
+      letter-spacing: var(--tracking-caps); text-transform: uppercase;
+      color: var(--ink-500);
+    }
+    .cover__seq b { color: var(--brand-500); font-weight: 500; }
+
+    .cover__grid {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: var(--s-9);
+      align-items: start;
+    }
+
+    .cover__lhs { display: grid; gap: var(--s-6); }
+    .cover__eyebrow { display: inline-flex; align-items: center; gap: var(--s-3); }
+    .cover__title {
+      font-family: var(--font-sans);
+      font-size: 68px;
+      line-height: 0.98;
+      letter-spacing: -0.035em;
+      font-weight: 600;
+      margin: 0;
+      color: var(--ink-900);
+      max-width: 14ch;
+      text-wrap: balance;
+    }
+    .cover__title em {
+      color: var(--brand-500);
+      font-style: italic;
+      font-weight: 600;
+    }
+    .cover__lede {
+      font-size: var(--text-lg);
+      color: var(--ink-600);
+      line-height: 1.5;
+      max-width: 50ch;
+      margin: 0;
+    }
+
+    /* RHS — the lead figure */
+    .lead-fig {
+      position: relative;
+      background:
+        radial-gradient(120% 90% at 0% 0%, var(--success-100), transparent 50%),
+        var(--paper);
+      border: var(--border);
+      border-radius: var(--r-xl);
+      padding: var(--s-7);
+      display: grid; gap: var(--s-4);
+      box-shadow: var(--shadow-xs);
+    }
+    .lead-fig::after {
+      content: ""; position: absolute; inset: 0;
+      border-radius: inherit; pointer-events: none;
+      border: 1px solid rgba(30,159,110,.12);
+    }
+    .lead-fig__lbl {
+      font-family: var(--font-mono); font-size: var(--text-xs);
+      letter-spacing: var(--tracking-caps); text-transform: uppercase;
+      color: var(--success-500); margin: 0;
+    }
+    .lead-fig__num {
+      font-family: var(--font-sans);
+      font-size: 84px; line-height: 0.92;
+      letter-spacing: -0.04em;
+      font-weight: 600;
+      color: var(--success-500);
+      font-variant-numeric: tabular-nums;
+      margin: -8px 0 0;
+    }
+    .lead-fig__pct {
+      font-family: var(--font-mono);
+      font-size: var(--text-lg);
+      color: var(--success-500);
+      letter-spacing: 0;
+      margin: 0;
+    }
+    .lead-fig__hint {
+      margin: 0; font-size: var(--text-sm); color: var(--ink-600);
+      padding-top: var(--s-4); border-top: 1px dashed var(--ink-200);
+      line-height: 1.5;
+    }
+
+    /* Fact sheet */
+    .facts {
+      margin-top: var(--s-7);
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0;
+      border-top: 1px dashed var(--ink-200);
+      border-bottom: 1px dashed var(--ink-200);
+      padding: var(--s-5) 0;
+    }
+    .facts .fact {
+      display: grid; gap: 4px;
+      padding: 0 var(--s-5);
+      border-left: 1px dashed var(--ink-200);
+    }
+    .facts .fact:first-child { border-left: 0; padding-left: 0; }
+    .facts .fact dt {
+      margin: 0;
+      font-family: var(--font-mono); font-size: 10.5px;
+      letter-spacing: var(--tracking-caps); text-transform: uppercase;
+      color: var(--ink-500);
+    }
+    .facts .fact dd {
+      margin: 0;
+      font-size: var(--text-md);
+      color: var(--ink-900);
+      font-variant-numeric: tabular-nums;
+      line-height: 1.35;
+    }
+
+    /* ─────────────────────────────────────────────────────────────
+       Chapter block — section heading
+       ───────────────────────────────────────────────────────────── */
+    .chapter { margin-top: var(--s-10); }
+    .chapter__hd {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: var(--s-8);
+      align-items: baseline;
+      padding-bottom: var(--s-5);
+      margin-bottom: var(--s-7);
+      border-bottom: var(--border);
+    }
+    .chapter__num {
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      letter-spacing: var(--tracking-caps);
+      text-transform: uppercase;
+      color: var(--ink-500);
+    }
+    .chapter__num b { color: var(--brand-500); font-weight: 500; }
+    .chapter__num em {
+      display: block;
+      margin-top: 4px;
+      font-style: normal;
+      color: var(--ink-900);
+      font-weight: 500;
+    }
+    .chapter__title {
+      margin: 0;
+      font-family: var(--font-sans);
+      font-size: var(--text-3xl);
+      line-height: 1.05;
+      letter-spacing: -0.022em;
+      font-weight: 600;
+      max-width: 22ch;
+      text-wrap: balance;
+    }
+    .chapter__title em { font-style: italic; color: var(--brand-500); }
+    .chapter__desc {
+      margin: 12px 0 0;
+      font-size: var(--text-md);
+      color: var(--ink-600);
+      line-height: 1.55;
+      max-width: 64ch;
+    }
+
+    /* ─────────────────────────────────────────────────────────────
+       Chart block — big, framed in paper, with stat sidebar
+       ───────────────────────────────────────────────────────────── */
+    .chart-block {
+      display: grid;
+      grid-template-columns: 1fr 280px;
+      gap: var(--s-6);
+      align-items: stretch;
+    }
+    .chart-block .canvas {
+      background: var(--paper);
+      border: var(--border);
+      border-radius: var(--r-lg);
+      padding: var(--s-6);
+    }
+    .chart-block .canvas .hd {
+      display: flex; justify-content: space-between; align-items: baseline;
+      margin-bottom: var(--s-4);
+      padding-bottom: var(--s-3); border-bottom: 1px dashed var(--ink-200);
+    }
+    .chart-block .canvas .hd h4 { margin: 0; font-size: var(--text-md); font-weight: 500; }
+
+    .chart-block .stats {
+      background: var(--ink-900);
+      color: #fff;
+      border-radius: var(--r-lg);
+      padding: var(--s-6);
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: var(--s-5);
+      position: relative;
+      overflow: hidden;
+    }
+    .chart-block .stats::after {
+      content: ""; position: absolute;
+      right: -30%; top: -30%;
+      width: 140%; height: 60%;
+      background: radial-gradient(closest-side, rgba(32,80,246,.35), transparent 70%);
+      pointer-events: none;
+    }
+    .chart-block .stats > * { position: relative; z-index: 1; }
+
+    .chart-block .stats .cap { color: var(--brand-300); }
+    .chart-block .stats h3 {
+      margin: 6px 0 0;
+      font-family: var(--font-sans);
+      font-size: 30px; line-height: 1;
+      letter-spacing: -0.022em; font-weight: 600;
+    }
+    .chart-block .stats h3 em { color: var(--brand-400); font-style: normal; }
+
+    .chart-block .stats dl {
+      display: grid; gap: 14px; margin: 0;
+      padding-top: var(--s-5);
+      border-top: 1px solid rgba(255,255,255,.12);
+    }
+    .chart-block .stats dl .row {
+      display: grid; grid-template-columns: 1fr auto;
+      align-items: baseline; gap: var(--s-3);
+      font-size: var(--text-sm);
+    }
+    .chart-block .stats dl dt {
+      margin: 0;
+      font-family: var(--font-mono); font-size: var(--text-xs);
+      letter-spacing: var(--tracking-caps); text-transform: uppercase;
+      color: rgba(255,255,255,.6);
+    }
+    .chart-block .stats dl dd {
+      margin: 0; font-variant-numeric: tabular-nums; font-weight: 500;
+    }
+    .chart-block .stats dl dd.brand { color: var(--brand-400); }
+    .chart-block .stats dl dd.ok { color: #5DD3A6; }
+
+    .chart-block .stats .foot {
+      font-family: var(--font-mono); font-size: var(--text-xs);
+      letter-spacing: var(--tracking-caps); text-transform: uppercase;
+      color: rgba(255,255,255,.5);
+    }
+
+    .chart { width: 100%; height: 360px; }
+    .chart svg { width: 100%; height: 100%; display: block; }
+
+    .chart-legend {
+      display: flex; flex-wrap: wrap; gap: var(--s-4);
+      margin-top: var(--s-4); padding-top: var(--s-4);
+      border-top: 1px dashed var(--ink-200);
+      font-family: var(--font-mono);
+      font-size: var(--text-xs); color: var(--ink-600);
+      letter-spacing: var(--tracking-caps); text-transform: uppercase;
+    }
+    .chart-legend .item { display: inline-flex; align-items: center; gap: 8px; }
+    .chart-legend .sw { width: 18px; height: 3px; border-radius: 2px; background: var(--brand-500); }
+    .chart-legend .sw.dashed { background: repeating-linear-gradient(90deg, var(--brand-400) 0 4px, transparent 4px 8px); height: 3px; }
+    .chart-legend .sw.range { background: var(--success-100); height: 12px; border-radius: 3px; border: 1px dashed var(--success-500); }
+
+    .seg {
+      display: inline-flex;
+      border: var(--border); border-radius: var(--r-md); overflow: hidden;
+    }
+    .seg button {
+      padding: 5px 10px; font-size: 11px;
+      font-family: var(--font-mono); letter-spacing: var(--tracking-caps);
+      text-transform: uppercase;
+      color: var(--ink-600); border-right: var(--border);
+      background: transparent;
+    }
+    .seg button:last-child { border-right: 0; }
+    .seg button.is-on { background: var(--ink-900); color: #fff; }
+
+    /* ─────────────────────────────────────────────────────────────
+       Scenarios — 3 cards, more typographic
+       ───────────────────────────────────────────────────────────── */
+    .scenarios {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--s-5);
+    }
+    .scenario {
+      background: var(--paper);
+      border: var(--border);
+      border-radius: var(--r-lg);
+      padding: var(--s-7);
+      display: grid; gap: var(--s-5);
+      position: relative;
+    }
+    .scenario.is-recommended {
+      background: linear-gradient(180deg, var(--brand-050), var(--paper) 60%);
+      border-color: var(--brand-200);
+    }
+    .scenario.is-recommended::before {
+      content: ""; position: absolute; left: 0; right: 0; top: 0;
+      height: 3px; border-radius: var(--r-lg) var(--r-lg) 0 0;
+      background: var(--brand-500);
+    }
+    .scenario__kicker {
+      display: flex; align-items: center; justify-content: space-between;
+      font-family: var(--font-mono); font-size: var(--text-xs);
+      letter-spacing: var(--tracking-caps); text-transform: uppercase;
+      color: var(--ink-500);
+    }
+    .scenario__kicker .tag { color: var(--ink-900); font-weight: 500; }
+    .scenario.is-recommended .scenario__kicker .tag { color: var(--brand-700); }
+
+    .scenario__title {
+      font-family: var(--font-sans);
+      font-size: var(--text-xl);
+      line-height: 1.15;
+      letter-spacing: -0.012em;
+      margin: 0;
+      font-weight: 500;
+    }
+    .scenario.is-recommended .scenario__title em {
+      font-style: italic; color: var(--brand-500); font-weight: 600;
+    }
+    .scenario__desc {
+      margin: -4px 0 0; font-size: var(--text-sm);
+      color: var(--ink-600); max-width: 32ch; line-height: 1.55;
+    }
+    .scenario__price {
+      font-family: var(--font-sans);
+      font-size: 40px; line-height: 1;
+      letter-spacing: -0.025em; font-weight: 600;
+      font-variant-numeric: tabular-nums; color: var(--ink-900);
+      margin: 0;
+    }
+    .scenario.is-recommended .scenario__price { color: var(--brand-700); }
+
+    .scenario__rows {
+      display: grid; gap: 10px;
+      padding-top: var(--s-4);
+      border-top: 1px dashed var(--ink-200);
+      font-size: var(--text-sm);
+      margin: 0;
+    }
+    .scenario__row {
+      display: grid; grid-template-columns: 1fr auto;
+      align-items: baseline; gap: var(--s-3);
+    }
+    .scenario__row dt {
+      margin: 0; color: var(--ink-500);
+      font-family: var(--font-mono); font-size: var(--text-xs);
+      letter-spacing: var(--tracking-caps); text-transform: uppercase;
+    }
+    .scenario__row dd {
+      margin: 0; color: var(--ink-900);
+      font-variant-numeric: tabular-nums; font-weight: 500;
+    }
+    .scenario__row dd.delta { color: var(--success-500); }
+
+    /* ─────────────────────────────────────────────────────────────
+       Pull quote — editorial market reading
+       ───────────────────────────────────────────────────────────── */
+    .pull {
+      margin-top: var(--s-9);
+      padding: var(--s-8) 0;
+      border-top: 1px dashed var(--ink-300);
+      border-bottom: 1px dashed var(--ink-300);
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      gap: var(--s-8);
+      align-items: start;
+    }
+    .pull .meta {
+      font-family: var(--font-mono); font-size: var(--text-xs);
+      letter-spacing: var(--tracking-caps); text-transform: uppercase;
+      color: var(--ink-500); display: grid; gap: 16px;
+    }
+    .pull .meta b { color: var(--ink-900); font-weight: 500; }
+    .pull .meta .big {
+      font-family: var(--font-sans);
+      font-size: 36px; line-height: 1; font-weight: 600;
+      letter-spacing: -0.022em; color: var(--danger-500);
+      font-variant-numeric: tabular-nums;
+      text-transform: none; letter-spacing: -0.022em;
+    }
+    .pull .body {
+      font-family: var(--font-sans);
+      font-size: 22px; line-height: 1.35;
+      letter-spacing: -0.012em;
+      color: var(--ink-900);
+      max-width: 38ch;
+      text-wrap: balance;
+      margin: 0;
+    }
+    .pull .body em { font-style: italic; color: var(--brand-500); font-weight: 500; }
+
+    /* ─────────────────────────────────────────────────────────────
+       Comparables — two parallel lists, editorial / tabular
+       ───────────────────────────────────────────────────────────── */
+    .compa {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: var(--s-7);
+    }
+    .compa__col h4 {
+      font-size: var(--text-md); font-weight: 500;
+      margin: 0 0 4px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .compa__col > p {
+      margin: 0 0 var(--s-5);
+      font-size: var(--text-sm); color: var(--ink-600);
+    }
+    .clist {
+      list-style: none; margin: 0; padding: 0;
+      border-top: 1px solid var(--ink-200);
+    }
+    .clist li {
+      padding: 14px 0; border-bottom: 1px solid var(--ink-100);
+      display: grid; grid-template-columns: 22px 1fr auto;
+      align-items: baseline; gap: var(--s-3);
+    }
+    .clist .idx {
+      font-family: var(--font-mono); font-size: 10.5px;
+      letter-spacing: var(--tracking-caps);
+      color: var(--ink-400);
+      padding-top: 4px;
+    }
+    .clist .title { font-size: var(--text-sm); font-weight: 500; line-height: 1.3; color: var(--ink-900); }
+    .clist .meta { font-size: var(--text-xs); color: var(--ink-500); margin-top: 2px; font-variant-numeric: tabular-nums; }
+    .clist .price {
+      text-align: right;
+      font-size: var(--text-md); font-weight: 600; color: var(--ink-900);
+      font-variant-numeric: tabular-nums;
+    }
+    .clist .sub {
+      text-align: right;
+      font-size: 10.5px; font-family: var(--font-mono);
+      letter-spacing: var(--tracking-caps); text-transform: uppercase;
+      margin-top: 3px;
+      color: var(--ink-500);
+    }
+    .clist .sub.neg { color: var(--danger-500); }
+    .clist .sub.muted { color: var(--ink-500); }
+
+    /* ─────────────────────────────────────────────────────────────
+       Next step CTA — editorial dark
+       ───────────────────────────────────────────────────────────── */
+    .next {
+      margin-top: var(--s-10);
+      background: var(--ink-900);
+      color: #fff;
+      border-radius: var(--r-xl);
+      padding: var(--s-10);
+      position: relative; overflow: hidden;
+    }
+    .next::after {
+      content: ""; position: absolute;
+      right: -10%; bottom: -60%; width: 70%; height: 200%;
+      background: radial-gradient(closest-side, rgba(32,80,246,.45), transparent 70%);
+      pointer-events: none;
+    }
+    .next__hd {
+      position: relative; z-index: 1;
+      display: grid; grid-template-columns: auto 1fr;
+      align-items: baseline; gap: var(--s-5);
+      padding-bottom: var(--s-7);
+      margin-bottom: var(--s-7);
+      border-bottom: 1px solid rgba(255,255,255,.12);
+    }
+    .next__hd .num {
+      font-family: var(--font-mono); font-size: var(--text-xs);
+      letter-spacing: var(--tracking-caps); text-transform: uppercase;
+      color: var(--brand-300);
+    }
+    .next h2 {
+      margin: 0; font-family: var(--font-sans);
+      font-size: 56px; line-height: 1;
+      letter-spacing: -0.03em; font-weight: 600;
+      max-width: 24ch; text-wrap: balance;
+    }
+    .next h2 em { color: var(--brand-400); font-style: italic; }
+
+    .next__grid {
+      position: relative; z-index: 1;
+      display: grid; grid-template-columns: 1.3fr 1fr;
+      gap: var(--s-9);
+      align-items: start;
+    }
+    .next__lhs { display: grid; gap: var(--s-5); }
+    .next__lhs p {
+      margin: 0; font-size: var(--text-lg);
+      color: rgba(255,255,255,.72);
+      line-height: 1.5; max-width: 52ch;
+    }
+    .next__cta { display: flex; flex-wrap: wrap; gap: var(--s-3); margin-top: var(--s-3); }
+
+    .next__steps {
+      display: grid; gap: 1px;
+      background: rgba(255,255,255,.08);
+      border-radius: var(--r-md);
+      overflow: hidden;
+    }
+    .next__step {
+      background: var(--ink-900);
+      padding: var(--s-5);
+      display: grid; grid-template-columns: 28px 1fr;
+      gap: var(--s-4);
+      align-items: start;
+    }
+    .next__step .n {
+      font-family: var(--font-mono); font-size: var(--text-sm);
+      color: var(--brand-400);
+      padding-top: 2px;
+    }
+    .next__step h4 {
+      margin: 0; font-size: var(--text-md); font-weight: 500;
+      letter-spacing: -0.01em;
+    }
+    .next__step p {
+      margin: 4px 0 0; font-size: var(--text-sm);
+      color: rgba(255,255,255,.6); line-height: 1.5;
+    }
+
+    /* Footer */
+    .pfoot {
+      margin-top: var(--s-9);
+      padding: var(--s-6) 0;
+      border-top: var(--border);
+      display: grid; grid-template-columns: 1fr auto;
+      align-items: center; gap: var(--s-5);
+      font-family: var(--font-mono); font-size: var(--text-xs);
+      letter-spacing: var(--tracking-caps); text-transform: uppercase;
+      color: var(--ink-500);
+    }
+    .pfoot__brand { display: inline-flex; align-items: center; gap: 8px; }
+    .pfoot__brand img { height: 16px; }
+    .pfoot p { margin: 0; max-width: 72ch; line-height: 1.6; text-transform: none; letter-spacing: 0; font-family: var(--font-sans); font-size: 11.5px; color: var(--ink-500); }
+
+    /* Responsive */
+    @media (max-width: 980px) {
+      .cover__grid, .chart-block, .scenarios, .pull, .compa, .next__grid {
+        grid-template-columns: 1fr;
+      }
+      .facts { grid-template-columns: repeat(2, 1fr); }
+      .facts .fact { border-left: 0; padding-left: 0; border-top: 1px dashed var(--ink-200); padding-top: 10px; }
+      .facts .fact:first-child, .facts .fact:nth-child(2) { border-top: 0; padding-top: 0; }
+      .chapter__hd { grid-template-columns: 1fr; }
+      .cover__title { font-size: 48px; }
+      .next h2 { font-size: 40px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ═══════════════════════════ TOP BAR ═══════════════════════════ -->
+  <nav class="topbar no-print">
+    <div class="topbar__inner">
+      <div class="topbar__brand">
+        <img src="assets/logos/type-prophero-state-wordmark.svg" alt="Prop Hero" />
+      </div>
+      <div class="topbar__crumb">
+        <span>Reporte Inversor</span>
+        <span style="color:var(--ink-300);">/</span>
+        <b>INV-2841 · Carlos M.</b>
+      </div>
+      <div class="topbar__actions">
+        <div class="lang" role="group" aria-label="Idioma">
+          <button class="is-on">ES</button>
+          <button>EN</button>
+        </div>
+        <button class="ibtn" title="Imprimir" onclick="window.print()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
+        </button>
+        <button class="ibtn" title="Descargar PDF">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="page">
+
+    <!-- ═══════════════════════════ COVER ═══════════════════════════ -->
+    <section class="cover">
+      <div class="cover__top">
+        <div class="cover__rule">
+          <span class="dot"></span>
+          <span>Prop Hero · Reporte Inversor</span>
+        </div>
+        <div class="cover__seq">— Edición Q2 · <b>2026</b> · 21 may</div>
+        <div class="cover__rule" style="justify-self: end;">
+          <b>INV-2841</b>
+          <span>·</span>
+          <span>Carlos M.</span>
+        </div>
+      </div>
+
+      <div class="cover__grid">
+        <div class="cover__lhs">
+          <div class="cover__eyebrow">
+            <span class="cap cap--brand" data-tweak="eyebrow">— Capítulo 00 · Tu salida al mercado</span>
+            <span class="chip is-paper"><span class="dot" style="background:var(--success-500);"></span>Valoración actualizada</span>
+          </div>
+          <h1 class="cover__title" data-tweak="title">Tu propiedad <em>ha&nbsp;ganado</em> peso en el mercado.</h1>
+          <p class="cover__lede" data-tweak="lede">
+            Treinta y ocho meses después de la compra, los datos dicen una cosa concreta: tu piso de Zaragoza vale entre <b>146.765&nbsp;€</b> y <b>161.178&nbsp;€</b>. Este reporte te enseña cuánto has ganado, qué está pagando el mercado y qué precio recomendamos para salir — y reinvertir.
+          </p>
+        </div>
+
+        <aside class="lead-fig">
+          <p class="lead-fig__lbl">— Plusvalía estimada hoy</p>
+          <p class="lead-fig__num num">+18.607&nbsp;€</p>
+          <p class="lead-fig__pct">↑ +13,8&nbsp;% en 38 meses · ~4,4&nbsp;% anual</p>
+          <p class="lead-fig__hint">
+            Sobre un capital invertido de <b>134.541&nbsp;€</b>. Refleja el rango de venta hoy y el descuento medio que está aceptando el mercado en cierres recientes.
+          </p>
+        </aside>
+      </div>
+
+      <dl class="facts">
+        <div class="fact"><dt>Propiedad</dt><dd>Calle Manuel Lasala 23<br/>Zaragoza · 53&nbsp;m²</dd></div>
+        <div class="fact"><dt>Fecha de compra</dt><dd>Marzo 2023<br/>134.541&nbsp;€</dd></div>
+        <div class="fact"><dt>Rango de salida</dt><dd>146.765&nbsp;€ – 161.178&nbsp;€<br/><span style="color:var(--brand-500);">Sugerido 153.148&nbsp;€</span></dd></div>
+        <div class="fact"><dt>Asesor asignado</dt><dd>Adrián&nbsp;Pintor<br/>Prop&nbsp;Hero · Inversión</dd></div>
+      </dl>
+    </section>
+
+    <!-- ═══════════════════════════ CAPÍTULO 01 — CHART ═══════════════════════════ -->
+    <section class="chapter">
+      <header class="chapter__hd">
+        <div class="chapter__num">
+          <b>— Cap. 01</b>
+          <em>La historia<br/>del precio</em>
+        </div>
+        <div>
+          <h2 class="chapter__title">Cómo se ha movido tu propiedad <em>mes a mes</em>.</h2>
+          <p class="chapter__desc">
+            Valoración estimada cruzando los comparables públicos, los cierres reales de los últimos doce meses y nuestro índice interno de zona. La banda verde muestra dónde está la horquilla de salida; la línea discontinua, la proyección a seis meses si decides esperar.
+          </p>
+        </div>
+      </header>
+
+      <div class="chart-block">
+        <div class="canvas">
+          <div class="hd">
+            <h4>Valoración mensual · marzo 2023 → noviembre 2026</h4>
+            <div class="seg" id="seg-range" role="group" aria-label="Rango temporal">
+              <button data-range="6M">6&nbsp;M</button>
+              <button data-range="1Y">1&nbsp;A</button>
+              <button data-range="ALL" class="is-on">Todo</button>
+              <button data-range="+6M">+&nbsp;Proy.</button>
+            </div>
+          </div>
+          <div class="chart" id="chart"></div>
+          <div class="chart-legend">
+            <span class="item"><span class="sw"></span>Valoración estimada</span>
+            <span class="item"><span class="sw dashed"></span>Proyección 6 m</span>
+            <span class="item"><span class="sw range"></span>Rango actual de salida</span>
+            <span class="item" style="margin-left:auto;">Fuente: comparables + cierres · n=147 · zona</span>
+          </div>
+        </div>
+
+        <aside class="stats">
+          <div>
+            <span class="cap">— Resumen</span>
+            <h3>Llevas <em>+18.607 €</em> en 38 meses.</h3>
+          </div>
+          <dl>
+            <div class="row"><dt>Precio compra</dt><dd>134.541&nbsp;€</dd></div>
+            <div class="row"><dt>Costes asociados</dt><dd>0&nbsp;€</dd></div>
+            <div class="row"><dt>Capital invertido</dt><dd>134.541&nbsp;€</dd></div>
+            <div class="row"><dt>Valoración hoy</dt><dd class="brand">153.148&nbsp;€</dd></div>
+            <div class="row"><dt>Capital gain</dt><dd class="ok">+18.607&nbsp;€</dd></div>
+            <div class="row"><dt>ROI total</dt><dd class="ok">+13,8&nbsp;%</dd></div>
+            <div class="row"><dt>ROI anualizado</dt><dd class="ok">~4,4&nbsp;%</dd></div>
+          </dl>
+          <div class="foot">Actualizado · 21 may 2026</div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════ CAPÍTULO 02 — SCENARIOS ═══════════════════════════ -->
+    <section class="chapter">
+      <header class="chapter__hd">
+        <div class="chapter__num">
+          <b>— Cap. 02</b>
+          <em>Tres formas<br/>de salir</em>
+        </div>
+        <div>
+          <h2 class="chapter__title">Elige cuánto puedes <em>esperar</em>.</h2>
+          <p class="chapter__desc">
+            El precio no es una cifra única: es una elección entre <b>velocidad</b> y <b>plusvalía</b>. Estos tres escenarios son combinaciones realistas de precio, tiempo en mercado y margen de negociación. El recomendado es nuestro mejor balance.
+          </p>
+        </div>
+      </header>
+
+      <div class="scenarios">
+        <article class="scenario">
+          <div class="scenario__kicker">
+            <span class="tag">01 · Venta rápida</span>
+            <span>30–60&nbsp;días</span>
+          </div>
+          <h3 class="scenario__title">Saca el piso al mercado y muévelo.</h3>
+          <p class="scenario__desc">Precio para generar tracción inmediata y minimizar el tiempo en mercado.</p>
+          <p class="scenario__price num">146.765&nbsp;€</p>
+          <dl class="scenario__rows">
+            <div class="scenario__row"><dt>Capital gain</dt><dd class="delta num">+12.224&nbsp;€</dd></div>
+            <div class="scenario__row"><dt>ROI</dt><dd class="delta num">+9,1&nbsp;%</dd></div>
+            <div class="scenario__row"><dt>Margen negociación</dt><dd class="num">~3 %</dd></div>
+            <div class="scenario__row"><dt>Tiempo en mercado</dt><dd class="num">30–60 días</dd></div>
+          </dl>
+        </article>
+
+        <article class="scenario is-recommended">
+          <div class="scenario__kicker">
+            <span class="tag">02 · Recomendado</span>
+            <span style="color: var(--brand-500);">● Nuestra sugerencia</span>
+          </div>
+          <h3 class="scenario__title">El <em>balance</em> entre velocidad y plusvalía.</h3>
+          <p class="scenario__desc">Captura la revalorización sin ignorar lo que está aceptando el mercado.</p>
+          <p class="scenario__price num">153.148&nbsp;€</p>
+          <dl class="scenario__rows">
+            <div class="scenario__row"><dt>Capital gain</dt><dd class="delta num">+18.607&nbsp;€</dd></div>
+            <div class="scenario__row"><dt>ROI</dt><dd class="delta num">+13,8&nbsp;%</dd></div>
+            <div class="scenario__row"><dt>Margen negociación</dt><dd class="num">~6 %</dd></div>
+            <div class="scenario__row"><dt>Tiempo en mercado</dt><dd class="num">55 días aprox.</dd></div>
+          </dl>
+        </article>
+
+        <article class="scenario">
+          <div class="scenario__kicker">
+            <span class="tag">03 · Aspiracional</span>
+            <span>90–150&nbsp;días</span>
+          </div>
+          <h3 class="scenario__title">Maximiza el precio si puedes esperar.</h3>
+          <p class="scenario__desc">Para inversores con margen temporal y voluntad de aguantar negociaciones.</p>
+          <p class="scenario__price num">161.178&nbsp;€</p>
+          <dl class="scenario__rows">
+            <div class="scenario__row"><dt>Capital gain</dt><dd class="delta num">+26.637&nbsp;€</dd></div>
+            <div class="scenario__row"><dt>ROI</dt><dd class="delta num">+19,8&nbsp;%</dd></div>
+            <div class="scenario__row"><dt>Margen negociación</dt><dd class="num">~8–10 %</dd></div>
+            <div class="scenario__row"><dt>Tiempo en mercado</dt><dd class="num">90–150 días</dd></div>
+          </dl>
+        </article>
+      </div>
+
+      <!-- Pull quote — lectura de mercado -->
+      <div class="pull">
+        <div class="meta">
+          <div>
+            <div>Lectura de mercado</div>
+            <div class="big num">−6,4&nbsp;%</div>
+            <div>Descuento medio · cierres reales</div>
+          </div>
+          <div>
+            <div>Tiempo medio</div>
+            <div class="big num" style="color: var(--ink-900);">55&nbsp;días</div>
+            <div>En mercado · zona Zaragoza</div>
+          </div>
+        </div>
+        <p class="body">
+          En tu zona los cierres reales se firman, de media, un <em>−6,4&nbsp;%</em> por debajo del precio anunciado y tras <em>55 días</em> en mercado. Salir al precio recomendado no ignora ese margen: lo absorbe sin renunciar a la plusvalía.
+        </p>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════ CAPÍTULO 03 — COMPARABLES ═══════════════════════════ -->
+    <section class="chapter">
+      <header class="chapter__hd">
+        <div class="chapter__num">
+          <b>— Cap. 03</b>
+          <em>Evidencia<br/>del mercado</em>
+        </div>
+        <div>
+          <h2 class="chapter__title">Lo que se <em>anuncia</em>, y lo que se <em>cierra</em>.</h2>
+          <p class="chapter__desc">
+            Dos listas paralelas. A la izquierda, lo que está viendo un comprador hoy en zona — referencias activas. A la derecha, lo que realmente se ha pagado en los últimos doce meses. La distancia entre ambas listas explica el descuento de cierre.
+          </p>
+        </div>
+      </header>
+
+      <div class="compa">
+        <div class="compa__col">
+          <h4>Comparables activos <span class="chip is-brand">5 anuncios · hoy</span></h4>
+          <p>Lo que está viendo el comprador en el mercado.</p>
+          <ol class="clist">
+            <li>
+              <span class="idx">01</span>
+              <div>
+                <div class="title">C/ Doctor Cerrada 14, Zaragoza</div>
+                <div class="meta">53 m² · 1 hab · 2 baños · planta 3ª</div>
+              </div>
+              <div>
+                <div class="price num">163.717&nbsp;€</div>
+                <div class="sub muted">3.089&nbsp;€/m²</div>
+              </div>
+            </li>
+            <li>
+              <span class="idx">02</span>
+              <div>
+                <div class="title">C/ Cinco de Marzo 12, Zaragoza</div>
+                <div class="meta">49 m² · 1 hab · 2 baños · exterior</div>
+              </div>
+              <div>
+                <div class="price num">147.833&nbsp;€</div>
+                <div class="sub muted">3.017&nbsp;€/m²</div>
+              </div>
+            </li>
+            <li>
+              <span class="idx">03</span>
+              <div>
+                <div class="title">Pº Sagasta 28, Zaragoza</div>
+                <div class="meta">54 m² · 1 hab · 2 baños · reformado</div>
+              </div>
+              <div>
+                <div class="price num">154.170&nbsp;€</div>
+                <div class="sub muted">2.855&nbsp;€/m²</div>
+              </div>
+            </li>
+            <li>
+              <span class="idx">04</span>
+              <div>
+                <div class="title">C/ San Miguel 41, Zaragoza</div>
+                <div class="meta">47 m² · 1 hab · 1 baño · ascensor</div>
+              </div>
+              <div>
+                <div class="price num">142.175&nbsp;€</div>
+                <div class="sub muted">3.025&nbsp;€/m²</div>
+              </div>
+            </li>
+            <li>
+              <span class="idx">05</span>
+              <div>
+                <div class="title">C/ Casetas 76, Zaragoza</div>
+                <div class="meta">54 m² · 1 hab · 2 baños · piso alto</div>
+              </div>
+              <div>
+                <div class="price num">164.808&nbsp;€</div>
+                <div class="sub muted">3.052&nbsp;€/m²</div>
+              </div>
+            </li>
+          </ol>
+        </div>
+
+        <div class="compa__col">
+          <h4>Cierres reales · 12 meses <span class="chip">referencia salida</span></h4>
+          <p>Evidencia para explicar el descuento medio antes de cerrar.</p>
+          <ol class="clist">
+            <li>
+              <span class="idx">01</span>
+              <div>
+                <div class="title">C/ Cinco de Marzo 46, Zaragoza</div>
+                <div class="meta">53 m² · 72 días en mercado · cerrado mar&nbsp;2026</div>
+              </div>
+              <div>
+                <div class="price num">155.184&nbsp;€</div>
+                <div class="sub neg">−5,2% vs anunciado</div>
+              </div>
+            </li>
+            <li>
+              <span class="idx">02</span>
+              <div>
+                <div class="title">C/ Casetas 25, Zaragoza</div>
+                <div class="meta">49 m² · 74 días en mercado · cerrado feb&nbsp;2026</div>
+              </div>
+              <div>
+                <div class="price num">133.770&nbsp;€</div>
+                <div class="sub neg">−9,5% vs anunciado</div>
+              </div>
+            </li>
+            <li>
+              <span class="idx">03</span>
+              <div>
+                <div class="title">C/ Distrito Rural 64, Zaragoza</div>
+                <div class="meta">54 m² · 21 días en mercado · cerrado abr&nbsp;2026</div>
+              </div>
+              <div>
+                <div class="price num">148.176&nbsp;€</div>
+                <div class="sub neg">−3,9% vs anunciado</div>
+              </div>
+            </li>
+            <li>
+              <span class="idx">04</span>
+              <div>
+                <div class="title">C/ Cinco de Marzo 21, Zaragoza</div>
+                <div class="meta">47 m² · 34 días en mercado · cerrado may&nbsp;2026</div>
+              </div>
+              <div>
+                <div class="price num">135.219&nbsp;€</div>
+                <div class="sub neg">−4,9% vs anunciado</div>
+              </div>
+            </li>
+            <li>
+              <span class="idx">05</span>
+              <div>
+                <div class="title">C/ Casetas 76, Zaragoza</div>
+                <div class="meta">54 m² · 38 días en mercado · cerrado ene&nbsp;2026</div>
+              </div>
+              <div>
+                <div class="price num">153.792&nbsp;€</div>
+                <div class="sub neg">−6,7% vs anunciado</div>
+              </div>
+            </li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════ NEXT STEP ═══════════════════════════ -->
+    <section class="next">
+      <div class="next__hd">
+        <span class="num">— Próximo paso · cap. 04</span>
+        <h2 data-tweak="cta-title">Salimos a mercado al <em>precio justo</em>, y reinvertimos juntos.</h2>
+      </div>
+      <div class="next__grid">
+        <div class="next__lhs">
+          <p data-tweak="cta-body">
+            Tienes el rango, los comparables y tres escenarios sobre la mesa. En una llamada de 30 minutos cerramos el precio de salida y, si quieres, te enseñamos qué operaciones estamos comprando ahora mismo para reinvertir la plusvalía que acabas de capturar.
+          </p>
+          <div class="next__cta">
+            <a href="#" class="btn btn--brand btn--lg">Agendar llamada de salida <span class="arrow">→</span></a>
+            <a href="#" class="btn btn--ghost btn--lg" style="background:rgba(255,255,255,.06); color:#fff; border-color:rgba(255,255,255,.18);">Ver oportunidades 2026</a>
+          </div>
+        </div>
+
+        <div class="next__steps">
+          <div class="next__step">
+            <span class="n">01</span>
+            <div>
+              <h4>Llamada de salida · 30 min</h4>
+              <p>Repasamos los tres escenarios y elegimos juntos el precio. Plan fiscal incluido.</p>
+            </div>
+          </div>
+          <div class="next__step">
+            <span class="n">02</span>
+            <div>
+              <h4>Comercialización gestionada</h4>
+              <p>Sacamos el piso al mercado con el equipo de Prop Hero hasta el cierre.</p>
+            </div>
+          </div>
+          <div class="next__step">
+            <span class="n">03</span>
+            <div>
+              <h4>Reinversión asistida</h4>
+              <p>Te enseñamos las próximas oportunidades alineadas con tu nuevo capital.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════ FOOTER ═══════════════════════════ -->
+    <footer class="pfoot">
+      <p>
+        Reporte estimado a partir de comparables públicos, cierres reales facilitados por nuestro equipo de operaciones e índice interno de zona. No constituye una tasación oficial ni una recomendación de inversión. © Prop&nbsp;Hero · v&nbsp;1.0 — INV-2841
+      </p>
+      <div class="pfoot__brand">
+        <img src="assets/logos/type-prophero-state-icon.svg" alt="Prop Hero" />
+        <span>Prop Hero · 2026</span>
+      </div>
+    </footer>
+
+  </main>
+
+  <div id="tweaks-root" class="no-print"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+
+  <script type="text/babel" src="report-chart.js"></script>
+  <script type="text/babel" src="report-tweaks-v2.jsx"></script>
+
+</body>
+</html>

@@ -1,0 +1,198 @@
+/* ============================================================
+   Vistral × Prophero — Design Tokens
+   Source of truth for color, type, spacing, radius, shadow, motion.
+   ------------------------------------------------------------
+   Derived from the supplied logo set (tone-brand / tone-dark /
+   tone-light variants + distribution lockups). Extended with a
+   neutral scale, type system and interaction tokens to form a
+   complete product UI foundation.
+   ============================================================ */
+
+/* Brand font — Inter Variable (opsz + wght axes) */
+@font-face {
+  font-family: "Inter";
+  src: url("fonts/Inter-VariableFont_opsz_wght.ttf") format("truetype-variations"),
+       url("fonts/Inter-VariableFont_opsz_wght.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Monospace substitute kept via Google for tabular/code contexts */
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap");
+
+:root {
+  /* ——— Brand color ——— */
+  --brand-500: #2050F6;   /* Primary — Vistral/Prophero blue */
+  --brand-600: #1A41CC;   /* Hover / pressed */
+  --brand-700: #142F94;   /* Deepest brand */
+  --brand-400: #5B7EF9;
+  --brand-300: #99B0FB;
+  --brand-200: #CCD8FD;
+  --brand-100: #E7ECFE;
+  --brand-050: #F4F6FF;
+
+  /* ——— Ink (near-black from logos) ——— */
+  --ink-900: #0E0E0F;
+  --ink-800: #212121;      /* Logo "dark tone" */
+  --ink-700: #2E2E30;
+  --ink-600: #4A4A4D;
+  --ink-500: #6B6B6F;
+  --ink-400: #9A9AA0;
+  --ink-300: #C4C4C9;
+  --ink-200: #E3E3E7;
+  --ink-100: #F1F1F3;
+  --ink-050: #F8F8F9;
+
+  /* ——— Surface ——— */
+  --paper:    #FFFFFF;
+  --paper-2:  #FAFAFB;
+  --paper-3:  #F4F4F6;
+  --canvas:   #EFEFF2;   /* App canvas behind cards */
+
+  /* ——— Status ——— */
+  --success-500: #1E9F6E;
+  --success-100: #E3F6EE;
+  --warning-500: #D97706;
+  --warning-100: #FEF1DC;
+  --danger-500:  #D92D20;
+  --danger-100:  #FBE4E2;
+  --info-500:    var(--brand-500);
+  --info-100:    var(--brand-100);
+
+  /* ——— Type ——— */
+  --font-sans:   "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-serif:  "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono:   "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  /* Weights — Inter only uses Regular 400, Medium 500, Semibold 600 */
+  --fw-regular:  400;
+  --fw-medium:   500;
+  --fw-semibold: 600;
+
+  /* Fluid type scale — minor third at small sizes, third at display */
+  --text-xs:   11px;
+  --text-sm:   13px;
+  --text-md:   15px;     /* body default */
+  --text-lg:   18px;
+  --text-xl:   22px;
+  --text-2xl:  28px;
+  --text-3xl:  36px;
+  --text-4xl:  48px;
+  --text-5xl:  64px;
+  --text-6xl:  88px;
+
+  --lh-tight:  1.08;
+  --lh-snug:   1.22;
+  --lh-base:   1.5;
+  --lh-loose:  1.65;
+
+  --tracking-tight: -0.02em;
+  --tracking-snug:  -0.01em;
+  --tracking-base:  0;
+  --tracking-wide:  0.04em;
+  --tracking-caps:  0.12em;
+
+  /* ——— Spacing (4px base) ——— */
+  --s-0:  0;
+  --s-1:  4px;
+  --s-2:  8px;
+  --s-3:  12px;
+  --s-4:  16px;
+  --s-5:  20px;
+  --s-6:  24px;
+  --s-7:  32px;
+  --s-8:  40px;
+  --s-9:  48px;
+  --s-10: 64px;
+  --s-11: 80px;
+  --s-12: 112px;
+  --s-13: 160px;
+
+  /* ——— Radius ——— */
+  --r-xs:  2px;
+  --r-sm:  4px;
+  --r-md:  8px;
+  --r-lg:  12px;
+  --r-xl:  18px;
+  --r-2xl: 24px;
+  --r-full: 999px;
+
+  /* ——— Border ——— */
+  --border:       1px solid var(--ink-200);
+  --border-strong:1px solid var(--ink-300);
+  --border-brand: 1px solid var(--brand-500);
+
+  /* ——— Shadow (subtle, editorial) ——— */
+  --shadow-xs: 0 1px 2px rgba(14,14,15,.04);
+  --shadow-sm: 0 1px 2px rgba(14,14,15,.05), 0 2px 6px rgba(14,14,15,.04);
+  --shadow-md: 0 4px 10px rgba(14,14,15,.06), 0 12px 24px rgba(14,14,15,.05);
+  --shadow-lg: 0 12px 32px rgba(14,14,15,.08), 0 32px 64px rgba(14,14,15,.08);
+  --shadow-brand: 0 8px 24px rgba(32,80,246,.22);
+
+  /* ——— Motion ——— */
+  --ease-out:   cubic-bezier(.2,.7,.2,1);
+  --ease-inout: cubic-bezier(.65,0,.35,1);
+  --dur-1: 120ms;
+  --dur-2: 200ms;
+  --dur-3: 320ms;
+  --dur-4: 520ms;
+
+  /* ——— Layout ——— */
+  --page-max: 1240px;
+  --gutter:   var(--s-7);
+}
+
+/* ============================================================
+   Base resets & document defaults
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  line-height: var(--lh-base);
+  color: var(--ink-900);
+  background: var(--paper);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "ss01", "cv11";
+  font-variation-settings: "opsz" 14;
+}
+
+/* Optical-size axis — display cut kicks in at larger sizes */
+h1, h2, .display, .h1, .h2, .ds-head__title,
+[style*="font-size:64px"], [style*="font-size:56px"], [style*="font-size:48px"],
+[style*="font-size:36px"], [style*="font-size: 32px"], [style*="font-size:32px"] {
+  font-variation-settings: "opsz" 32;
+}
+
+a { color: inherit; text-underline-offset: 3px; }
+img, svg { display: block; max-width: 100%; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+hr { border: 0; border-top: var(--border); margin: var(--s-8) 0; }
+
+::selection { background: var(--brand-500); color: #fff; }
+
+/* Text helpers */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+.display {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: var(--text-5xl);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--tracking-tight);
+}
+.h1 { font-size: var(--text-3xl); line-height: var(--lh-tight); letter-spacing: var(--tracking-tight); font-weight: 600; }
+.h2 { font-size: var(--text-2xl); line-height: var(--lh-snug);  letter-spacing: var(--tracking-snug);  font-weight: 600; }
+.h3 { font-size: var(--text-xl);  line-height: var(--lh-snug);  letter-spacing: var(--tracking-snug);  font-weight: 500; }
+.lede { font-size: var(--text-lg); line-height: var(--lh-base); color: var(--ink-600); max-width: 62ch; }
+.small { font-size: var(--text-sm); color: var(--ink-600); }
+.mono { font-family: var(--font-mono); font-size: var(--text-sm); }
