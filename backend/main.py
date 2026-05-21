@@ -941,6 +941,12 @@ async def _retry_valuation_and_send_email(
             exc.status_code,
             exc.detail,
         )
+        _mark_valuation_failed(
+            valuation_id,
+            request,
+            reason=f"valuation_retry_http_{exc.status_code}",
+            detail=str(exc.detail),
+        )
         db.mark_email_sent(valuation_id, error=f"valuation_retry_http_{exc.status_code}: {exc.detail}")
         return
     except Exception as exc:  # pylint: disable=broad-except
@@ -949,6 +955,12 @@ async def _retry_valuation_and_send_email(
             valuation_id,
             exc,
             exc_info=True,
+        )
+        _mark_valuation_failed(
+            valuation_id,
+            request,
+            reason="valuation_retry_crash",
+            detail=f"{type(exc).__name__}: {exc}",
         )
         db.mark_email_sent(valuation_id, error=f"valuation_retry_crash: {type(exc).__name__}: {exc}")
         return
@@ -989,6 +1001,40 @@ def _placeholder_response_payload(
         "reason": reason,
         "request": request.model_dump(mode="json"),
     }
+
+
+def _mark_valuation_failed(
+    valuation_id: int,
+    request: ValuationRequest,
+    *,
+    reason: str,
+    detail: str | None = None,
+) -> None:
+    """Replace a pending placeholder with a 'failed' marker so the frontend
+    polling loop sees the failure immediately instead of polling forever
+    against a row whose `response_json` would otherwise remain 'pending'.
+
+    The GET /api/valuations/{id}/status endpoint maps `response_json.status
+    == 'failed'` to a PollOutcome of `{ kind: 'failed' }`, which the UI uses
+    to surface a clear error / email-fallback path."""
+    payload: dict[str, object] = {
+        "status": "failed",
+        "reason": reason,
+        "request": request.model_dump(mode="json"),
+    }
+    if detail:
+        payload["detail"] = detail
+    try:
+        db.update_valuation_response(
+            valuation_id=valuation_id,
+            municipio=None,
+            estimated_eur=None,
+            response_payload=payload,
+        )
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.warning(
+            "Could not mark valuation %d as failed: %s", valuation_id, exc
+        )
 
 
 @app.post(

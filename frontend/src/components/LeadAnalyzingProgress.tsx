@@ -19,19 +19,31 @@ interface Phase {
   icon: LucideIcon
 }
 
+// Rough timing model of the real backend pipeline. Stretched out so the
+// progress bar tracks reality on slow scrapes (Idealista CAPTCHAs, Bright
+// Data warm-up) instead of pegging to 92% in the first minute and looking
+// frozen for the next 4+ minutes — which is what was happening in prod
+// and made the user think the app died.
 const PHASES: Phase[] = [
   { key: 'geocoding', from: 0, icon: MapPin },
-  { key: 'searching', from: 3, icon: Search },
-  { key: 'processing', from: 10, icon: Building2 },
-  { key: 'pricing', from: 22, icon: BarChart3 },
-  { key: 'adjusting', from: 38, icon: Calculator },
-  { key: 'finalizing', from: 55, icon: FileText },
+  { key: 'searching', from: 10, icon: Search },
+  { key: 'processing', from: 40, icon: Building2 },
+  { key: 'pricing', from: 80, icon: BarChart3 },
+  { key: 'adjusting', from: 130, icon: Calculator },
+  { key: 'finalizing', from: 180, icon: FileText },
 ]
 
-// Asymptotic ease-out: caps at 92% so the bar never "lies" about being done.
-// tau=22 → ~63% at 22s, ~82% at 38s, ~92% at 60s, plateaus afterwards.
-const PROGRESS_CAP = 0.92
-const TAU_SECONDS = 22
+// Asymptotic ease-out: caps at 95% so the bar never "lies" about being done.
+// tau=90 → ~63% at 90s, ~78% at 150s, ~90% at 230s, plateaus afterwards.
+// Beyond the plateau we rotate the phase copy + show a "still working"
+// hint so the user can tell progress is still happening on the backend.
+const PROGRESS_CAP = 0.95
+const TAU_SECONDS = 90
+
+// Once this much time has passed without a result, surface an extra hint so
+// the user understands the request is still alive (the backend just needs
+// longer for some properties).
+const LONG_RUNNING_HINT_AFTER_S = 180
 
 function computeProgress(elapsed: number, active: boolean): number {
   if (!active) return 1
@@ -39,6 +51,15 @@ function computeProgress(elapsed: number, active: boolean): number {
 }
 
 function pickPhase(elapsed: number): Phase {
+  // Past the last phase, rotate through the four user-visible phases on a
+  // ~25s cycle so the copy keeps moving and the bar doesn't look frozen.
+  const finalPhaseStart = PHASES[PHASES.length - 1].from
+  if (elapsed >= finalPhaseStart + 25) {
+    const rotation: PhaseKey[] = ['searching', 'processing', 'pricing', 'finalizing']
+    const idx = Math.floor((elapsed - finalPhaseStart) / 25) % rotation.length
+    const key = rotation[idx]
+    return PHASES.find((p) => p.key === key) ?? PHASES[PHASES.length - 1]
+  }
   let current = PHASES[0]
   for (const phase of PHASES) {
     if (elapsed >= phase.from) current = phase
@@ -111,6 +132,12 @@ export function LeadAnalyzingProgress({ active }: LeadAnalyzingProgressProps) {
       <p className="text-center text-xs text-ink-muted">
         {t('lead.analyzing.hint')}
       </p>
+
+      {elapsed >= LONG_RUNNING_HINT_AFTER_S && (
+        <p className="text-center text-xs text-ink-muted">
+          {t('lead.analyzing.longRunningHint')}
+        </p>
+      )}
     </div>
   )
 }

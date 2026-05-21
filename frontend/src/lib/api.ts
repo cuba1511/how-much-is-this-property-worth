@@ -161,8 +161,12 @@ export async function getValuationStatus(
 export interface PollValuationOptions {
   /** Milliseconds between polls. Defaults to 3000. */
   intervalMs?: number
-  /** Hard ceiling on total polling time. After this we give up and let the
-   *  caller fall back to the "we'll email you" screen. Defaults to 4 min. */
+  /** Hard ceiling on total polling time. Past this we give up and let the
+   *  caller fall back to the "we'll email you" screen. Defaults to 20 min
+   *  so slow real-world valuations (Idealista CAPTCHAs, Bright Data warm-
+   *  up, Catastro residential proxy round-trips) actually reach the
+   *  report instead of dead-ending at the email fallback. The earlier
+   *  4-min ceiling was tripping on every slow valuation in prod. */
   maxTotalMs?: number
   /** Optional abort signal — wired to the in-flight fetch so the caller can
    *  cancel the polling loop (e.g. user navigated away). */
@@ -185,7 +189,7 @@ export async function pollValuationUntilReady(
   valuationId: number,
   {
     intervalMs = 3_000,
-    maxTotalMs = 4 * 60_000,
+    maxTotalMs = 20 * 60_000,
     signal,
   }: PollValuationOptions = {},
 ): Promise<PollOutcome> {

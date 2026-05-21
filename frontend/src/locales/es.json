@@ -278,6 +278,7 @@
       "description": "Estamos consultando precios reales del mercado. Esto puede tardar uno o dos minutos.",
       "elapsed": "{{seconds}}s transcurridos",
       "hint": "No cierres esta ventana. Los datos llegan en tiempo real.",
+      "longRunningHint": "Este análisis está tardando un poco más de lo habitual, pero seguimos trabajando. No cierres la ventana.",
       "phases": {
         "geocoding": "Localizando tu dirección…",
         "searching": "Buscando comparables en Idealista…",

@@ -278,6 +278,7 @@
       "description": "We're pulling real market prices for you. This can take a minute or two.",
       "elapsed": "{{seconds}}s elapsed",
       "hint": "Don't close this window. Data is arriving in real time.",
+      "longRunningHint": "This analysis is taking a bit longer than usual, but we're still working on it. Please keep this window open.",
       "phases": {
         "geocoding": "Locating your address…",
         "searching": "Searching comparables on Idealista…",
