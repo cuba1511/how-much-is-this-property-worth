@@ -43,6 +43,15 @@ export class CoachApiError extends Error {
   }
 }
 
+function isAbortLikeError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false
+  return err.name === 'AbortError' || err.message.toLowerCase().includes('aborted')
+}
+
+function asAbortError(): DOMException {
+  return new DOMException('Request aborted', 'AbortError')
+}
+
 export function getStoredCoachPassword(): string {
   if (typeof window === 'undefined') return ''
   try {
@@ -115,6 +124,7 @@ export async function searchTransactions(
       signal,
     })
   } catch (err) {
+    if (isAbortLikeError(err)) throw asAbortError()
     throw new CoachApiError(
       'network',
       `Network error: ${(err as Error).message ?? 'unknown'}`,
@@ -134,6 +144,7 @@ export async function getTransaction(
       signal,
     })
   } catch (err) {
+    if (isAbortLikeError(err)) throw asAbortError()
     throw new CoachApiError(
       'network',
       `Network error: ${(err as Error).message ?? 'unknown'}`,
@@ -143,15 +154,14 @@ export async function getTransaction(
 }
 
 /**
- * Probe whether the supplied password is valid by issuing a 1-record search.
+ * Probe whether the supplied password is valid without touching Airtable.
  * Returns true on 2xx, false on 401, throws on other errors so the UI can
  * distinguish "wrong password" from "API down".
  */
 export async function probeCoachPassword(password: string): Promise<boolean> {
-  const params = new URLSearchParams({ q: '', limit: '1' })
   let res: Response
   try {
-    res = await fetch(`${API_BASE}/api/coach/transactions?${params}`, {
+    res = await fetch(`${API_BASE}/api/coach/auth/check`, {
       headers: {
         'ngrok-skip-browser-warning': 'true',
         'X-Coach-Password': password,

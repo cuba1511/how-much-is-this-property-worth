@@ -69,6 +69,7 @@ tests/evaluation/        Calibration harness against appraiser ground-truth
 ## Documentation
 - [`docs/email-report.md`](docs/email-report.md) — lead + PDF + email pipeline (`/api/lead`, `/api/report/pdf`)
 - [`docs/market-transactions.md`](docs/market-transactions.md) — transactions data layer
+- [`docs/coach-transactions.md`](docs/coach-transactions.md) — internal `/coach` UI + Airtable proxy (`/api/coach/*`)
 - [`docs/apps-script.md`](docs/apps-script.md) — Apps Script integration
 - [`tests/evaluation/README.md`](tests/evaluation/README.md) — calibration harness against ground-truth appraiser CSV
 

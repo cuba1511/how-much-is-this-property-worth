@@ -13,7 +13,8 @@ Field mapping (Airtable → API):
 | `Beds`                                                                                            | `bedrooms`           |
 | `Baths`                                                                                           | `bathrooms`          |
 | `Landsize`                                                                                        | `landsize_m2`        |
-| `Create Date`                                                                                     | `created_at`         |
+| `Created_Date`                                                                                    | `created_at`         |
+| `Country (from Properties)`                                                                       | filter only          |
 | `Total est. costs (Reno + furniture + technical project costs + Apportionment Amount)`            | `total_est_costs`    |
 | `Final Total Price (from Properties)`                                                             | `final_total_price`  |
 
@@ -39,7 +40,7 @@ from models import TransactionDetail, TransactionSummary
 logger = logging.getLogger(__name__)
 
 TRANSACTIONS_TABLE_ENV = "AIRTABLE_TRANSACTIONS_TABLE"
-DEFAULT_TRANSACTIONS_TABLE = "transactions"
+DEFAULT_TRANSACTIONS_TABLE = "Transactions"
 
 # Airtable column names. Kept as constants so the rename in Airtable (or a
 # locale change) is a single-line patch instead of a project-wide grep.
@@ -48,7 +49,8 @@ FIELD_TYPE = "Type"
 FIELD_BEDS = "Beds"
 FIELD_BATHS = "Baths"
 FIELD_LANDSIZE = "Landsize"
-FIELD_CREATED_AT = "Create Date"
+FIELD_CREATED_AT = "Created_Date"
+FIELD_COUNTRY = "Country (from Properties)"
 FIELD_TOTAL_EST_COSTS = (
     "Total est. costs (Reno + furniture + technical project costs + Apportionment Amount)"
 )
@@ -114,6 +116,16 @@ def _escape_formula_literal(value: str) -> str:
     return cleaned.replace("'", "\\'")
 
 
+def _country_filter_formula() -> str:
+    """Only return Spanish transactions.
+
+    `Country (from Properties)` is a lookup field, so Airtable exposes it to
+    formulas as an array-like value. ARRAYJOIN makes exact-ish text filtering
+    reliable while still handling single-value lookups.
+    """
+    return f"FIND('spain', LOWER(ARRAYJOIN({{{FIELD_COUNTRY}}})))"
+
+
 def _build_search_formula(query: str) -> str:
     """Case-insensitive substring match over Transaction Name.
 
@@ -124,8 +136,9 @@ def _build_search_formula(query: str) -> str:
     """
     needle = _escape_formula_literal(query.lower())
     return (
-        f"OR("
-        f"FIND('{needle}', LOWER({{{FIELD_TRANSACTION_NAME}}}))"
+        f"AND("
+        f"{_country_filter_formula()},"
+        f"OR(FIND('{needle}', LOWER({{{FIELD_TRANSACTION_NAME}}})))"
         f")"
     )
 
@@ -167,26 +180,20 @@ async def search_transactions(
     """
     sort_clause = [{"field": FIELD_CREATED_AT, "direction": "desc"}]
 
-    if query.strip():
-        formula = _build_search_formula(query.strip())
-        records = await list_records(
-            config=config,
-            table=_table_name(),
-            filter_formula=formula,
-            fields=LIST_FIELDS,
-            max_records=max_results,
-            page_size=max_results,
-            sort=sort_clause,
-        )
-    else:
-        records = await list_records(
-            config=config,
-            table=_table_name(),
-            fields=LIST_FIELDS,
-            max_records=max_results,
-            page_size=max_results,
-            sort=sort_clause,
-        )
+    formula = (
+        _build_search_formula(query.strip())
+        if query.strip()
+        else _country_filter_formula()
+    )
+    records = await list_records(
+        config=config,
+        table=_table_name(),
+        filter_formula=formula,
+        fields=LIST_FIELDS,
+        max_records=max_results,
+        page_size=max_results,
+        sort=sort_clause,
+    )
 
     return [_summary_from_record(r) for r in records]
 

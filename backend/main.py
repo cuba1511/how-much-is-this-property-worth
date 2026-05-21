@@ -490,6 +490,20 @@ def _airtable_config() -> AirtableConfig:
 
 
 @app.get(
+    "/api/coach/auth/check",
+    summary="Fast password check for the coach UI",
+    dependencies=[Depends(_verify_coach_password)],
+)
+async def check_coach_auth() -> dict[str, bool]:
+    """Validate the shared coach password without touching Airtable.
+
+    This keeps the login gate instant. Airtable is only queried once the
+    authenticated coach lands on the transactions screen.
+    """
+    return {"ok": True}
+
+
+@app.get(
     "/api/coach/transactions",
     response_model=list[TransactionSummary],
     summary="Search client transactions in Airtable (coach UI)",
