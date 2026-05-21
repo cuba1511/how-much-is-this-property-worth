@@ -80,6 +80,24 @@ export function PropertyIdentificationStep({
   const fetchControllerRef = useRef<AbortController | null>(null)
   const [showSkipOption, setShowSkipOption] = useState(false)
 
+  // Stash callbacks + t in refs so the lookup useEffect below can depend ONLY
+  // on `mode` + `resolvedAddress`. Without this, an identity change in `t`
+  // (e.g. when i18next swaps language or finishes loading a namespace) while
+  // the Catastro fetch is in flight would:
+  //   1) trigger the effect cleanup → `controller.abort()` kills the request
+  //   2) re-run the effect → early-return on the `lastFetchedRef === fetchKey`
+  //      dedup guard, so NO new fetch starts
+  //   3) the aborted promise falls through `if (err.name === 'AbortError')`
+  //      without touching state
+  //   → `lookupStatus` stays at 'loading' forever ("Buscando inmuebles…"
+  //   spinner that never resolves). Bug observed on /Calle de Ponciano 7.
+  const tRef = useRef(t)
+  tRef.current = t
+  const onSelectedUnitRef = useRef(onSelectedUnit)
+  onSelectedUnitRef.current = onSelectedUnit
+  const onUnitsCountChangeRef = useRef(onUnitsCountChange)
+  onUnitsCountChangeRef.current = onUnitsCountChange
+
   // Mirror the seeded reference label into the form so step 0 validation
   // (which checks `address` is non-empty) passes without the user retyping
   // anything when they came from the Hero in reference mode.
@@ -107,8 +125,8 @@ export function PropertyIdentificationStep({
       setUnits([])
       setLookupStatus('idle')
       setLookupError(null)
-      onSelectedUnit(null)
-      onUnitsCountChange?.(0)
+      onSelectedUnitRef.current(null)
+      onUnitsCountChangeRef.current?.(0)
       lastFetchedRef.current = null
       return
     }
@@ -125,16 +143,16 @@ export function PropertyIdentificationStep({
     setLookupStatus('loading')
     setLookupError(null)
     setUnits([])
-    onSelectedUnit(null)
-    onUnitsCountChange?.(0)
+    onSelectedUnitRef.current(null)
+    onUnitsCountChangeRef.current?.(0)
 
     void lookupCadastralUnits(resolvedAddress, controller.signal)
       .then((response) => {
         setUnits(response.units)
         setLookupStatus('done')
-        onUnitsCountChange?.(response.units.length)
+        onUnitsCountChangeRef.current?.(response.units.length)
         if (response.units.length === 1) {
-          onSelectedUnit(response.units[0])
+          onSelectedUnitRef.current(response.units[0])
         }
       })
       .catch((err: Error) => {
@@ -147,11 +165,11 @@ export function PropertyIdentificationStep({
         const isTimeout = err instanceof CatastroLookupTimeoutError
         setUnits([])
         setLookupStatus('error')
-        onUnitsCountChange?.(0)
+        onUnitsCountChangeRef.current?.(0)
         setLookupError(
           isTimeout
-            ? t('catastro.lookupTimeout')
-            : t('catastro.lookupError'),
+            ? tRef.current('catastro.lookupTimeout')
+            : tRef.current('catastro.lookupError'),
         )
         // Clear the cached fetchKey so editing-then-coming-back to the same
         // address re-tries instead of being stuck in the error state.
@@ -159,7 +177,12 @@ export function PropertyIdentificationStep({
       })
 
     return () => controller.abort()
-  }, [mode, resolvedAddress, onSelectedUnit, onUnitsCountChange, t])
+    // Depending only on `mode` + `resolvedAddress` is intentional: the
+    // callbacks and translator are mirrored into refs above so identity
+    // churn there cannot abort an in-flight lookup. See the long-form
+    // comment near the ref declarations for the failure mode this avoids.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, resolvedAddress])
 
   // Show the "Continuar sin Catastro" affordance after a few seconds of
   // sustained loading. Reset whenever lookupStatus changes so a fresh
