@@ -131,7 +131,12 @@ export function PropertyIdentificationStep({
       return
     }
 
-    const fetchKey = `${resolvedAddress.provider_id ?? resolvedAddress.label}`
+    // Include house_number so `commitPortal` (suggestion without portal →
+    // user types the portal → same provider_id) re-triggers the lookup
+    // instead of being silently deduped against the no-portal attempt.
+    const fetchKey = `${
+      resolvedAddress.provider_id ?? resolvedAddress.label
+    }|${resolvedAddress.house_number}`
     if (lastFetchedRef.current === fetchKey) return
 
     const controller = new AbortController()
@@ -293,13 +298,19 @@ export function PropertyIdentificationStep({
       {mode === 'address' ? (
         <AddressStep
           resolvedAddress={resolvedAddress}
-          onResolvedAddress={(addr) => {
-            lastFetchedRef.current = null
-            setLookupStatus(addr?.house_number ? 'loading' : 'idle')
-            setUnits([])
-            setLookupError(null)
-            onResolvedAddress(addr)
-          }}
+          // Pass through directly. The previous wrapper here reset
+          // `lastFetchedRef.current = null` and forced lookupStatus to
+          // 'loading' on every onResolvedAddress call. AddressSearch
+          // fires onSelect multiple times during a single user
+          // interaction (suggestion click → handleSelect; portal commit
+          // → commitPortal; same-frame input edit → handleInputChange),
+          // and the wrapper turned each one into a fresh non-deduped
+          // Catastro POST that aborted its predecessor — observed as 6+
+          // overlapping POSTs and a permanently-stuck spinner when the
+          // tail abort got there before the response was applied.
+          // The Catastro-by-address useEffect below already handles
+          // dedup + loading state when a real new address arrives.
+          onResolvedAddress={onResolvedAddress}
           submitting={submitting}
         />
       ) : (
