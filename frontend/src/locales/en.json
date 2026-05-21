@@ -275,7 +275,7 @@
     "privacy": "We will not share your information with third parties.",
     "analyzing": {
       "title": "Analyzing your property",
-      "description": "We're pulling real market prices for you. This can take up to a minute.",
+      "description": "We're pulling real market prices for you. This can take a minute or two.",
       "elapsed": "{{seconds}}s elapsed",
       "hint": "Don't close this window. Data is arriving in real time.",
       "phases": {
@@ -299,5 +299,47 @@
   "language": {
     "es": "Español",
     "en": "English"
+  },
+  "coach": {
+    "eyebrow": "Property coaches",
+    "title": "Client transactions",
+    "subtitle": "Search a transaction to review its data and, soon, run a new valuation.",
+    "logout": "Sign out",
+    "login": {
+      "title": "Restricted access",
+      "subtitle": "Enter the internal password to access client transactions.",
+      "passwordLabel": "Password",
+      "submit": "Sign in",
+      "checking": "Checking…",
+      "invalidPassword": "Wrong password.",
+      "unknownError": "We couldn't validate your access. Please try again."
+    },
+    "search": {
+      "placeholder": "Search by transaction name…",
+      "emptyState": "No transactions yet. Start typing to search.",
+      "noResults": "No transactions match «{{query}}».",
+      "unknownError": "We couldn't load the transactions."
+    },
+    "detail": {
+      "back": "Back to list",
+      "loading": "Loading transaction…",
+      "unknownError": "We couldn't load this transaction.",
+      "financialsTitle": "Financial summary",
+      "propertyTitle": "Property data",
+      "totalSpent": "Total spent",
+      "nextStepTitle": "Coming soon",
+      "nextStepDescription": "Run a valuation on this property using the Airtable data and our OLS algorithm.",
+      "nextStepCta": "Generate valuation (coming soon)"
+    },
+    "fields": {
+      "transactionName": "Transaction",
+      "type": "Type",
+      "bedrooms": "Bedrooms",
+      "bathrooms": "Bathrooms",
+      "landsize": "Land size",
+      "createdAt": "Created at",
+      "totalEstCosts": "Estimated costs",
+      "finalTotalPrice": "Final price"
+    }
   }
 }

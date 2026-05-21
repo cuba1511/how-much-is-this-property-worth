@@ -6,6 +6,7 @@ import type {
   ResolvedAddress,
   ValuationRequest,
   ValuationResponse,
+  ValuationStatusResponse,
 } from './types'
 
 // Dev: localhost API. Production VPS: empty → same-origin /api via Caddy.
@@ -117,6 +118,111 @@ export function submitLead(payload: {
   valuation_request: ValuationRequest
 }): Promise<LeadResponse> {
   return postJsonWithTimeout<LeadResponse>('/api/lead', payload, VALUATION_TIMEOUT_MS)
+}
+
+/**
+ * Fetch the current state of a persisted valuation. Used by the frontend
+ * after `/api/lead` returns `status: 'pending'` to keep polling until the
+ * background retry finishes, so the user lands on the results dashboard
+ * instead of dead-ending on the "we'll email you" screen.
+ *
+ * Returns a typed shape (no throwing on 'pending' / 'failed'); callers
+ * inspect `status` to decide whether to keep polling, render results, or
+ * give up.
+ */
+export async function getValuationStatus(
+  valuationId: number,
+  signal?: AbortSignal,
+): Promise<ValuationStatusResponse> {
+  const res = await fetch(
+    `${API_BASE}/api/valuations/${valuationId}/status`,
+    { headers: FETCH_HEADERS, signal },
+  )
+
+  if (!res.ok) {
+    let detail: string | undefined
+    try {
+      const body = (await res.json()) as { detail?: string }
+      if (body?.detail) detail = body.detail
+    } catch {
+      /* ignore */
+    }
+    throw new ValuationError(
+      'server',
+      detail ?? `Status check failed: ${res.status}`,
+      res.status,
+      detail,
+    )
+  }
+
+  return res.json() as Promise<ValuationStatusResponse>
+}
+
+export interface PollValuationOptions {
+  /** Milliseconds between polls. Defaults to 3000. */
+  intervalMs?: number
+  /** Hard ceiling on total polling time. After this we give up and let the
+   *  caller fall back to the "we'll email you" screen. Defaults to 4 min. */
+  maxTotalMs?: number
+  /** Optional abort signal — wired to the in-flight fetch so the caller can
+   *  cancel the polling loop (e.g. user navigated away). */
+  signal?: AbortSignal
+}
+
+export type PollOutcome =
+  | { kind: 'ready'; valuation: ValuationResponse }
+  | { kind: 'failed'; error?: string }
+  | { kind: 'timeout' }
+  | { kind: 'aborted' }
+
+/**
+ * Poll `getValuationStatus` until the valuation is ready, fails, or we hit
+ * the `maxTotalMs` ceiling. Each individual fetch error (network blips) is
+ * swallowed so transient failures don't kill the polling loop — only the
+ * final outcome matters.
+ */
+export async function pollValuationUntilReady(
+  valuationId: number,
+  {
+    intervalMs = 3_000,
+    maxTotalMs = 4 * 60_000,
+    signal,
+  }: PollValuationOptions = {},
+): Promise<PollOutcome> {
+  const start = Date.now()
+
+  while (true) {
+    if (signal?.aborted) return { kind: 'aborted' }
+    if (Date.now() - start > maxTotalMs) return { kind: 'timeout' }
+
+    try {
+      const status = await getValuationStatus(valuationId, signal)
+      if (status.status === 'ready' && status.valuation) {
+        return { kind: 'ready', valuation: status.valuation }
+      }
+      if (status.status === 'failed') {
+        return { kind: 'failed', error: status.error ?? undefined }
+      }
+      // 'pending' → fall through to sleep + retry.
+    } catch (err) {
+      if ((err as { name?: string })?.name === 'AbortError') {
+        return { kind: 'aborted' }
+      }
+      // Swallow transient errors and keep polling — only the ceiling matters.
+    }
+
+    await new Promise<void>((resolve) => {
+      const id = window.setTimeout(resolve, intervalMs)
+      signal?.addEventListener(
+        'abort',
+        () => {
+          window.clearTimeout(id)
+          resolve()
+        },
+        { once: true },
+      )
+    })
+  }
 }
 
 /**

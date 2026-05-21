@@ -160,6 +160,37 @@ class LeadResponse(BaseModel):
     )
 
 
+ValuationPollStatus = Literal["ready", "pending", "failed"]
+
+
+class ValuationStatusResponse(BaseModel):
+    """Polling contract for GET /api/valuations/{id}/status.
+
+    Used by the frontend to keep the loading spinner alive after `/api/lead`
+    returned status='pending': we poll this endpoint every few seconds until
+    the background retry finishes the valuation, then transition the UI to
+    the results dashboard instead of the "we'll email you" fallback.
+    """
+
+    valuation_id: int
+    status: ValuationPollStatus = Field(
+        ...,
+        description=(
+            "'ready' = `valuation` is populated. "
+            "'pending' = background retry still running. "
+            "'failed' = background retry crashed; check `error`."
+        ),
+    )
+    valuation: Optional["ValuationResponse"] = None
+    error: Optional[str] = Field(
+        None,
+        description=(
+            "Populated when status='failed'. Comes from the persisted "
+            "`response_json.reason` or the email_error column."
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------
 # SQLite row models (see backend/db.py — denormalized columns + JSON snapshots)
 # ---------------------------------------------------------------------------
@@ -382,6 +413,53 @@ class ValuationResponse(BaseModel):
     regression: Optional[RegressionResult] = None
 
 
+class TransactionSummary(BaseModel):
+    """Trimmed Airtable transaction row for the coach search results list.
+
+    Lookup fields from Airtable (arrays) are pre-flattened into scalars so the
+    React frontend can render the list without doing any data normalization.
+    """
+
+    id: str = Field(..., description="Airtable record id, e.g. 'recXXXX'")
+    transaction_name: str
+    type: Optional[str] = None
+    bedrooms: Optional[int] = None
+    bathrooms: Optional[int] = None
+    landsize_m2: Optional[int] = None
+    created_at: Optional[str] = Field(
+        None, description="ISO date or whatever Airtable's `Create Date` column returned."
+    )
+    total_est_costs: Optional[int] = Field(
+        None,
+        description=(
+            "Total estimated costs (renovation + furniture + technical project + "
+            "apportionment) in EUR, from the Airtable column "
+            "'Total est. costs (...)'."
+        ),
+    )
+    final_total_price: Optional[int] = Field(
+        None,
+        description=(
+            "Lookup from the Properties table: `Final Total Price (from Properties)` in EUR."
+        ),
+    )
+
+
+class TransactionDetail(TransactionSummary):
+    """Full transaction record for the detail view. Includes the raw Airtable
+    fields blob so the UI can show additional context not yet promoted to
+    typed fields (we promote as we add columns to the search UI).
+    """
+
+    raw_fields: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Verbatim Airtable `fields` blob for the record. Lookup columns "
+            "are kept as arrays here — only the typed shortcuts above are flattened."
+        ),
+    )
+
+
 class SimpleValuationResponse(BaseModel):
     """
     Slim contract designed for external integrations (Apps Script, Sheets, Zapier, etc.).
@@ -418,7 +496,9 @@ class SimpleValuationResponse(BaseModel):
     )
 
 
-# LeadResponse holds a forward reference to ValuationResponse — resolve it now
-# that all models in this file are defined. Pydantic v2 requires this when the
-# referenced model lives below the referer in source order.
+# LeadResponse / ValuationStatusResponse hold forward references to
+# ValuationResponse — resolve them now that all models in this file are
+# defined. Pydantic v2 requires this when the referenced model lives below the
+# referer in source order.
 LeadResponse.model_rebuild()
+ValuationStatusResponse.model_rebuild()

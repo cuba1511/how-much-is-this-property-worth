@@ -14,14 +14,22 @@ from contextlib import asynccontextmanager
 from time import perf_counter
 
 import httpx
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
+from pydantic import ValidationError
 
 from typing import Optional
 
 import db
+from airtable import (
+    AirtableAPIError,
+    AirtableConfig,
+    AirtableConfigError,
+    get_transaction,
+    search_transactions,
+)
 from catastro import (
     CatastroByRCResult,
     address_to_catastro_query,
@@ -48,9 +56,12 @@ from models import (
     Listing,
     ResolvedAddress,
     SimpleValuationResponse,
+    TransactionDetail,
+    TransactionSummary,
     ValuationRequest,
     ValuationResponse,
     ValuationStats,
+    ValuationStatusResponse,
 )
 from notifications import EmailDeliveryError, send_valuation_email
 from report.pdf import generate_pdf_bytes
@@ -453,6 +464,80 @@ async def lookup_by_cadastral_reference(
         resolved_address=resolved_address,
         catastro_address_label=result.address.label if result.address else None,
     )
+
+
+# ── Coach interface (Airtable proxy) ────────────────────────────────────────
+# Single shared password gating /api/coach/* so the PAT never reaches the
+# browser. Set COACH_ACCESS_PASSWORD in backend/.env. Leave it unset in local
+# dev to disable the gate (the frontend sends the header anyway).
+
+
+def _verify_coach_password(
+    x_coach_password: Optional[str] = Header(default=None, alias="X-Coach-Password"),
+) -> None:
+    expected = os.environ.get("COACH_ACCESS_PASSWORD", "").strip()
+    if not expected:
+        return
+    if not x_coach_password or x_coach_password != expected:
+        raise HTTPException(status_code=401, detail="Invalid coach password")
+
+
+def _airtable_config() -> AirtableConfig:
+    try:
+        return AirtableConfig.from_env()
+    except AirtableConfigError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+
+@app.get(
+    "/api/coach/transactions",
+    response_model=list[TransactionSummary],
+    summary="Search client transactions in Airtable (coach UI)",
+    dependencies=[Depends(_verify_coach_password)],
+)
+async def list_coach_transactions(
+    q: str = Query("", description="Substring matched against Transaction Name (case-insensitive)"),
+    limit: int = Query(25, ge=1, le=100),
+) -> list[TransactionSummary]:
+    """Search the Airtable `transactions` table from the coach UI.
+
+    Empty `q` returns the most recent transactions (sorted by Create Date desc).
+    """
+    config = _airtable_config()
+    try:
+        return await search_transactions(config=config, query=q, max_results=limit)
+    except AirtableAPIError as exc:
+        logger.error("Airtable search failed: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Airtable upstream error ({exc.status_code})",
+        )
+    except httpx.HTTPError as exc:
+        logger.error("Airtable network error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="Airtable unreachable")
+
+
+@app.get(
+    "/api/coach/transactions/{record_id}",
+    response_model=TransactionDetail,
+    summary="Fetch one transaction by Airtable record id (coach UI)",
+    dependencies=[Depends(_verify_coach_password)],
+)
+async def get_coach_transaction(record_id: str) -> TransactionDetail:
+    config = _airtable_config()
+    try:
+        return await get_transaction(config=config, record_id=record_id)
+    except AirtableAPIError as exc:
+        if exc.status_code == 404:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+        logger.error("Airtable detail fetch failed: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Airtable upstream error ({exc.status_code})",
+        )
+    except httpx.HTTPError as exc:
+        logger.error("Airtable network error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="Airtable unreachable")
 
 
 @app.post("/api/valuation", response_model=ValuationResponse)
@@ -1032,6 +1117,73 @@ async def post_lead(
             "Estamos terminando de analizar tu propiedad. Te enviaremos el informe completo "
             "por email en unos minutos."
         ),
+    )
+
+
+@app.get(
+    "/api/valuations/{valuation_id}/status",
+    response_model=ValuationStatusResponse,
+    summary="Poll a valuation's status (used by the frontend after /api/lead returns 'pending')",
+)
+async def get_valuation_status(valuation_id: int) -> ValuationStatusResponse:
+    """Return the current state of a valuation row.
+
+    The frontend calls this every few seconds after `/api/lead` returned
+    `status='pending'` so it can keep the loading spinner alive and
+    transition to the results dashboard the moment the background retry
+    finishes — instead of dead-ending on the "we'll email you" screen.
+
+    Status mapping:
+      - response_json carries our pending stub (`status='pending'`) → 'pending'
+      - response_json carries `status='failed'` (future use)            → 'failed'
+      - response_json parses as a ValuationResponse                     → 'ready'
+      - response_json is malformed (shouldn't happen)                   → 'failed'
+    """
+    record = db.get_valuation(valuation_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Valuation not found")
+
+    payload = record.response_json or {}
+    pending_status = (
+        payload.get("status") if isinstance(payload, dict) else None
+    )
+
+    if pending_status == "pending":
+        return ValuationStatusResponse(
+            valuation_id=valuation_id,
+            status="pending",
+            valuation=None,
+        )
+
+    if pending_status == "failed":
+        return ValuationStatusResponse(
+            valuation_id=valuation_id,
+            status="failed",
+            valuation=None,
+            error=payload.get("reason") if isinstance(payload, dict) else None,
+        )
+
+    # Otherwise the response_json should be a serialized ValuationResponse —
+    # parse it back to validate the shape before handing it to the client.
+    try:
+        valuation = ValuationResponse.model_validate(payload)
+    except ValidationError as exc:
+        logger.error(
+            "Valuation %d response_json failed to validate: %s",
+            valuation_id,
+            exc,
+        )
+        return ValuationStatusResponse(
+            valuation_id=valuation_id,
+            status="failed",
+            valuation=None,
+            error="stored_payload_invalid",
+        )
+
+    return ValuationStatusResponse(
+        valuation_id=valuation_id,
+        status="ready",
+        valuation=valuation,
     )
 
 

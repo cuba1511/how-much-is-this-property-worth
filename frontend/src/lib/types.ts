@@ -52,6 +52,16 @@ export interface LeadResponse {
   message?: string | null
 }
 
+/** GET /api/valuations/{id}/status — used by the frontend to poll a valuation
+ *  whose `/api/lead` returned `status='pending'`, so it can transition to the
+ *  results dashboard the moment the background retry completes. */
+export interface ValuationStatusResponse {
+  valuation_id: number
+  status: LeadValuationStatus
+  valuation: ValuationResponse | null
+  error?: string | null
+}
+
 export interface CadastralReferenceLookupResponse {
   reference: string
   is_parcel: boolean

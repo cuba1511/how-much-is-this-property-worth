@@ -275,7 +275,7 @@
     "privacy": "No compartiremos tu información con terceros.",
     "analyzing": {
       "title": "Analizando tu propiedad",
-      "description": "Estamos consultando precios reales del mercado. Esto puede tardar hasta un minuto.",
+      "description": "Estamos consultando precios reales del mercado. Esto puede tardar uno o dos minutos.",
       "elapsed": "{{seconds}}s transcurridos",
       "hint": "No cierres esta ventana. Los datos llegan en tiempo real.",
       "phases": {
@@ -299,5 +299,47 @@
   "language": {
     "es": "Español",
     "en": "English"
+  },
+  "coach": {
+    "eyebrow": "Property coaches",
+    "title": "Transacciones de clientes",
+    "subtitle": "Busca una transacción para revisar sus datos y, próximamente, lanzar una nueva valoración.",
+    "logout": "Cerrar sesión",
+    "login": {
+      "title": "Acceso restringido",
+      "subtitle": "Introduce la contraseña interna para acceder a las transacciones de clientes.",
+      "passwordLabel": "Contraseña",
+      "submit": "Entrar",
+      "checking": "Comprobando…",
+      "invalidPassword": "Contraseña incorrecta.",
+      "unknownError": "No pudimos validar tu acceso. Inténtalo de nuevo."
+    },
+    "search": {
+      "placeholder": "Busca por nombre de transacción…",
+      "emptyState": "Aún no hay transacciones. Empieza escribiendo en el buscador.",
+      "noResults": "No encontramos transacciones para «{{query}}».",
+      "unknownError": "No pudimos cargar las transacciones."
+    },
+    "detail": {
+      "back": "Volver al listado",
+      "loading": "Cargando transacción…",
+      "unknownError": "No pudimos cargar la transacción.",
+      "financialsTitle": "Resumen económico",
+      "propertyTitle": "Datos de la propiedad",
+      "totalSpent": "Total gastado",
+      "nextStepTitle": "Próximamente",
+      "nextStepDescription": "Lanza una valoración sobre esta propiedad usando los datos de Airtable y nuestro algoritmo OLS.",
+      "nextStepCta": "Generar valoración (próximamente)"
+    },
+    "fields": {
+      "transactionName": "Transacción",
+      "type": "Tipo",
+      "bedrooms": "Habitaciones",
+      "bathrooms": "Baños",
+      "landsize": "Superficie",
+      "createdAt": "Fecha de creación",
+      "totalEstCosts": "Costes estimados",
+      "finalTotalPrice": "Precio final"
+    }
   }
 }

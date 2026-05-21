@@ -30,7 +30,7 @@ import {
   step4Schema,
   type ValuationRequestForm,
 } from '@/lib/schemas'
-import { submitLead, ValuationError } from '@/lib/api'
+import { pollValuationUntilReady, submitLead, ValuationError } from '@/lib/api'
 import type {
   CadastralUnit,
   IdentificationStartPayload,
@@ -283,9 +283,19 @@ export function ValuationForm({
         onResult(result.valuation, valuationRequest, wireLead)
       } else {
         // Backend ran out of synchronous budget — lead is persisted, valuation
-        // continues in background, user will get the report by email. Render
-        // a friendly success screen instead of a scary error banner.
-        onPending?.(wireLead, result)
+        // continues in the background (BackgroundTask retry). Keep the
+        // analyzing spinner alive and poll `/api/valuations/{id}/status` so
+        // the user lands on the report page the moment it's ready, instead
+        // of dead-ending on the "we'll email you" screen.
+        const outcome = await pollValuationUntilReady(result.valuation_id)
+        if (outcome.kind === 'ready') {
+          onResult(outcome.valuation, valuationRequest, wireLead)
+        } else {
+          // Real timeout / failure / abort — fall back to the friendly
+          // "we'll email you" screen so the user isn't left staring at a
+          // permanently-spinning modal.
+          onPending?.(wireLead, result)
+        }
       }
     } catch (err) {
       const code = err instanceof ValuationError ? err.code : 'server'
