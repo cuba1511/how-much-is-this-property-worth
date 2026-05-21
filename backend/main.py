@@ -49,6 +49,9 @@ from models import (
     CadastralUnit,
     CadastralUnitsResponse,
     ComparablesDataset,
+    CoachEmailSendRequest,
+    CoachEmailSendResponse,
+    CoachTransactionValuationResponse,
     DatasetRow,
     LeadInfo,
     LeadResponse,
@@ -63,7 +66,7 @@ from models import (
     ValuationStats,
     ValuationStatusResponse,
 )
-from notifications import EmailDeliveryError, send_valuation_email
+from notifications import EmailDeliveryError, send_custom_email, send_valuation_email
 from report.pdf import generate_pdf_bytes
 from report.renderer import render_report_html
 from scraping import scrape_idealista_listings
@@ -385,8 +388,15 @@ async def lookup_cadastral_units(address: ResolvedAddress):
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     except httpx.HTTPError as exc:
+        # TEMP-DIAGNOSTIC: surface the underlying exception class + message in
+        # the 502 detail so prod failures (DNS / TLS / connect refused / IP
+        # blacklist) can be diagnosed without SSH access. Revert once the
+        # EC2 → ovc.catastro.meh.es path is fixed.
         logger.error("Catastro lookup failed: %s", exc, exc_info=True)
-        raise HTTPException(status_code=502, detail="Catastro service unavailable")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Catastro service unavailable: {type(exc).__name__}: {exc}",
+        )
 
 
 async def _geocode_catastro_address(result: CatastroByRCResult) -> Optional[ResolvedAddress]:
@@ -489,6 +499,42 @@ def _airtable_config() -> AirtableConfig:
         raise HTTPException(status_code=503, detail=str(exc))
 
 
+def _valuation_request_from_transaction(transaction: TransactionDetail) -> ValuationRequest:
+    """Build a valuation request from the normalized Airtable transaction fields."""
+    missing: list[str] = []
+    if not transaction.address:
+        missing.append("Address")
+    if not transaction.landsize_m2:
+        missing.append("Landsize")
+    if transaction.bedrooms is None:
+        missing.append("Beds")
+    if transaction.bathrooms is None:
+        missing.append("Baths")
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Transaction is missing required valuation fields: {', '.join(missing)}",
+        )
+
+    selected_unit = None
+    if transaction.cadastral_reference:
+        selected_unit = CadastralUnit(
+            cadastral_reference=transaction.cadastral_reference,
+            built_area_m2=float(transaction.landsize_m2 or 0) or None,
+            label=transaction.address or transaction.transaction_name,
+        )
+
+    return ValuationRequest(
+        address=transaction.address or transaction.transaction_name,
+        m2=transaction.landsize_m2,
+        bedrooms=transaction.bedrooms or 0,
+        bathrooms=max(transaction.bathrooms or 1, 1),
+        property_type=transaction.type,
+        selected_cadastral_unit=selected_unit,
+        valuation_intent="info",
+    )
+
+
 @app.get(
     "/api/coach/auth/check",
     summary="Fast password check for the coach UI",
@@ -552,6 +598,80 @@ async def get_coach_transaction(record_id: str) -> TransactionDetail:
     except httpx.HTTPError as exc:
         logger.error("Airtable network error: %s", exc, exc_info=True)
         raise HTTPException(status_code=502, detail="Airtable unreachable")
+
+
+@app.post(
+    "/api/coach/transactions/{record_id}/valuation",
+    response_model=CoachTransactionValuationResponse,
+    summary="Generate a valuation from an Airtable transaction",
+    dependencies=[Depends(_verify_coach_password)],
+)
+async def generate_coach_transaction_valuation(
+    record_id: str,
+) -> CoachTransactionValuationResponse:
+    """Run the existing valuation pipeline using property fields from Airtable."""
+    config = _airtable_config()
+    try:
+        transaction = await get_transaction(config=config, record_id=record_id)
+    except AirtableAPIError as exc:
+        if exc.status_code == 404:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+        logger.error("Airtable detail fetch failed: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Airtable upstream error ({exc.status_code})",
+        )
+    except httpx.HTTPError as exc:
+        logger.error("Airtable network error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="Airtable unreachable")
+
+    request = _valuation_request_from_transaction(transaction)
+    valuation = await get_valuation(request)
+    return CoachTransactionValuationResponse(
+        transaction=transaction,
+        valuation_request=request,
+        valuation=valuation,
+    )
+
+
+@app.post(
+    "/api/coach/transactions/{record_id}/email/send",
+    response_model=CoachEmailSendResponse,
+    summary="Send an editable coach email to a transaction client",
+    dependencies=[Depends(_verify_coach_password)],
+)
+async def send_coach_transaction_email(
+    record_id: str,
+    payload: CoachEmailSendRequest,
+) -> CoachEmailSendResponse:
+    """Send a coach-authored email via Resend.
+
+    We fetch the transaction first so the endpoint remains scoped to a real
+    Airtable record and to keep future audit/persistence hooks straightforward.
+    """
+    config = _airtable_config()
+    try:
+        await get_transaction(config=config, record_id=record_id)
+        sent = await send_custom_email(
+            to=payload.to,
+            subject=payload.subject,
+            body=payload.body,
+        )
+    except AirtableAPIError as exc:
+        if exc.status_code == 404:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+        logger.error("Airtable detail fetch failed: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Airtable upstream error ({exc.status_code})",
+        )
+    except EmailDeliveryError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    return CoachEmailSendResponse(
+        sent=sent,
+        message="Email sent" if sent else "RESEND_API_KEY not set — email skipped in dev",
+    )
 
 
 @app.post("/api/valuation", response_model=ValuationResponse)
