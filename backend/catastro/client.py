@@ -19,9 +19,23 @@ from typing import Optional
 import httpx
 
 from catastro.normalize import CatastroQuery, address_to_catastro_query
+from catastro.proxy import fetch_xml_via_brightdata
 from models import CadastralUnit, ResolvedAddress
 
 logger = logging.getLogger(__name__)
+
+
+def _is_ip_block_error(exc: httpx.HTTPError) -> bool:
+    """Return True when the error looks like Catastro blocking the host IP
+    (AWS / GCP / Azure ranges get 403'd). We trigger the Bright Data
+    residential-proxy fallback only in this case so local dev (where the
+    direct path returns 200) stays fast."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code in (401, 403)
+    # Connect/transport-level failures aren't necessarily IP blocks but
+    # are equally fatal from our side; surface them via fallback too so a
+    # transient DNS/TLS hiccup on the EC2 path can still resolve.
+    return isinstance(exc, (httpx.ConnectError, httpx.ReadError))
 
 CATASTRO_NS = "http://www.catastro.meh.es/"
 DNPLOC_URL = (
@@ -204,6 +218,41 @@ def _parse_units_xml(payload: str) -> list[CadastralUnit]:
     return units
 
 
+async def _fetch_catastro_xml(url: str, params: dict[str, str]) -> str:
+    """GET `url?<params>` from Catastro and return the raw XML body.
+
+    Try the direct httpx path first (fast: ~1.5s, used in local dev where
+    the host IP is residential). If Catastro replies with 403 / connection
+    refused — the signature of IP-range blocking on EC2 — fall back to the
+    Bright Data Scraping Browser session so we egress from a residential
+    address. The fallback adds ~2-4s but is the difference between a
+    working Catastro lookup and a hard 502 on prod.
+    """
+    direct_error: httpx.HTTPError
+    try:
+        async with httpx.AsyncClient(timeout=15.0, trust_env=False) as client:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            return response.text
+    except httpx.HTTPError as exc:
+        if not _is_ip_block_error(exc):
+            raise
+        direct_error = exc
+
+    logger.warning(
+        "Catastro direct fetch blocked (%s: %s); retrying via Bright Data",
+        type(direct_error).__name__,
+        direct_error,
+    )
+    try:
+        return await fetch_xml_via_brightdata(url, params)
+    except RuntimeError:
+        # No Bright Data configured (e.g. local dev). Re-raise the original
+        # direct-fetch error so the caller's exception handling sees the
+        # same shape it always has.
+        raise direct_error
+
+
 async def fetch_units_by_street(
     *,
     province: str,
@@ -225,10 +274,7 @@ async def fetch_units_by_street(
         "Puerta": "",
     }
 
-    async with httpx.AsyncClient(timeout=15.0, trust_env=False) as client:
-        response = await client.get(DNPLOC_URL, params=params)
-        response.raise_for_status()
-        body = response.text
+    body = await _fetch_catastro_xml(DNPLOC_URL, params)
 
     if body.startswith("<?xml"):
         units = _parse_units_xml(body)
@@ -459,10 +505,7 @@ async def fetch_property_by_reference(reference: str) -> CatastroByRCResult:
     rc = normalize_cadastral_reference(reference)
     params = {"Provincia": "", "Municipio": "", "RC": rc}
 
-    async with httpx.AsyncClient(timeout=15.0, trust_env=False) as client:
-        response = await client.get(DNPRC_URL, params=params)
-        response.raise_for_status()
-        body = response.text
+    body = await _fetch_catastro_xml(DNPRC_URL, params)
 
     if not body.startswith("<?xml"):
         raise ValueError(f"Unexpected Catastro response: {body[:200]}")
