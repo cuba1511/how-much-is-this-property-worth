@@ -385,15 +385,8 @@ async def lookup_cadastral_units(address: ResolvedAddress):
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     except httpx.HTTPError as exc:
-        # TEMP-DIAGNOSTIC: surface the underlying exception class + message in
-        # the 502 detail so prod failures (DNS / TLS / connect refused / IP
-        # blacklist) can be diagnosed without SSH access. Revert once the
-        # EC2 → ovc.catastro.meh.es path is fixed.
         logger.error("Catastro lookup failed: %s", exc, exc_info=True)
-        raise HTTPException(
-            status_code=502,
-            detail=f"Catastro service unavailable: {type(exc).__name__}: {exc}",
-        )
+        raise HTTPException(status_code=502, detail="Catastro service unavailable")
 
 
 async def _geocode_catastro_address(result: CatastroByRCResult) -> Optional[ResolvedAddress]:
