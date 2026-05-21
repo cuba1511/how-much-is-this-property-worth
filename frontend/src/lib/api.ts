@@ -161,29 +161,75 @@ export async function autocompleteAddresses(
   return res.json() as Promise<ResolvedAddress[]>
 }
 
+/** Hard ceiling on the Catastro-by-address lookup. The backend itself caps the
+ *  upstream call at 15s but a slow EC2 → Catastro hop, plus our own TLS/DNS,
+ *  can push past that. A frontend timeout guarantees the user always sees an
+ *  outcome (success / error) instead of an indefinite spinner. */
+const CATASTRO_LOOKUP_TIMEOUT_MS = 20_000
+
+/** Thrown by `lookupCadastralUnits` when our own client-side timer fires.
+ *  Distinct from `AbortError` (which signals an upstream / caller-driven
+ *  cancellation) so the UI can keep ignoring AbortError but still surface
+ *  timeouts as a real error state. */
+export class CatastroLookupTimeoutError extends Error {
+  constructor() {
+    super('Catastro lookup timed out')
+    this.name = 'CatastroLookupTimeoutError'
+  }
+}
+
 export async function lookupCadastralUnits(
   address: ResolvedAddress,
   signal?: AbortSignal,
 ): Promise<CadastralUnitsResponse> {
-  const res = await fetch(`${API_BASE}/api/catastro/units/lookup`, {
-    method: 'POST',
-    headers: SHARED_HEADERS,
-    body: JSON.stringify(address),
-    signal,
-  })
-
-  if (!res.ok) {
-    let detail = ''
-    try {
-      const body = (await res.json()) as { detail?: string }
-      if (body?.detail) detail = `: ${body.detail}`
-    } catch {
-      /* ignore */
-    }
-    throw new Error(`Catastro lookup error ${res.status}${detail}`)
+  const controller = new AbortController()
+  // Chain the caller's signal: if either fires, we abort.
+  const onUpstreamAbort = () => controller.abort()
+  if (signal) {
+    if (signal.aborted) controller.abort()
+    else signal.addEventListener('abort', onUpstreamAbort, { once: true })
   }
+  let timedOut = false
+  const timeoutId = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, CATASTRO_LOOKUP_TIMEOUT_MS)
 
-  return res.json() as Promise<CadastralUnitsResponse>
+  try {
+    const res = await fetch(`${API_BASE}/api/catastro/units/lookup`, {
+      method: 'POST',
+      headers: SHARED_HEADERS,
+      body: JSON.stringify(address),
+      signal: controller.signal,
+    })
+
+    if (!res.ok) {
+      let detail = ''
+      try {
+        const body = (await res.json()) as { detail?: string }
+        if (body?.detail) detail = `: ${body.detail}`
+      } catch {
+        /* ignore */
+      }
+      throw new Error(`Catastro lookup error ${res.status}${detail}`)
+    }
+
+    return (await res.json()) as CadastralUnitsResponse
+  } catch (err) {
+    // Rewrite timer-driven aborts so the caller can distinguish them from
+    // genuine user cancellations.
+    if (
+      timedOut &&
+      err instanceof Error &&
+      (err.name === 'AbortError' || err.name === 'TimeoutError')
+    ) {
+      throw new CatastroLookupTimeoutError()
+    }
+    throw err
+  } finally {
+    clearTimeout(timeoutId)
+    if (signal) signal.removeEventListener('abort', onUpstreamAbort)
+  }
 }
 
 /**

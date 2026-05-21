@@ -5,13 +5,22 @@ import { FileSearch, Loader2, MapPin } from 'lucide-react'
 import { AddressStep } from '@/components/steps/AddressStep'
 import { UnitSelectionStep } from '@/components/steps/UnitSelectionStep'
 import { CadastralReferenceSearch } from '@/components/CadastralReferenceSearch'
-import { lookupCadastralUnits } from '@/lib/api'
+import {
+  CatastroLookupTimeoutError,
+  lookupCadastralUnits,
+} from '@/lib/api'
 import type { ValuationRequestForm } from '@/lib/schemas'
 import type {
   CadastralUnit,
   IdentificationMode,
   ResolvedAddress,
 } from '@/lib/types'
+
+/** How long to wait before offering the user an explicit "Continuar sin
+ *  Catastro" escape hatch. Lookup itself has a hard 20s timeout in
+ *  `lookupCadastralUnits` — this surfaces an option earlier so users don't
+ *  feel stuck staring at the spinner. */
+const SKIP_OPTION_AFTER_MS = 6_000
 
 export type CatastroLookupStatus = 'idle' | 'loading' | 'done' | 'error'
 
@@ -66,6 +75,10 @@ export function PropertyIdentificationStep({
   // flips and the address-mode effect runs normally again.
   const initialSeedConsumed = useRef(false)
   const lastFetchedRef = useRef<string | null>(null)
+  // Held outside React state so the "skip Catastro" button can abort the
+  // in-flight upstream call without going through a re-render cycle.
+  const fetchControllerRef = useRef<AbortController | null>(null)
+  const [showSkipOption, setShowSkipOption] = useState(false)
 
   // Mirror the seeded reference label into the form so step 0 validation
   // (which checks `address` is non-empty) passes without the user retyping
@@ -104,6 +117,11 @@ export function PropertyIdentificationStep({
     if (lastFetchedRef.current === fetchKey) return
 
     const controller = new AbortController()
+    fetchControllerRef.current = controller
+    // Mark the fetch as "in progress" *before* awaiting so a re-render
+    // triggered by setLookupStatus('loading') doesn't slip past the
+    // early-return guard above and spawn a duplicate fetch.
+    lastFetchedRef.current = fetchKey
     setLookupStatus('loading')
     setLookupError(null)
     setUnits([])
@@ -112,7 +130,6 @@ export function PropertyIdentificationStep({
 
     void lookupCadastralUnits(resolvedAddress, controller.signal)
       .then((response) => {
-        lastFetchedRef.current = fetchKey
         setUnits(response.units)
         setLookupStatus('done')
         onUnitsCountChange?.(response.units.length)
@@ -121,15 +138,52 @@ export function PropertyIdentificationStep({
         }
       })
       .catch((err: Error) => {
+        // Caller-driven aborts (cleanup on unmount or address change) are
+        // intentional: leave state alone so the next effect run takes over.
         if (err.name === 'AbortError') return
+        // Hard timeout / network error / Catastro 4xx-5xx: allow the user to
+        // proceed without the unit selector (it's an optional refinement, not
+        // a required input).
+        const isTimeout = err instanceof CatastroLookupTimeoutError
         setUnits([])
         setLookupStatus('error')
         onUnitsCountChange?.(0)
-        setLookupError(t('catastro.lookupError'))
+        setLookupError(
+          isTimeout
+            ? t('catastro.lookupTimeout')
+            : t('catastro.lookupError'),
+        )
+        // Clear the cached fetchKey so editing-then-coming-back to the same
+        // address re-tries instead of being stuck in the error state.
+        lastFetchedRef.current = null
       })
 
     return () => controller.abort()
   }, [mode, resolvedAddress, onSelectedUnit, onUnitsCountChange, t])
+
+  // Show the "Continuar sin Catastro" affordance after a few seconds of
+  // sustained loading. Reset whenever lookupStatus changes so a fresh
+  // address starts from a clean countdown.
+  useEffect(() => {
+    if (lookupStatus !== 'loading') {
+      setShowSkipOption(false)
+      return
+    }
+    const timer = setTimeout(() => setShowSkipOption(true), SKIP_OPTION_AFTER_MS)
+    return () => clearTimeout(timer)
+  }, [lookupStatus])
+
+  const handleSkipCatastro = useCallback(() => {
+    fetchControllerRef.current?.abort()
+    fetchControllerRef.current = null
+    setUnits([])
+    setLookupStatus('error')
+    setLookupError(t('catastro.lookupSkipped'))
+    setShowSkipOption(false)
+    onUnitsCountChange?.(0)
+    // Pin the fetchKey so we don't immediately re-trigger the lookup the
+    // next time this effect runs; the user explicitly opted out.
+  }, [onUnitsCountChange, t])
 
   useEffect(() => {
     onLookupStatusChange?.(lookupStatus)
@@ -233,9 +287,20 @@ export function PropertyIdentificationStep({
       )}
 
       {lookupStatus === 'loading' && (
-        <div className="flex items-center gap-sm rounded-lg border border-line bg-surface-tint px-sm py-2 text-xs text-ink-secondary">
-          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
-          {t('catastro.loading')}
+        <div className="flex flex-col gap-xs">
+          <div className="flex items-center gap-sm rounded-lg border border-line bg-surface-tint px-sm py-2 text-xs text-ink-secondary">
+            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
+            {t('catastro.loading')}
+          </div>
+          {showSkipOption && (
+            <button
+              type="button"
+              onClick={handleSkipCatastro}
+              className="self-start text-xs font-medium text-primary underline-offset-2 hover:underline"
+            >
+              {t('catastro.skipWait')}
+            </button>
+          )}
         </div>
       )}
 

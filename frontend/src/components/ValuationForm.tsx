@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useForm, FormProvider } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -112,6 +112,14 @@ export function ValuationForm({
   const [submitting, setSubmitting] = useState(false)
   const [unitError, setUnitError] = useState<string | null>(null)
   const [leadDialogOpen, setLeadDialogOpen] = useState(false)
+
+  // Stable callback identity matters: step 0's Catastro-lookup effect lists
+  // this in its deps and would re-fire (aborting and restarting the upstream
+  // fetch) on every ValuationForm render if we passed an inline arrow.
+  const handleUnitSelect = useCallback((unit: CadastralUnit | null) => {
+    setSelectedUnit(unit)
+    setUnitError(null)
+  }, [])
 
   const methods = useForm<ValuationRequestForm>({
     resolver: zodResolver(valuationRequestSchema),
@@ -313,10 +321,7 @@ export function ValuationForm({
                 resolvedAddress={resolvedAddress}
                 onResolvedAddress={setResolvedAddress}
                 selectedUnit={selectedUnit}
-                onSelectedUnit={(unit) => {
-                  setSelectedUnit(unit)
-                  setUnitError(null)
-                }}
+                onSelectedUnit={handleUnitSelect}
                 onUnitsCountChange={setCadastralUnitsCount}
                 onLookupStatusChange={setCatastroLookupStatus}
                 submitting={submitting}

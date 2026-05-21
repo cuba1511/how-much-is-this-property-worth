@@ -62,6 +62,9 @@
   "catastro": {
     "loading": "Looking up units in the cadastre…",
     "lookupError": "We could not reach the cadastre. You can continue without a cadastral reference.",
+    "lookupTimeout": "The cadastre is taking too long. You can continue without floor/door detail.",
+    "lookupSkipped": "Continued without waiting for the cadastre. Valuation will still run with the address.",
+    "skipWait": "Continue without waiting for the cadastre",
     "noUnits": "No cadastre units found for this address. You can still continue.",
     "unitConfirmed": "Property identified: {{label}}",
     "selectTitle": "Select the property",

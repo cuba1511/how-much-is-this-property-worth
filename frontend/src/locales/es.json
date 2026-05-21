@@ -62,6 +62,9 @@
   "catastro": {
     "loading": "Buscando inmuebles en el Catastro…",
     "lookupError": "No pudimos consultar el Catastro. Puedes continuar sin referencia catastral.",
+    "lookupTimeout": "Catastro está tardando demasiado. Puedes continuar sin esperar al detalle por planta/puerta.",
+    "lookupSkipped": "Has continuado sin esperar a Catastro. La valoración seguirá funcionando con la dirección.",
+    "skipWait": "Continuar sin esperar a Catastro",
     "noUnits": "No encontramos unidades en el Catastro para esta dirección. Puedes continuar igualmente.",
     "unitConfirmed": "Inmueble identificado: {{label}}",
     "selectTitle": "Selecciona el inmueble",
