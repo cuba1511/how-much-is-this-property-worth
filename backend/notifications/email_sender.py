@@ -174,3 +174,50 @@ async def send_valuation_email(
 
     message_id = response.json().get("id")
     logger.info("Email sent to %s via Resend (id=%s)", lead.email, message_id)
+
+
+async def send_custom_email(
+    *,
+    to: str,
+    subject: str,
+    body: str,
+) -> bool:
+    """Send an editable plain-text/HTML email from the coach interface.
+
+    Returns False when RESEND_API_KEY is unset so local dev can exercise the
+    flow without sending real email.
+    """
+    api_key = os.environ.get("RESEND_API_KEY")
+    if not api_key:
+        logger.warning("RESEND_API_KEY not set — skipping coach email send to %s", to)
+        return False
+
+    sender = os.environ.get("RESEND_FROM_EMAIL", "PropHero <noreply@prophero.com>")
+    html = body.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    html = "<br>".join(html.splitlines())
+    payload = {
+        "from": sender,
+        "to": [to],
+        "subject": subject,
+        "text": body,
+        "html": f"<div style=\"font-family:Inter,system-ui,sans-serif;line-height:1.6;color:#1e252d;\">{html}</div>",
+    }
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.post(
+            RESEND_API_URL,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        )
+
+    if response.status_code >= 300:
+        body_preview = response.text[:500]
+        logger.error("Resend rejected coach email (%d): %s", response.status_code, body_preview)
+        raise EmailDeliveryError(f"Resend {response.status_code}: {body_preview}")
+
+    message_id = response.json().get("id")
+    logger.info("Coach email sent to %s via Resend (id=%s)", to, message_id)
+    return True

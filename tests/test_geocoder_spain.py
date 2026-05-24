@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import sys
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from geocoding.geocoder import (
     _strip_postcode_from_label,
     build_address_label,
     filter_spain_resolved_addresses,
+    get_municipio_from_address,
     is_spain_coordinates,
     is_spain_country_name,
     is_spain_nominatim_result,
@@ -201,6 +203,70 @@ def test_nominatim_label_includes_city_district():
     label = build_address_label(addr)
     assert "Hortaleza" in label
     assert "Calle Matías Turrión 7" in label
+
+
+def test_get_municipio_does_not_treat_spain_as_locality(monkeypatch):
+    calls: list[str] = []
+
+    async def fake_search_nominatim(query: str, *, limit: int):
+        calls.append(query)
+        if query == "Calle Cinco de Marzo, 3, Casetas, España":
+            return [
+                {
+                    "lat": "41.721783",
+                    "lon": "-1.029047",
+                    "type": "house",
+                    "address": {
+                        "road": "Calle Cinco de Marzo",
+                        "house_number": "3",
+                        "city": "Zaragoza",
+                        "province": "Zaragoza",
+                        "country": "España",
+                    },
+                }
+            ]
+        raise AssertionError(f"Unexpected fallback query: {query}")
+
+    monkeypatch.setattr("geocoding.geocoder.search_nominatim", fake_search_nominatim)
+
+    municipio = asyncio.run(
+        get_municipio_from_address("Calle Cinco de Marzo, 3, Casetas, España")
+    )
+
+    assert municipio.name == "Zaragoza"
+    assert calls == ["Calle Cinco de Marzo, 3, Casetas, España"]
+
+
+def test_get_municipio_does_not_treat_postcode_as_locality(monkeypatch):
+    calls: list[str] = []
+
+    async def fake_search_nominatim(query: str, *, limit: int):
+        calls.append(query)
+        if query == "CINCO DE MARZO, 3, ZARAGOZA, 50620":
+            return [
+                {
+                    "lat": "41.721783",
+                    "lon": "-1.029047",
+                    "type": "house",
+                    "address": {
+                        "road": "Calle Cinco de Marzo",
+                        "house_number": "3",
+                        "city": "Zaragoza",
+                        "province": "Zaragoza",
+                        "postcode": "50620",
+                        "country": "España",
+                    },
+                }
+            ]
+        raise AssertionError(f"Unexpected fallback query: {query}")
+
+    monkeypatch.setattr("geocoding.geocoder.search_nominatim", fake_search_nominatim)
+
+    municipio = asyncio.run(get_municipio_from_address("CINCO DE MARZO, 3, ZARAGOZA, 50620"))
+
+    assert municipio.name == "Zaragoza"
+    assert municipio.road == "Calle Cinco de Marzo"
+    assert calls == ["CINCO DE MARZO, 3, ZARAGOZA, 50620"]
 
 
 def test_photon_label_hides_wrong_madrid_postcodes():

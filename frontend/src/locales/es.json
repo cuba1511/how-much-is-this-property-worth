@@ -327,10 +327,25 @@
       "unknownError": "No pudimos cargar la transacción.",
       "financialsTitle": "Resumen económico",
       "propertyTitle": "Datos de la propiedad",
-      "totalSpent": "Total gastado",
-      "nextStepTitle": "Próximamente",
-      "nextStepDescription": "Lanza una valoración sobre esta propiedad usando los datos de Airtable y nuestro algoritmo OLS.",
-      "nextStepCta": "Generar valoración (próximamente)"
+      "totalSpent": "Total gastado"
+    },
+    "valuation": {
+      "title": "Reporte inversor",
+      "description": "Genera un reporte de performance con rango de venta, capital gain, escenarios de salida y evidencia de mercado.",
+      "cta": "Generar reporte",
+      "generating": "Generando reporte…",
+      "resultTitle": "Reporte generado",
+      "unknownError": "No pudimos generar el reporte."
+    },
+    "email": {
+      "title": "Enviar correo al cliente",
+      "description": "Edita el mensaje antes de enviarlo. El destinatario viene de Airtable.",
+      "to": "Para",
+      "subject": "Asunto",
+      "body": "Mensaje",
+      "send": "Enviar correo",
+      "sending": "Enviando…",
+      "unknownError": "No pudimos enviar el correo."
     },
     "fields": {
       "transactionName": "Transacción",

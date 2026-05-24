@@ -594,6 +594,14 @@ def locality_matches_hint(result: dict, locality_hint: str) -> bool:
     return locality == locality_hint
 
 
+def _is_country_locality_hint(locality_hint: str) -> bool:
+    return locality_hint in {"espana", "spain"}
+
+
+def _is_postcode_locality_hint(locality_hint: str) -> bool:
+    return bool(re.fullmatch(r"\d{4,5}", locality_hint))
+
+
 def extract_municipio_from_nominatim(address_data: dict) -> dict:
     """
     Nominatim returns nested address fields. Priority order for Spanish municipios:
@@ -1221,7 +1229,12 @@ async def get_municipio_from_address(address: str) -> MunicipioInfo:
 
     best_result = pick_best_nominatim_result(results, address)
 
-    if hints["locality_hint"] and not locality_matches_hint(best_result, hints["locality_hint"]):
+    if (
+        hints["locality_hint"]
+        and not _is_country_locality_hint(hints["locality_hint"])
+        and not _is_postcode_locality_hint(hints["locality_hint"])
+        and not locality_matches_hint(best_result, hints["locality_hint"])
+    ):
         locality_results = await search_nominatim(hints["locality_hint"], limit=5)
         if locality_results:
             best_result = pick_best_nominatim_result(locality_results, hints["locality_hint"])

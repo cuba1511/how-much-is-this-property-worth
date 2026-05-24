@@ -3,7 +3,9 @@ import hashlib
 import json
 import logging
 import os
+import re
 from pathlib import Path
+from urllib.parse import quote_plus
 
 from dotenv import load_dotenv
 
@@ -49,12 +51,17 @@ from models import (
     CadastralUnit,
     CadastralUnitsResponse,
     ComparablesDataset,
+    CoachEmailSendRequest,
+    CoachEmailSendResponse,
+    CoachTransactionValuationResponse,
     DatasetRow,
     LeadInfo,
     LeadResponse,
     LeadSubmission,
     Listing,
     ResolvedAddress,
+    SearchMetadata,
+    SearchStageResult,
     SimpleValuationResponse,
     TransactionDetail,
     TransactionSummary,
@@ -63,7 +70,7 @@ from models import (
     ValuationStats,
     ValuationStatusResponse,
 )
-from notifications import EmailDeliveryError, send_valuation_email
+from notifications import EmailDeliveryError, send_custom_email, send_valuation_email
 from report.pdf import generate_pdf_bytes
 from report.renderer import render_report_html
 from scraping import scrape_idealista_listings
@@ -398,12 +405,22 @@ async def _geocode_catastro_address(result: CatastroByRCResult) -> Optional[Reso
     if not address:
         return None
 
+    def clean_catastro_part(value: Optional[str]) -> Optional[str]:
+        if not value:
+            return None
+        # Catastro sometimes appends local abbreviations like "(CST)" for
+        # Casetas; Nominatim does not know those suffixes.
+        cleaned = re.sub(r"\s*\([^)]*\)\s*", " ", value)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip(" ,")
+        return cleaned or None
+
     parts: list[str] = []
-    if address.road:
-        parts.append(address.road)
+    road = clean_catastro_part(address.road)
+    if road:
+        parts.append(road)
     if address.number:
         parts.append(address.number)
-    municipality = address.municipality or address.province
+    municipality = clean_catastro_part(address.municipality) or clean_catastro_part(address.province)
     if municipality:
         parts.append(municipality)
     if address.postcode:
@@ -419,12 +436,12 @@ async def _geocode_catastro_address(result: CatastroByRCResult) -> Optional[Reso
         return None
 
     return ResolvedAddress(
-        label=address.label or query,
+        label=query,
         lat=float(municipio.lat or 0),
         lon=float(municipio.lon or 0),
         municipality=municipio.name or municipality or "",
         province=address.province or municipio.province,
-        road=address.road or municipio.road,
+        road=municipio.road or road,
         house_number=address.number,
         postcode=address.postcode or municipio.postcode,
         neighbourhood=municipio.neighbourhood,
@@ -487,6 +504,212 @@ def _airtable_config() -> AirtableConfig:
         return AirtableConfig.from_env()
     except AirtableConfigError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
+
+
+_ADDRESS_UNIT_PART_RE = re.compile(
+    r"^(?:"
+    r"\d{1,2}\s*(?:º|ª|o|a)\s*(?:[-/\s]?(?:[a-z]{1,4}|izq(?:uierda)?|dcha?|der(?:echa)?))?"
+    r"|\d{1,2}\s*[-/]\s*(?:[a-z]{1,4}|izq(?:uierda)?|dcha?|der(?:echa)?)"
+    r"|(?:bajo|bj|ent(?:resuelo)?|principal|pral|[aá]tico)(?:[-/\s]?[a-z0-9]+)?"
+    r"|(?:planta|puerta|pta)\s+[a-z0-9ºª-]+"
+    r")$",
+    re.IGNORECASE,
+)
+
+
+def _normalize_airtable_address_for_valuation(address: str) -> str:
+    """Clean Airtable unit-level addresses before sending them to geocoding.
+
+    Airtable may store human-readable floor/door suffixes ("2º-DR") that are
+    useful to a coach but make Nominatim miss the street-level address. The
+    valuation pipeline only needs the portal and locality for comparables.
+    """
+    parts = [part.strip() for part in address.split(",") if part.strip()]
+    if not parts:
+        return address.strip()
+
+    first = re.sub(r"^\s*c\.?\s+", "Calle ", parts[0], flags=re.IGNORECASE)
+    first = re.sub(r"^\s*c/\s*", "Calle ", first, flags=re.IGNORECASE)
+    first = re.sub(r"^\s*cl\s+", "Calle ", first, flags=re.IGNORECASE)
+    first = re.sub(r"^\s*avda?\.?\s+", "Avenida ", first, flags=re.IGNORECASE)
+
+    cleaned = [first]
+    cleaned.extend(part for part in parts[1:] if not _ADDRESS_UNIT_PART_RE.match(part))
+    if not any(part.lower() in {"españa", "spain"} for part in cleaned):
+        cleaned.append("España")
+    return ", ".join(cleaned)
+
+
+async def _resolved_address_from_transaction_reference(
+    transaction: TransactionDetail,
+) -> Optional[ResolvedAddress]:
+    if not transaction.cadastral_reference:
+        return None
+    try:
+        result = await fetch_property_by_reference(transaction.cadastral_reference)
+    except (ValueError, httpx.HTTPError) as exc:
+        logger.warning(
+            "Could not resolve Airtable cadastral reference %s: %s",
+            transaction.cadastral_reference,
+            exc,
+        )
+        return None
+    return await _geocode_catastro_address(result)
+
+
+async def _valuation_request_from_transaction(transaction: TransactionDetail) -> ValuationRequest:
+    """Build a valuation request from the normalized Airtable transaction fields."""
+    missing: list[str] = []
+    if not transaction.address:
+        missing.append("Address")
+    if not transaction.landsize_m2:
+        missing.append("Landsize")
+    if transaction.bedrooms is None:
+        missing.append("Beds")
+    if transaction.bathrooms is None:
+        missing.append("Baths")
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Transaction is missing required valuation fields: {', '.join(missing)}",
+        )
+
+    selected_unit = None
+    if transaction.cadastral_reference:
+        selected_unit = CadastralUnit(
+            cadastral_reference=transaction.cadastral_reference,
+            built_area_m2=float(transaction.landsize_m2 or 0) or None,
+            label=transaction.address or transaction.transaction_name,
+        )
+
+    normalized_address = _normalize_airtable_address_for_valuation(
+        transaction.address or transaction.transaction_name
+    )
+    selected_address = await _resolved_address_from_transaction_reference(transaction)
+
+    return ValuationRequest(
+        address=normalized_address,
+        m2=transaction.landsize_m2,
+        bedrooms=transaction.bedrooms or 0,
+        bathrooms=max(transaction.bathrooms or 1, 1),
+        property_type=transaction.type,
+        selected_address=selected_address,
+        selected_cadastral_unit=selected_unit,
+        valuation_intent="info",
+    )
+
+
+async def _build_coach_mock_valuation(request: ValuationRequest) -> ValuationResponse:
+    """Instant coach-only valuation for testing the Airtable/report flow.
+
+    The live Idealista scrape can exceed two minutes; this mock keeps the
+    response shape identical so results, email editing and report rendering can
+    be exercised without depending on Bright Data.
+    """
+    try:
+        municipio = (
+            municipio_from_resolved_address(request.selected_address)
+            if request.selected_address
+            else await get_municipio_from_address(request.address)
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        logger.error("Coach mock geocoding failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="Geocoding service unavailable")
+
+    valuation_address = request.selected_address.label if request.selected_address else request.address
+    market_transactions = build_market_transactions_mock(
+        valuation_address,
+        municipio,
+        m2=request.m2,
+        bedrooms=request.bedrooms,
+        bathrooms=request.bathrooms,
+    )
+    transactions = market_transactions.transactions[:DATASET_MAX_ROWS]
+
+    listings: list[Listing] = []
+    for index, transaction in enumerate(transactions, start=1):
+        price = transaction.asking_price or transaction.closing_price
+        m2 = transaction.m2 or request.m2
+        listings.append(
+            Listing(
+                title=f"Comparable mock {index} - {municipio.name}",
+                price=price,
+                m2=m2,
+                price_per_m2=int(price / m2) if price and m2 else transaction.asking_price_per_m2,
+                bedrooms=transaction.bedrooms,
+                bathrooms=transaction.bathrooms,
+                address=transaction.address,
+                url=f"https://www.idealista.com/mock/coach-{index}",
+                source_stage="coach_mock",
+            )
+        )
+
+    prices = [listing.price for listing in listings if listing.price]
+    ppms = [listing.price_per_m2 for listing in listings if listing.price_per_m2]
+    avg_ppm2 = int(sum(ppms) / len(ppms)) if ppms else None
+    baseline_estimate = int(avg_ppm2 * request.m2) if avg_ppm2 else None
+
+    dataset = build_dataset(listings)
+    regression = fit_listing_regression(dataset.rows)
+    estimated, estimation_method = _choose_estimate(
+        regression=regression,
+        baseline_estimate=baseline_estimate,
+        m2=request.m2,
+        bedrooms=request.bedrooms,
+        bathrooms=request.bathrooms,
+    )
+    price_range_low, price_range_high, confidence_method = _confidence_interval(
+        estimated=estimated,
+        avg_ppm2=avg_ppm2,
+        ppms=ppms,
+        request_m2=request.m2,
+    )
+
+    search_url = f"https://www.idealista.com/venta-viviendas/{quote_plus(municipio.name)}/"
+    search_metadata = SearchMetadata(
+        strategy="coach_mock",
+        target_comparables=DATASET_MAX_ROWS,
+        final_stage="coach_mock",
+        total_duration_ms=0,
+        stages=[
+            SearchStageResult(
+                name="coach_mock",
+                label="Coach mock data",
+                query=valuation_address,
+                search_url=search_url,
+                listings_found=len(listings),
+                duration_ms=0,
+                area_min=max(20, int(request.m2 * 0.8)),
+                area_max=int(request.m2 * 1.2),
+                bedrooms_mode="mock",
+                bathrooms_mode="mock",
+            )
+        ],
+    )
+
+    return ValuationResponse(
+        municipio=municipio,
+        listings=listings,
+        stats=ValuationStats(
+            total_comparables=len(listings),
+            avg_price=int(sum(prices) / len(prices)) if prices else None,
+            min_price=min(prices) if prices else None,
+            max_price=max(prices) if prices else None,
+            avg_price_per_m2=avg_ppm2,
+            estimated_value=estimated,
+            price_range_low=price_range_low,
+            price_range_high=price_range_high,
+            estimation_method=estimation_method,
+            confidence_method=confidence_method,
+        ),
+        search_url=search_url,
+        search_metadata=search_metadata,
+        market_transactions=market_transactions,
+        dataset=dataset,
+        regression=regression,
+    )
 
 
 @app.get(
@@ -552,6 +775,84 @@ async def get_coach_transaction(record_id: str) -> TransactionDetail:
     except httpx.HTTPError as exc:
         logger.error("Airtable network error: %s", exc, exc_info=True)
         raise HTTPException(status_code=502, detail="Airtable unreachable")
+
+
+@app.post(
+    "/api/coach/transactions/{record_id}/valuation",
+    response_model=CoachTransactionValuationResponse,
+    summary="Generate a valuation from an Airtable transaction",
+    dependencies=[Depends(_verify_coach_password)],
+)
+async def generate_coach_transaction_valuation(
+    record_id: str,
+    live: bool = Query(
+        False,
+        description="Run the live Idealista scrape instead of the instant coach mock.",
+    ),
+) -> CoachTransactionValuationResponse:
+    """Run the existing valuation pipeline using property fields from Airtable."""
+    config = _airtable_config()
+    try:
+        transaction = await get_transaction(config=config, record_id=record_id)
+    except AirtableAPIError as exc:
+        if exc.status_code == 404:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+        logger.error("Airtable detail fetch failed: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Airtable upstream error ({exc.status_code})",
+        )
+    except httpx.HTTPError as exc:
+        logger.error("Airtable network error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="Airtable unreachable")
+
+    request = await _valuation_request_from_transaction(transaction)
+    valuation = await get_valuation(request) if live else await _build_coach_mock_valuation(request)
+    return CoachTransactionValuationResponse(
+        transaction=transaction,
+        valuation_request=request,
+        valuation=valuation,
+    )
+
+
+@app.post(
+    "/api/coach/transactions/{record_id}/email/send",
+    response_model=CoachEmailSendResponse,
+    summary="Send an editable coach email to a transaction client",
+    dependencies=[Depends(_verify_coach_password)],
+)
+async def send_coach_transaction_email(
+    record_id: str,
+    payload: CoachEmailSendRequest,
+) -> CoachEmailSendResponse:
+    """Send a coach-authored email via Resend.
+
+    We fetch the transaction first so the endpoint remains scoped to a real
+    Airtable record and to keep future audit/persistence hooks straightforward.
+    """
+    config = _airtable_config()
+    try:
+        await get_transaction(config=config, record_id=record_id)
+        sent = await send_custom_email(
+            to=payload.to,
+            subject=payload.subject,
+            body=payload.body,
+        )
+    except AirtableAPIError as exc:
+        if exc.status_code == 404:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+        logger.error("Airtable detail fetch failed: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Airtable upstream error ({exc.status_code})",
+        )
+    except EmailDeliveryError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    return CoachEmailSendResponse(
+        sent=sent,
+        message="Email sent" if sent else "RESEND_API_KEY not set — email skipped in dev",
+    )
 
 
 @app.post("/api/valuation", response_model=ValuationResponse)
