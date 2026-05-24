@@ -34,12 +34,14 @@ disabled (useful in local dev).
 
 ### `GET /api/coach/transactions?q=<text>&limit=<n>`
 
-Server-side substring search against the Airtable `Transactions` table using
-`filterByFormula` over the `Transaction Name` column. Because the column
-follows the `<Client> - <Address>` convention in production, the same
-search matches both client name **and** street/city — no separate address
-field needed. Empty `q` returns the most recent `limit` rows (sorted by
-`Create Date` desc) so the UI has something to show on first paint.
+Server-side substring search against the Airtable `Transactions` table,
+scoped by default to the Spain-only `SP - AUM` view. This is intentionally
+faster than filtering the full table by `Country (from Properties)` on every
+request. Search still uses `filterByFormula` over the `Transaction Name`
+column; because the column follows the `<Client> - <Address>` convention in
+production, the same search matches both client name **and** street/city.
+Empty `q` returns the most recent `limit` rows (sorted by `Created_Date`
+desc) so the UI has something to show on first paint.
 
 Response: `list[TransactionSummary]` (see `backend/models.py`).
 
@@ -79,7 +81,8 @@ AIRTABLE_PAT=pat...                          # PAT with data.records:read on the
 AIRTABLE_BASE_ID=app...                      # Base id (appears in airtable.com/<base>/api docs)
 
 # Optional
-AIRTABLE_TRANSACTIONS_TABLE=transactions     # Override if the table is renamed
+AIRTABLE_TRANSACTIONS_TABLE=Transactions     # Override if the table is renamed
+AIRTABLE_TRANSACTIONS_VIEW=SP - AUM          # Spain-only view; empty = formula fallback
 COACH_ACCESS_PASSWORD=<shared-secret>        # Empty = gate disabled (dev only)
 ```
 
@@ -94,9 +97,19 @@ Generate a PAT at <https://airtable.com/create/tokens> with scope
 - The coach password is cached in `localStorage` under
   `prophero.coach.password` and attached to every request as
   `X-Coach-Password`.
-- The "Generate valuation" button on the detail view is intentionally
-  disabled — wiring it to `/api/valuation` (with the property data from
-  Airtable) is the next milestone.
+- The "Generate valuation" button on the detail view calls
+  `POST /api/coach/transactions/{id}/valuation`. The backend adapts the
+  Airtable row into the existing `ValuationRequest`: it prefers Catastro
+  resolution when a cadastral reference exists and otherwise strips
+  floor/door suffixes from the Airtable address before geocoding.
+- By default the coach valuation endpoint returns an instant mock
+  `ValuationResponse` (`strategy=coach_mock`) so coaches can test the investor
+  report and email flow without waiting on Bright Data/Idealista. Add
+  `?live=true` to run the real scrape.
+- The coach result view intentionally does **not** render the public valuation
+  dashboard. It renders an investor-facing report: sale range, capital gain,
+  ROI, quick/recommended/aspirational exit scenarios, comparables, closing
+  references, and a call-to-action for the coach follow-up.
 
 ## Local dev
 
@@ -118,8 +131,6 @@ Open `http://localhost:5173/coach`, enter the password, and start searching.
 
 ## Next steps (out of MVP scope)
 
-- Wire the "Generate valuation" CTA on the detail view to `/api/valuation`
-  using the Airtable property fields as input.
 - Persist the resulting valuation alongside the Airtable record id (so a
   coach can re-open a transaction and see the last valuation we produced).
 - Replace the shared password with proper user auth once we have more than

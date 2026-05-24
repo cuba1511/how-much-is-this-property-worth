@@ -57,6 +57,7 @@ async def list_records(
     *,
     config: AirtableConfig,
     table: str,
+    view: Optional[str] = None,
     filter_formula: Optional[str] = None,
     fields: Optional[list[str]] = None,
     max_records: int = 25,
@@ -73,6 +74,8 @@ async def list_records(
         "maxRecords": max_records,
         "pageSize": page_size,
     }
+    if view:
+        params["view"] = view
     if filter_formula:
         params["filterByFormula"] = filter_formula
     if fields:
@@ -90,7 +93,15 @@ async def list_records(
     url = f"{AIRTABLE_API_BASE}/{config.base_id}/{table_path}"
     headers = {"Authorization": f"Bearer {config.pat}"}
 
-    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT_S) as client:
+    # Force IPv4. On some local macOS/Python/httpx combinations Airtable's
+    # IPv6 path stalls for ~10s before falling back, while curl and browsers
+    # return in <1s. Pinning the local address keeps coach searches snappy.
+    transport = httpx.AsyncHTTPTransport(local_address="0.0.0.0")
+    async with httpx.AsyncClient(
+        timeout=DEFAULT_TIMEOUT_S,
+        transport=transport,
+        trust_env=False,
+    ) as client:
         response = await client.get(url, params=params, headers=headers)
     if response.status_code >= 400:
         raise AirtableAPIError(response.status_code, response.text)
@@ -111,7 +122,12 @@ async def get_record(
     url = f"{AIRTABLE_API_BASE}/{config.base_id}/{table_path}/{record_path}"
     headers = {"Authorization": f"Bearer {config.pat}"}
 
-    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT_S) as client:
+    transport = httpx.AsyncHTTPTransport(local_address="0.0.0.0")
+    async with httpx.AsyncClient(
+        timeout=DEFAULT_TIMEOUT_S,
+        transport=transport,
+        trust_env=False,
+    ) as client:
         response = await client.get(url, headers=headers)
     if response.status_code == 404:
         raise AirtableAPIError(404, response.text)

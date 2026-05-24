@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Reporte Inversor · Prop Hero — Variaciones</title>
+  <link rel="stylesheet" href="tokens.css" />
+  <style>
+    html, body { margin: 0; padding: 0; background: #f0eee9; font-family: var(--font-sans); color: var(--ink-900); }
+    /* Hide iframe scrollbars but keep scroll behaviour */
+    .frame {
+      width: 100%; height: 100%; border: 0; display: block;
+      background: var(--paper);
+      pointer-events: auto;
+    }
+    /* Drop-shadow card around iframes */
+    .artboard-host {
+      width: 100%; height: 100%;
+      background: var(--paper);
+      box-shadow: 0 1px 0 rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06);
+      border-radius: 0;
+      overflow: hidden;
+    }
+    /* Page kicker shown above the canvas */
+    .kicker {
+      position: fixed; top: 12px; left: 14px; z-index: 1000;
+      background: rgba(255,255,255,.92);
+      backdrop-filter: blur(10px) saturate(160%);
+      -webkit-backdrop-filter: blur(10px) saturate(160%);
+      border: 1px solid rgba(0,0,0,.06);
+      border-radius: 10px;
+      padding: 8px 12px;
+      display: inline-flex; align-items: center; gap: 10px;
+      font-family: var(--font-mono); font-size: 11px;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      color: rgba(40,30,20,.7);
+      box-shadow: 0 4px 12px rgba(0,0,0,.06);
+    }
+    .kicker b { color: rgba(20,20,25,.9); font-weight: 500; }
+    .kicker img { height: 14px; width: auto; display: block; }
+    .kicker .dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--success-500);
+      box-shadow: 0 0 0 3px rgba(30,159,110,.18);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="kicker">
+    <img src="assets/logos/type-prophero-state-icon.svg" alt="" />
+    <span>Prop Hero</span>
+    <span style="color:rgba(0,0,0,.2);">/</span>
+    <b>Reporte Inversor</b>
+    <span style="color:rgba(0,0,0,.2);">·</span>
+    <span class="dot"></span>
+    <span>2 variaciones</span>
+  </div>
+
+  <div id="root"></div>
+
+  <!-- React + Babel -->
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <script type="text/babel" src="design-canvas.jsx"></script>
+
+  <script type="text/babel">
+    // Iframe inside an artboard — kept as plain JSX so DCSection still sees
+    // DCArtboard nodes directly (the canvas filters by strict component identity).
+    const ReportFrame = ({ src, label }) => (
+      <div className="artboard-host">
+        <iframe className="frame" src={src} title={label} loading="lazy"
+                scrolling="yes" />
+      </div>
+    );
+
+    function App() {
+      return (
+        <DesignCanvas>
+          <DCSection
+            id="variaciones"
+            title="Reporte Inversor · 2 variaciones"
+            subtitle="Dos lecturas del mismo dato: dashboard top-down y editorial narrativo. Abre cualquiera en focus mode (botón ⛶) para revisar a tamaño real, editar copy con Tweaks o imprimir.">
+            <DCArtboard id="v1-dashboard" label="v1 · Dashboard"
+                        width={1180} height={3380}>
+              <ReportFrame src="report-dashboard.html" label="v1 · Dashboard" />
+            </DCArtboard>
+            <DCArtboard id="v2-editorial" label="v2 · Editorial"
+                        width={1180} height={4320}>
+              <ReportFrame src="report-editorial.html" label="v2 · Editorial" />
+            </DCArtboard>
+          </DCSection>
+
+          <DCSection
+            id="notas"
+            title="Notas de diseño"
+            subtitle="Lo que está pasando en cada versión, y por qué.">
+            <DCArtboard id="notes" label="Notas" width={820} height={760}>
+              <div style={{
+                width: '100%', height: '100%',
+                background: 'var(--paper)',
+                padding: '40px 44px',
+                fontFamily: 'var(--font-sans)',
+                color: 'var(--ink-900)',
+                overflow: 'auto'
+              }}>
+                <div style={{
+                  fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-500)',
+                  letterSpacing: '0.1em', textTransform: 'uppercase'
+                }}>— Notas · Reporte Inversor</div>
+                <h2 style={{
+                  fontFamily: 'var(--font-sans)', fontSize: 32, fontWeight: 600,
+                  letterSpacing: '-0.02em', lineHeight: 1.1, margin: '8px 0 24px'
+                }}>Dos lecturas del mismo dato.</h2>
+
+                <div style={{ display: 'grid', gap: 20, fontSize: 14, lineHeight: 1.55, color: 'var(--ink-700)' }}>
+                  <div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--brand-500)', marginBottom: 4 }}>v1 · Dashboard</div>
+                    <b style={{ color: 'var(--ink-900)', fontWeight: 500 }}>Top-down, denso, escaneable.</b><br/>
+                    Hero con propiedad + ganancia + rango. KPI strip de 4 métricas. Gráfico
+                    centrado como pieza de evidencia. Escenarios y comparables en grids equilibrados.
+                    El CTA es un panel oscuro con tres pasos numerados — incluye el cross-sell de reinversión.
+                    <br/><span style={{ color: 'var(--ink-500)' }}>Pensado para que el inversor llegue al rango de salida en 5 segundos.</span>
+                  </div>
+
+                  <div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--brand-500)', marginBottom: 4 }}>v2 · Editorial</div>
+                    <b style={{ color: 'var(--ink-900)', fontWeight: 500 }}>Narrativo, capítulado, persuasivo.</b><br/>
+                    Cover de revista con el <em>+18.607 €</em> como protagonista. El reporte
+                    se lee como cuatro capítulos: la historia del precio, tres formas de salir,
+                    evidencia del mercado, próximo paso. Pull quote editorial para la lectura
+                    de mercado. El CTA mantiene la misma triple secuencia pero con peso tipográfico mayor.
+                    <br/><span style={{ color: 'var(--ink-500)' }}>Pensado para acompañar al inversor en la llamada, no sólo para skimear.</span>
+                  </div>
+
+                  <hr style={{ border: 0, borderTop: '1px dashed var(--ink-200)', margin: '8px 0' }} />
+
+                  <div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-500)', marginBottom: 4 }}>— Compartido</div>
+                    Mismos datos (mismo gráfico, mismos tres escenarios, mismas listas paralelas
+                    de comparables y cierres), misma paleta Vistral, mismo cross-sell de reinversión.
+                    Ambas son imprimibles (CSS print incluido) y bilingües-ready (toggle ES/EN
+                    en la cabecera). El copy del título, lede y CTA se edita en vivo con el panel
+                    de <b>Tweaks</b> al abrir cualquiera de las variaciones en focus mode.
+                  </div>
+                </div>
+              </div>
+            </DCArtboard>
+          </DCSection>
+
+        </DesignCanvas>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+
+</body>
+</html>

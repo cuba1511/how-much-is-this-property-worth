@@ -9,6 +9,9 @@ Field mapping (Airtable → API):
 | Airtable column                                                                                   | API field            |
 |---------------------------------------------------------------------------------------------------|----------------------|
 | `Transaction Name`                                                                                | `transaction_name`   |
+| `Address`                                                                                         | `address`            |
+| `Client email`                                                                                    | `client_email`       |
+| `Taxland number (from properties)`                                                                | `cadastral_reference`|
 | `Type`                                                                                            | `type`               |
 | `Beds`                                                                                            | `bedrooms`           |
 | `Baths`                                                                                           | `bathrooms`          |
@@ -41,10 +44,15 @@ logger = logging.getLogger(__name__)
 
 TRANSACTIONS_TABLE_ENV = "AIRTABLE_TRANSACTIONS_TABLE"
 DEFAULT_TRANSACTIONS_TABLE = "Transactions"
+TRANSACTIONS_VIEW_ENV = "AIRTABLE_TRANSACTIONS_VIEW"
+DEFAULT_TRANSACTIONS_VIEW = "SP - AUM"
 
 # Airtable column names. Kept as constants so the rename in Airtable (or a
 # locale change) is a single-line patch instead of a project-wide grep.
 FIELD_TRANSACTION_NAME = "Transaction Name"
+FIELD_ADDRESS = "Address"
+FIELD_CLIENT_EMAIL = "Client email"
+FIELD_CADASTRAL_REFERENCE = "Taxland number (from properties)"
 FIELD_TYPE = "Type"
 FIELD_BEDS = "Beds"
 FIELD_BATHS = "Baths"
@@ -58,6 +66,9 @@ FIELD_FINAL_TOTAL_PRICE = "Final Total Price (from Properties)"
 
 LIST_FIELDS: list[str] = [
     FIELD_TRANSACTION_NAME,
+    FIELD_ADDRESS,
+    FIELD_CLIENT_EMAIL,
+    FIELD_CADASTRAL_REFERENCE,
     FIELD_TYPE,
     FIELD_BEDS,
     FIELD_BATHS,
@@ -70,6 +81,11 @@ LIST_FIELDS: list[str] = [
 
 def _table_name() -> str:
     return os.environ.get(TRANSACTIONS_TABLE_ENV, DEFAULT_TRANSACTIONS_TABLE).strip() or DEFAULT_TRANSACTIONS_TABLE
+
+
+def _view_name() -> Optional[str]:
+    value = os.environ.get(TRANSACTIONS_VIEW_ENV, DEFAULT_TRANSACTIONS_VIEW).strip()
+    return value or None
 
 
 def _flatten_lookup(value: Any) -> Any:
@@ -119,11 +135,11 @@ def _escape_formula_literal(value: str) -> str:
 def _country_filter_formula() -> str:
     """Only return Spanish transactions.
 
-    `Country (from Properties)` is a lookup field, so Airtable exposes it to
-    formulas as an array-like value. ARRAYJOIN makes exact-ish text filtering
-    reliable while still handling single-value lookups.
+    `Country (from Properties)` is a lookup field. Airtable formula equality
+    works for the single-value lookup shape used here and is faster/clearer
+    than scanning all lookup text.
     """
-    return f"FIND('spain', LOWER(ARRAYJOIN({{{FIELD_COUNTRY}}})))"
+    return f"{{{FIELD_COUNTRY}}} = 'Spain'"
 
 
 def _build_search_formula(query: str) -> str:
@@ -135,12 +151,8 @@ def _build_search_formula(query: str) -> str:
     one-line change.
     """
     needle = _escape_formula_literal(query.lower())
-    return (
-        f"AND("
-        f"{_country_filter_formula()},"
-        f"OR(FIND('{needle}', LOWER({{{FIELD_TRANSACTION_NAME}}})))"
-        f")"
-    )
+    search = f"OR(FIND('{needle}', LOWER({{{FIELD_TRANSACTION_NAME}}})))"
+    return search if _view_name() else f"AND({_country_filter_formula()},{search})"
 
 
 def _summary_from_record(record: dict[str, Any]) -> TransactionSummary:
@@ -148,6 +160,9 @@ def _summary_from_record(record: dict[str, Any]) -> TransactionSummary:
     return TransactionSummary(
         id=record["id"],
         transaction_name=_get_str(fields, FIELD_TRANSACTION_NAME) or record["id"],
+        address=_get_str(fields, FIELD_ADDRESS),
+        client_email=_get_str(fields, FIELD_CLIENT_EMAIL),
+        cadastral_reference=_get_str(fields, FIELD_CADASTRAL_REFERENCE),
         type=_get_str(fields, FIELD_TYPE),
         bedrooms=_get_int(fields, FIELD_BEDS),
         bathrooms=_get_int(fields, FIELD_BATHS),
@@ -180,14 +195,14 @@ async def search_transactions(
     """
     sort_clause = [{"field": FIELD_CREATED_AT, "direction": "desc"}]
 
-    formula = (
-        _build_search_formula(query.strip())
-        if query.strip()
-        else _country_filter_formula()
-    )
+    view = _view_name()
+    formula = _build_search_formula(query.strip()) if query.strip() else None
+    if not view and formula is None:
+        formula = _country_filter_formula()
     records = await list_records(
         config=config,
         table=_table_name(),
+        view=view,
         filter_formula=formula,
         fields=LIST_FIELDS,
         max_records=max_results,

@@ -8,12 +8,16 @@
  */
 
 import { API_BASE } from './api'
+import type { ValuationRequest, ValuationResponse } from './types'
 
 const COACH_PASSWORD_STORAGE_KEY = 'prophero.coach.password'
 
 export interface TransactionSummary {
   id: string
   transaction_name: string
+  address: string | null
+  client_email: string | null
+  cadastral_reference: string | null
   type: string | null
   bedrooms: number | null
   bathrooms: number | null
@@ -25,6 +29,17 @@ export interface TransactionSummary {
 
 export interface TransactionDetail extends TransactionSummary {
   raw_fields: Record<string, unknown>
+}
+
+export interface CoachTransactionValuationResponse {
+  transaction: TransactionDetail
+  valuation_request: ValuationRequest
+  valuation: ValuationResponse
+}
+
+export interface CoachEmailSendResponse {
+  sent: boolean
+  message: string
 }
 
 export type CoachApiErrorCode = 'unauthorized' | 'not_found' | 'network' | 'server'
@@ -151,6 +166,53 @@ export async function getTransaction(
     )
   }
   return handleResponse<TransactionDetail>(res)
+}
+
+export async function generateTransactionValuation(
+  recordId: string,
+): Promise<CoachTransactionValuationResponse> {
+  let res: Response
+  try {
+    res = await fetch(
+      `${API_BASE}/api/coach/transactions/${encodeURIComponent(recordId)}/valuation`,
+      {
+        method: 'POST',
+        headers: buildHeaders(),
+      },
+    )
+  } catch (err) {
+    throw new CoachApiError(
+      'network',
+      `Network error: ${(err as Error).message ?? 'unknown'}`,
+    )
+  }
+  return handleResponse<CoachTransactionValuationResponse>(res)
+}
+
+export async function sendTransactionEmail(
+  recordId: string,
+  payload: { to: string; subject: string; body: string },
+): Promise<CoachEmailSendResponse> {
+  let res: Response
+  try {
+    res = await fetch(
+      `${API_BASE}/api/coach/transactions/${encodeURIComponent(recordId)}/email/send`,
+      {
+        method: 'POST',
+        headers: {
+          ...buildHeaders(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      },
+    )
+  } catch (err) {
+    throw new CoachApiError(
+      'network',
+      `Network error: ${(err as Error).message ?? 'unknown'}`,
+    )
+  }
+  return handleResponse<CoachEmailSendResponse>(res)
 }
 
 /**

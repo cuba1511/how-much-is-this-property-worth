@@ -422,6 +422,9 @@ class TransactionSummary(BaseModel):
 
     id: str = Field(..., description="Airtable record id, e.g. 'recXXXX'")
     transaction_name: str
+    address: Optional[str] = None
+    client_email: Optional[str] = None
+    cadastral_reference: Optional[str] = None
     type: Optional[str] = None
     bedrooms: Optional[int] = None
     bathrooms: Optional[int] = None
@@ -458,6 +461,27 @@ class TransactionDetail(TransactionSummary):
             "are kept as arrays here — only the typed shortcuts above are flattened."
         ),
     )
+
+
+class CoachTransactionValuationResponse(BaseModel):
+    """Result of turning an Airtable transaction into a valuation."""
+
+    transaction: TransactionDetail
+    valuation_request: ValuationRequest
+    valuation: ValuationResponse
+
+
+class CoachEmailSendRequest(BaseModel):
+    """Editable email payload submitted from the coach UI."""
+
+    to: str = Field(..., min_length=3, max_length=200)
+    subject: str = Field(..., min_length=1, max_length=200)
+    body: str = Field(..., min_length=1, max_length=10000)
+
+
+class CoachEmailSendResponse(BaseModel):
+    sent: bool
+    message: str
 
 
 class SimpleValuationResponse(BaseModel):

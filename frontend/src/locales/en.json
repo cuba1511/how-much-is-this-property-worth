@@ -327,10 +327,25 @@
       "unknownError": "We couldn't load this transaction.",
       "financialsTitle": "Financial summary",
       "propertyTitle": "Property data",
-      "totalSpent": "Total spent",
-      "nextStepTitle": "Coming soon",
-      "nextStepDescription": "Run a valuation on this property using the Airtable data and our OLS algorithm.",
-      "nextStepCta": "Generate valuation (coming soon)"
+      "totalSpent": "Total spent"
+    },
+    "valuation": {
+      "title": "Investor report",
+      "description": "Generate a performance report with sale range, capital gain, exit scenarios, and market evidence.",
+      "cta": "Generate report",
+      "generating": "Generating report…",
+      "resultTitle": "Generated report",
+      "unknownError": "We couldn't generate the report."
+    },
+    "email": {
+      "title": "Send email to client",
+      "description": "Edit the message before sending. Recipient comes from Airtable.",
+      "to": "To",
+      "subject": "Subject",
+      "body": "Message",
+      "send": "Send email",
+      "sending": "Sending…",
+      "unknownError": "We couldn't send the email."
     },
     "fields": {
       "transactionName": "Transaction",
