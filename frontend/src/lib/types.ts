@@ -197,6 +197,24 @@ export interface MarketTransactions {
   transactions: MarketTransaction[]
 }
 
+/** Real-data zone appreciation between the property's settlement date and the
+ *  most recent monthly observation in the TF Labs municipal price series. */
+export interface MarketAppreciation {
+  town_id: string | null
+  town_name: string
+  ine_code: string | null
+  settlement_date: string
+  from_period: string
+  from_eur_per_m2: number
+  to_period: string
+  to_eur_per_m2: number
+  pct_change: number
+  annualized_pct_change: number | null
+  months_elapsed: number
+  sample_quality: 'exact' | 'nearest_available'
+  resolution_strategy: 'airtable_town_id' | 'ine_code' | 'name_match'
+}
+
 export interface SearchStageResult {
   name: string
   label: string
@@ -225,4 +243,5 @@ export interface ValuationResponse {
   search_url: string
   search_metadata: SearchMetadata
   market_transactions?: MarketTransactions | null
+  market_appreciation?: MarketAppreciation | null
 }

@@ -23,8 +23,22 @@ export interface TransactionSummary {
   bathrooms: number | null
   landsize_m2: number | null
   created_at: string | null
-  total_est_costs: number | null
+  price: number | null
+  final_reno_cost: number | null
+  final_furniture_cost: number | null
+  technical_project_costs: number | null
+  home_appliances_cost: number | null
+  cleaning_cost: number | null
+  real_estate_agent_fee: number | null
+  land_registry_cost: number | null
+  prophero_fee: number | null
+  notary_cost: number | null
+  insurance: number | null
+  council_rate: number | null
+  service_charges: number | null
   final_total_price: number | null
+  real_settlement_date: string | null
+  town_record_id: string | null
 }
 
 export interface TransactionDetail extends TransactionSummary {
@@ -170,11 +184,13 @@ export async function getTransaction(
 
 export async function generateTransactionValuation(
   recordId: string,
+  { live = true }: { live?: boolean } = {},
 ): Promise<CoachTransactionValuationResponse> {
+  const params = new URLSearchParams({ live: String(live) })
   let res: Response
   try {
     res = await fetch(
-      `${API_BASE}/api/coach/transactions/${encodeURIComponent(recordId)}/valuation`,
+      `${API_BASE}/api/coach/transactions/${encodeURIComponent(recordId)}/valuation?${params}`,
       {
         method: 'POST',
         headers: buildHeaders(),

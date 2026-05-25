@@ -31,6 +31,12 @@ $(FRONT)/node_modules: $(FRONT)/package.json
 db: $(VENV)
 	@cd backend && ../$(PYTHON) -c "import db; print('SQLite ready at', db.init_db())"
 
+# Rebuilds backend/data/market_price_series.db from the TF Labs CSV export.
+# The CSV ships out-of-band (gitignored) — see docs/market-price-series.md.
+.PHONY: build-market-series
+build-market-series: $(VENV)
+	$(PYTHON) backend/scripts/build_market_price_series.py
+
 # ── Dev servers ───────────────────────────────────────────────────────────────
 
 .PHONY: backend
@@ -42,7 +48,10 @@ backend:
 frontend: $(FRONT)/node_modules
 	cd $(FRONT) && npm run dev
 
-# Runs API + Vite dev server side-by-side. Ctrl+C cleanly tears both down.
+# Runs API + Vite dev server side-by-side. Ctrl+C cleanly tears both down,
+# including any uvicorn worker that's stuck waiting on an httpx response —
+# we send SIGINT first (lets uvicorn shutdown gracefully) and a SIGKILL
+# follow-up after 3s so a hung HTTP call can never keep :8001 captive.
 .PHONY: dev
 dev: $(VENV) $(FRONT)/node_modules
 	@[ -f backend/.env ] || (echo "⚠  backend/.env not found — run: make install" && exit 1)
@@ -50,10 +59,18 @@ dev: $(VENV) $(FRONT)/node_modules
 	@echo "  ▶  API      → http://localhost:8001"
 	@echo "  ▶  Frontend → http://localhost:5173  (proxies API calls to :8001)"
 	@echo ""
-	@trap 'kill 0' SIGINT SIGTERM EXIT; \
+	@trap 'kill -INT 0 2>/dev/null; sleep 3; kill -KILL 0 2>/dev/null' SIGINT SIGTERM EXIT; \
 	(cd backend && .venv/bin/uvicorn main:app --host 0.0.0.0 --port 8001 --reload) & \
 	(cd $(FRONT) && npm run dev) & \
 	wait
+
+# Force-kill anything holding the API or Vite port. Handy when `make dev`
+# was Ctrl+C'd while a request to Airtable / Idealista was in flight.
+.PHONY: dev-stop
+dev-stop:
+	-@lsof -nP -iTCP:8001 -sTCP:LISTEN -t 2>/dev/null | xargs -r kill -KILL
+	-@lsof -nP -iTCP:5173 -sTCP:LISTEN -t 2>/dev/null | xargs -r kill -KILL
+	@echo "✓ Ports 8001 and 5173 free."
 
 # ── VPS (Docker + Caddy) ─────────────────────────────────────────────────────
 
@@ -98,11 +115,13 @@ help:
 	@echo "  Setup"
 	@echo "    make install     Install Python + Node deps and Playwright Chromium"
 	@echo "    make db          Create the SQLite file (backend/data/prophero.db)"
+	@echo "    make build-market-series   Rebuild market_price_series.db from CSV"
 	@echo ""
 	@echo "  Run (local)"
 	@echo "    make dev         API + frontend side-by-side (recommended)"
 	@echo "    make backend     Only the FastAPI server → :8001"
 	@echo "    make frontend    Only the Vite dev server → :5173"
+	@echo "    make dev-stop    Free :8001 and :5173 (use if dev got stuck)"
 	@echo ""
 	@echo "  Deploy (VPS)"
 	@echo "    make vps-up      Build UI + docker compose (needs deploy/.env)"

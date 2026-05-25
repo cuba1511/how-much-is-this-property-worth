@@ -381,6 +381,54 @@ class MarketTransactions(BaseModel):
     transactions: list[MarketTransaction] = Field(default_factory=list)
 
 
+class MarketAppreciation(BaseModel):
+    """Municipal €/m² appreciation between a settlement date and the latest
+    observation in the TF Labs price series.
+
+    Used by the coach investor report to show "how much has the zone
+    appreciated since the property was bought", as a real-data alternative
+    to the comparables-derived capital gain.
+    """
+
+    town_id: Optional[str] = Field(
+        None,
+        description="Airtable record id for the municipality in the TF Labs source.",
+    )
+    town_name: str = Field(..., description="Spanish municipality name from the dataset.")
+    ine_code: Optional[str] = Field(None, description="5-digit INE municipal code.")
+
+    settlement_date: str = Field(
+        ...,
+        description="ISO date used as acquisition anchor (`Real settlement date` in Airtable).",
+    )
+    from_period: str = Field(..., description="YYYY-MM the baseline value was taken from.")
+    from_eur_per_m2: float = Field(..., description="Median €/m² at the settlement period.")
+    to_period: str = Field(..., description="YYYY-MM of the most recent observation.")
+    to_eur_per_m2: float = Field(..., description="Median €/m² at the most recent period.")
+
+    pct_change: float = Field(
+        ...,
+        description="Total appreciation as a decimal (e.g. 0.124 = +12.4%) between the two periods.",
+    )
+    annualized_pct_change: Optional[float] = Field(
+        None,
+        description="Compounded annual appreciation, populated when the holding period ≥ 12 months.",
+    )
+    months_elapsed: int = Field(
+        ..., description="Months between `from_period` and `to_period`."
+    )
+
+    sample_quality: Literal["exact", "nearest_available"] = Field(
+        "exact",
+        description="'exact' when the settlement month was found in the series; "
+        "'nearest_available' when we fell back to the closest earlier period.",
+    )
+    resolution_strategy: Literal["airtable_town_id", "ine_code", "name_match"] = Field(
+        ...,
+        description="How we matched the property to a municipality row.",
+    )
+
+
 class SearchStageResult(BaseModel):
     name: str
     label: str
@@ -409,6 +457,13 @@ class ValuationResponse(BaseModel):
     search_url: str
     search_metadata: SearchMetadata
     market_transactions: Optional[MarketTransactions] = None
+    market_appreciation: Optional[MarketAppreciation] = Field(
+        None,
+        description=(
+            "Real-data zone appreciation since the property was acquired. "
+            "Populated only when we know a settlement date (today: coach flow only)."
+        ),
+    )
     dataset: Optional[ComparablesDataset] = None
     regression: Optional[RegressionResult] = None
 
@@ -432,18 +487,51 @@ class TransactionSummary(BaseModel):
     created_at: Optional[str] = Field(
         None, description="ISO date or whatever Airtable's `Create Date` column returned."
     )
-    total_est_costs: Optional[int] = Field(
-        None,
-        description=(
-            "Total estimated costs (renovation + furniture + technical project + "
-            "apportionment) in EUR, from the Airtable column "
-            "'Total est. costs (...)'."
-        ),
+    price: Optional[int] = Field(None, description="Airtable `Price` in EUR.")
+    final_reno_cost: Optional[int] = Field(None, description="Airtable `Final reno cost` in EUR.")
+    final_furniture_cost: Optional[int] = Field(
+        None, description="Airtable `Final furniture cost` in EUR."
+    )
+    technical_project_costs: Optional[int] = Field(
+        None, description="Airtable `Technical project costs` in EUR."
+    )
+    home_appliances_cost: Optional[int] = Field(
+        None, description="Airtable `Home appliances cost` in EUR."
+    )
+    cleaning_cost: Optional[int] = Field(None, description="Airtable `Cleaning cost` in EUR.")
+    real_estate_agent_fee: Optional[int] = Field(
+        None, description="Airtable `Real estate agent fee` in EUR."
+    )
+    land_registry_cost: Optional[int] = Field(
+        None, description="Airtable `Land registry cost` in EUR."
+    )
+    prophero_fee: Optional[int] = Field(None, description="Airtable `PropHero fee` in EUR.")
+    notary_cost: Optional[int] = Field(None, description="Airtable `Notary cost` in EUR.")
+    insurance: Optional[int] = Field(None, description="Airtable `Insurance` in EUR.")
+    council_rate: Optional[int] = Field(None, description="Airtable `Council rate` in EUR.")
+    service_charges: Optional[int] = Field(
+        None, description="Airtable `Service charges` in EUR."
     )
     final_total_price: Optional[int] = Field(
         None,
         description=(
-            "Lookup from the Properties table: `Final Total Price (from Properties)` in EUR."
+            "Airtable `Final total price` in EUR. This is the acquisition basis "
+            "used as the amount the client paid."
+        ),
+    )
+    real_settlement_date: Optional[str] = Field(
+        None,
+        description=(
+            "Airtable `Real settlement date`. Used as the acquisition anchor "
+            "for the market-appreciation lookup."
+        ),
+    )
+    town_record_id: Optional[str] = Field(
+        None,
+        description=(
+            "Airtable record id for the linked Town (from Properties). When "
+            "present, the price-series layer resolves the municipality "
+            "directly instead of falling back to the geocoder's name match."
         ),
     )
 
