@@ -11,6 +11,7 @@ import { API_BASE } from './api'
 import type { ValuationRequest, ValuationResponse } from './types'
 
 const COACH_PASSWORD_STORAGE_KEY = 'prophero.coach.password'
+const COACH_REQUEST_TIMEOUT_MS = 20_000
 
 export interface TransactionSummary {
   id: string
@@ -81,6 +82,39 @@ function asAbortError(): DOMException {
   return new DOMException('Request aborted', 'AbortError')
 }
 
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController()
+  const upstreamSignal = init.signal
+  let timedOut = false
+
+  const timeoutId = window.setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, COACH_REQUEST_TIMEOUT_MS)
+
+  const abortFromUpstream = () => controller.abort()
+  if (upstreamSignal) {
+    if (upstreamSignal.aborted) controller.abort()
+    else upstreamSignal.addEventListener('abort', abortFromUpstream, { once: true })
+  }
+
+  try {
+    return await fetch(input, { ...init, signal: controller.signal })
+  } catch (err) {
+    if (timedOut) {
+      throw new CoachApiError(
+        'network',
+        `Network timeout after ${COACH_REQUEST_TIMEOUT_MS / 1000}s`,
+      )
+    }
+    if (upstreamSignal?.aborted || isAbortLikeError(err)) throw asAbortError()
+    throw err
+  } finally {
+    window.clearTimeout(timeoutId)
+    upstreamSignal?.removeEventListener('abort', abortFromUpstream)
+  }
+}
+
 export function getStoredCoachPassword(): string {
   if (typeof window === 'undefined') return ''
   try {
@@ -148,11 +182,12 @@ export async function searchTransactions(
   const params = new URLSearchParams({ q: query, limit: String(limit) })
   let res: Response
   try {
-    res = await fetch(`${API_BASE}/api/coach/transactions?${params}`, {
+    res = await fetchWithTimeout(`${API_BASE}/api/coach/transactions?${params}`, {
       headers: buildHeaders(),
       signal,
     })
   } catch (err) {
+    if (err instanceof CoachApiError) throw err
     if (isAbortLikeError(err)) throw asAbortError()
     throw new CoachApiError(
       'network',
@@ -168,11 +203,12 @@ export async function getTransaction(
 ): Promise<TransactionDetail> {
   let res: Response
   try {
-    res = await fetch(`${API_BASE}/api/coach/transactions/${encodeURIComponent(recordId)}`, {
+    res = await fetchWithTimeout(`${API_BASE}/api/coach/transactions/${encodeURIComponent(recordId)}`, {
       headers: buildHeaders(),
       signal,
     })
   } catch (err) {
+    if (err instanceof CoachApiError) throw err
     if (isAbortLikeError(err)) throw asAbortError()
     throw new CoachApiError(
       'network',
@@ -239,13 +275,14 @@ export async function sendTransactionEmail(
 export async function probeCoachPassword(password: string): Promise<boolean> {
   let res: Response
   try {
-    res = await fetch(`${API_BASE}/api/coach/auth/check`, {
+    res = await fetchWithTimeout(`${API_BASE}/api/coach/auth/check`, {
       headers: {
         'ngrok-skip-browser-warning': 'true',
         'X-Coach-Password': password,
       },
     })
   } catch (err) {
+    if (err instanceof CoachApiError) throw err
     throw new CoachApiError(
       'network',
       `Network error: ${(err as Error).message ?? 'unknown'}`,
