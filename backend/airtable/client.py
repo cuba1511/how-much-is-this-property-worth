@@ -10,8 +10,10 @@ Docs: https://airtable.com/developers/web/api/list-records
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
+import time
 import urllib.parse
 from dataclasses import dataclass
 from typing import Any, Optional
@@ -21,7 +23,20 @@ import httpx
 logger = logging.getLogger(__name__)
 
 AIRTABLE_API_BASE = "https://api.airtable.com/v0"
-DEFAULT_TIMEOUT_S = 15.0
+# Separate connect / read timeouts. Connect should be quick (DNS + TCP +
+# TLS); the read budget is generous because Airtable can take a few seconds
+# to assemble lookup-heavy responses when no `fields[]` projection is sent.
+DEFAULT_CONNECT_TIMEOUT_S = 5.0
+DEFAULT_READ_TIMEOUT_S = 30.0
+_DEFAULT_TIMEOUT = httpx.Timeout(
+    connect=DEFAULT_CONNECT_TIMEOUT_S,
+    read=DEFAULT_READ_TIMEOUT_S,
+    write=DEFAULT_READ_TIMEOUT_S,
+    pool=DEFAULT_READ_TIMEOUT_S,
+)
+TRANSIENT_STATUS_CODES = {429, 500, 502, 503, 504}
+MAX_ATTEMPTS = 3
+RETRY_BACKOFF_SECONDS = 0.75
 
 
 class AirtableConfigError(RuntimeError):
@@ -93,21 +108,45 @@ async def list_records(
     url = f"{AIRTABLE_API_BASE}/{config.base_id}/{table_path}"
     headers = {"Authorization": f"Bearer {config.pat}"}
 
-    # Force IPv4. On some local macOS/Python/httpx combinations Airtable's
-    # IPv6 path stalls for ~10s before falling back, while curl and browsers
-    # return in <1s. Pinning the local address keeps coach searches snappy.
-    transport = httpx.AsyncHTTPTransport(local_address="0.0.0.0")
+    logger.info(
+        "Airtable list_records → table=%s view=%s filter=%s max=%s",
+        table,
+        view or "-",
+        "yes" if filter_formula else "no",
+        max_records,
+    )
+    started = time.monotonic()
     async with httpx.AsyncClient(
-        timeout=DEFAULT_TIMEOUT_S,
-        transport=transport,
+        timeout=_DEFAULT_TIMEOUT,
         trust_env=False,
     ) as client:
-        response = await client.get(url, params=params, headers=headers)
+        response = await _get_with_retries(
+            client=client,
+            url=url,
+            params=params,
+            headers=headers,
+            started=started,
+            context=f"list_records table={table} max={max_records}",
+        )
+
+    elapsed = time.monotonic() - started
     if response.status_code >= 400:
+        logger.warning(
+            "Airtable list_records FAILED status=%s in %.2fs",
+            response.status_code,
+            elapsed,
+        )
         raise AirtableAPIError(response.status_code, response.text)
 
     payload = response.json()
-    return payload.get("records", [])
+    records = payload.get("records", [])
+    logger.info(
+        "Airtable list_records ← %s records in %.2fs (table=%s)",
+        len(records),
+        elapsed,
+        table,
+    )
+    return records
 
 
 async def get_record(
@@ -115,23 +154,115 @@ async def get_record(
     config: AirtableConfig,
     table: str,
     record_id: str,
+    fields: Optional[list[str]] = None,
 ) -> dict[str, Any]:
     """Fetch a single record by its Airtable record id (e.g. `rec...`)."""
     table_path = urllib.parse.quote(table, safe="")
     record_path = urllib.parse.quote(record_id, safe="")
     url = f"{AIRTABLE_API_BASE}/{config.base_id}/{table_path}/{record_path}"
     headers = {"Authorization": f"Bearer {config.pat}"}
+    params: dict[str, Any] = {}
+    if fields:
+        for field in fields:
+            params.setdefault("fields[]", [])
+            params["fields[]"].append(field)
 
-    transport = httpx.AsyncHTTPTransport(local_address="0.0.0.0")
+    started = time.monotonic()
+    logger.info(
+        "Airtable get_record → table=%s id=%s fields=%s",
+        table,
+        record_id,
+        len(fields) if fields else "all",
+    )
     async with httpx.AsyncClient(
-        timeout=DEFAULT_TIMEOUT_S,
-        transport=transport,
+        timeout=_DEFAULT_TIMEOUT,
         trust_env=False,
     ) as client:
-        response = await client.get(url, headers=headers)
+        response = await _get_with_retries(
+            client=client,
+            url=url,
+            params=params,
+            headers=headers,
+            started=started,
+            context=f"get_record table={table} id={record_id}",
+        )
+
+    elapsed = time.monotonic() - started
     if response.status_code == 404:
+        logger.info("Airtable get_record ← 404 in %.2fs (id=%s)", elapsed, record_id)
         raise AirtableAPIError(404, response.text)
     if response.status_code >= 400:
+        logger.warning(
+            "Airtable get_record FAILED status=%s in %.2fs",
+            response.status_code,
+            elapsed,
+        )
         raise AirtableAPIError(response.status_code, response.text)
 
+    logger.info("Airtable get_record ← OK in %.2fs (id=%s)", elapsed, record_id)
     return response.json()
+
+
+async def _get_with_retries(
+    *,
+    client: httpx.AsyncClient,
+    url: str,
+    params: dict[str, Any],
+    headers: dict[str, str],
+    started: float,
+    context: str,
+) -> httpx.Response:
+    """GET with small retries for Airtable's intermittent 5xx/timeout spikes."""
+    last_timeout: httpx.ReadTimeout | None = None
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        try:
+            response = await client.get(url, params=params, headers=headers)
+        except httpx.ConnectError as exc:
+            # On macOS, a process whose DNS resolver state is poisoned (commonly
+            # because a VPN added unreachable resolvers via `scutil --dns`) will
+            # fail every `getaddrinfo` with EAI_NONAME instantly until the worker
+            # is restarted. Surface that as 502 so the UI shows a clear error
+            # instead of timing out.
+            if "nodename nor servname" in str(exc):
+                logger.error(
+                    "Airtable %s DNS resolution failed (process resolver poisoned"
+                    " — disconnect VPN or restart uvicorn): %s",
+                    context,
+                    exc,
+                )
+                raise AirtableAPIError(
+                    502,
+                    "Airtable unreachable (macOS DNS resolver poisoned — disconnect VPN or restart backend)",
+                ) from exc
+            raise
+        except httpx.ReadTimeout as exc:
+            last_timeout = exc
+            if attempt < MAX_ATTEMPTS:
+                logger.warning(
+                    "Airtable %s TIMEOUT on attempt %d/%d; retrying",
+                    context,
+                    attempt,
+                    MAX_ATTEMPTS,
+                )
+                await asyncio.sleep(RETRY_BACKOFF_SECONDS * attempt)
+                continue
+            break
+
+        if response.status_code in TRANSIENT_STATUS_CODES and attempt < MAX_ATTEMPTS:
+            logger.warning(
+                "Airtable %s returned transient status=%s on attempt %d/%d; retrying",
+                context,
+                response.status_code,
+                attempt,
+                MAX_ATTEMPTS,
+            )
+            await asyncio.sleep(RETRY_BACKOFF_SECONDS * attempt)
+            continue
+        return response
+
+    elapsed = time.monotonic() - started
+    logger.error("Airtable %s TIMEOUT after %.1fs", context, elapsed)
+    raise AirtableAPIError(
+        504,
+        f"Airtable did not respond within {DEFAULT_READ_TIMEOUT_S:.0f}s",
+    ) from last_timeout

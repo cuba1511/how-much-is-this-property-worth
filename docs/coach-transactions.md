@@ -35,13 +35,13 @@ disabled (useful in local dev).
 ### `GET /api/coach/transactions?q=<text>&limit=<n>`
 
 Server-side substring search against the Airtable `Transactions` table,
-scoped by default to the Spain-only `SP - AUM` view. This is intentionally
-faster than filtering the full table by `Country (from Properties)` on every
-request. Search still uses `filterByFormula` over the `Transaction Name`
-column; because the column follows the `<Client> - <Address>` convention in
-production, the same search matches both client name **and** street/city.
-Empty `q` returns the most recent `limit` rows (sorted by `Created_Date`
-desc) so the UI has something to show on first paint.
+scoped to Spain and `Stage = "Property leased"` so coaches only see leased
+Spanish transactions ready for the investor report. The query still uses
+`filterByFormula` over the `Transaction Name` column; because the column
+follows the `<Client> - <Address>` convention in production, the same search
+matches both client name **and** street/city. Empty `q` returns the oldest
+matching `limit` rows (sorted by `Created_Date` asc) so the first-paint
+worklist starts with the oldest leased properties.
 
 Response: `list[TransactionSummary]` (see `backend/models.py`).
 
@@ -61,13 +61,41 @@ Fetch a single transaction by Airtable record id (`recXXXXXXXX`). Returns
 | `Baths`                                                                                  | `bathrooms`          |
 | `Landsize`                                                                               | `landsize_m2`        |
 | `Created_Date`                                                                           | `created_at`         |
-| `Total est. costs (Reno + furniture + technical project costs + Apportionment Amount)`   | `total_est_costs`    |
-| `Final Total Price (from Properties)`                                                    | `final_total_price`  |
+| `Country (from Properties)`                                                              | filter only (`Spain`) |
+| `Stage`                                                                                  | filter only (`Property leased`) |
+| `Price`                                                                                  | `price`              |
+| `Final reno cost`                                                                        | `final_reno_cost`    |
+| `Final furniture cost`                                                                   | `final_furniture_cost` |
+| `Technical project cost(s)`                                                              | `technical_project_costs` |
+| `Home appliances cost`                                                                   | `home_appliances_cost` |
+| `Cleaning cost`                                                                          | `cleaning_cost`      |
+| `Real estate agent fee`                                                                  | `real_estate_agent_fee` |
+| `Land registry cost`                                                                     | `land_registry_cost` |
+| `PropHero fee`                                                                           | `prophero_fee`       |
+| `Notary cost`                                                                            | `notary_cost`        |
+| `Insurance`                                                                              | `insurance`          |
+| `Council rate`                                                                           | `council_rate`       |
+| `Service charges`                                                                        | `service_charges`    |
+| `Final total price`                                                                      | `final_total_price`  |
+| `Real settlement date`                                                                   | `real_settlement_date` |
+| `Town` / `Town (from Properties)`                                                        | `town_record_id`     |
 
-Lookup fields (like `Final Total Price (from Properties)`) come back as
-arrays from Airtable; `backend/airtable/transactions.py` flattens them to a
-scalar before returning. The original arrays are preserved under
-`raw_fields` so the detail view can show any column we haven't typed yet.
+`final_total_price` is treated as the amount the client paid. The individual
+cost columns are exposed for explanation and auditability, but the coach report
+does not add them again on top of `final_total_price`.
+
+`real_settlement_date` and `town_record_id` feed the new market-appreciation
+block in the coach investor report — see [`market-price-series.md`](market-price-series.md)
+for the full pipeline. Both are optional: when either is missing the
+appreciation card simply doesn't render and the report falls back to the
+comparables-only narrative.
+
+Lookup fields may come back as arrays from Airtable;
+`backend/airtable/transactions.py` flattens them to a scalar before returning.
+The search proxy intentionally does not pass a strict `fields[]` projection for
+the financial fields, because Airtable returns 422 when any optional column name
+differs by singular/plural or lookup suffix. The original fields are preserved
+under `raw_fields` so the detail view can show any column we haven't typed yet.
 
 If columns get renamed in Airtable, patch the `FIELD_*` constants at the top
 of `backend/airtable/transactions.py` — that's the only place you need to
@@ -102,14 +130,25 @@ Generate a PAT at <https://airtable.com/create/tokens> with scope
   Airtable row into the existing `ValuationRequest`: it prefers Catastro
   resolution when a cadastral reference exists and otherwise strips
   floor/door suffixes from the Airtable address before geocoding.
-- By default the coach valuation endpoint returns an instant mock
-  `ValuationResponse` (`strategy=coach_mock`) so coaches can test the investor
-  report and email flow without waiting on Bright Data/Idealista. Add
-  `?live=true` to run the real scrape.
+- Report generation intentionally re-fetches the Airtable record with a
+  projected `fields[]` list instead of loading the full `raw_fields` payload.
+  Full records can include heavy lookup blobs and have produced Airtable 504s;
+  the projected path only requests the fields needed for valuation, purchase
+  economics, and market appreciation. Unknown optional aliases are dropped
+  when Airtable returns a 422 for renamed columns.
+- By default the coach valuation endpoint runs the live Bright Data/Idealista
+  scrape so the investor report shows real active comparables. Add
+  `?live=false` to return the instant mock `ValuationResponse`
+  (`strategy=coach_mock`) when coaches need to test the investor report and
+  email flow without waiting on the scraper.
 - The coach result view intentionally does **not** render the public valuation
-  dashboard. It renders an investor-facing report: sale range, capital gain,
-  ROI, quick/recommended/aspirational exit scenarios, comparables, closing
-  references, and a call-to-action for the coach follow-up.
+  dashboard. It renders an investor-facing report: sale range, **plusvalía de
+  zona** (real TF Labs €/m² appreciation since the `Real settlement date`),
+  ganancia al precio recomendado, quick/recommended/aspirational exit
+  scenarios, active comparables, purchase €/m² vs today's zone €/m², and a
+  call-to-action for the coach follow-up. The mocked "real closings" panel was
+  removed in favour of the appreciation block — see
+  [`market-price-series.md`](market-price-series.md).
 
 ## Local dev
 

@@ -354,7 +354,7 @@
       "bathrooms": "Baños",
       "landsize": "Superficie",
       "createdAt": "Fecha de creación",
-      "totalEstCosts": "Costes estimados",
+      "price": "Precio base",
       "finalTotalPrice": "Precio final"
     }
   }

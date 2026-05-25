@@ -354,7 +354,7 @@
       "bathrooms": "Bathrooms",
       "landsize": "Land size",
       "createdAt": "Created at",
-      "totalEstCosts": "Estimated costs",
+      "price": "Base price",
       "finalTotalPrice": "Final price"
     }
   }

@@ -30,6 +30,7 @@ from airtable import (
     AirtableConfig,
     AirtableConfigError,
     get_transaction,
+    get_transaction_for_valuation,
     search_transactions,
 )
 from catastro import (
@@ -45,6 +46,7 @@ from geocoding import (
     reverse_geocode,
     suggest_addresses,
 )
+from market import compute_appreciation, get_default_store
 from models import (
     CadastralReferenceLookupRequest,
     CadastralReferenceLookupResponse,
@@ -59,6 +61,7 @@ from models import (
     LeadResponse,
     LeadSubmission,
     Listing,
+    MarketAppreciation,
     ResolvedAddress,
     SearchMetadata,
     SearchStageResult,
@@ -599,6 +602,81 @@ async def _valuation_request_from_transaction(transaction: TransactionDetail) ->
     )
 
 
+def _parse_settlement_date(raw: Optional[str]):
+    """Parse the Airtable `Real settlement date` into a Python ``date``.
+
+    Airtable returns ISO dates (``YYYY-MM-DD``) but sometimes also bare
+    ``YYYY-MM`` or full ISO timestamps via lookup. Return ``None`` if the
+    value is missing or unparseable — the caller skips appreciation in that
+    case rather than crashing the whole valuation.
+    """
+    if not raw:
+        return None
+    from datetime import date
+
+    candidates = [raw, raw[:10], f"{raw[:7]}-01" if len(raw) >= 7 else None]
+    for value in candidates:
+        if not value:
+            continue
+        try:
+            return date.fromisoformat(value)
+        except ValueError:
+            continue
+    return None
+
+
+def _compute_market_appreciation_for_transaction(
+    transaction: TransactionDetail,
+    request: ValuationRequest,
+) -> Optional[MarketAppreciation]:
+    """Resolve the property's town + settlement date and build a
+    :class:`MarketAppreciation` payload.
+
+    Resolution chain (best → worst):
+    1. ``transaction.town_record_id`` — direct Airtable record id from the
+       linked Town lookup.
+    2. Municipality name from the geocoded address (``request.selected_address``).
+
+    Returns ``None`` (and logs) whenever we can't produce a meaningful
+    payload: missing settlement date, unmatched town, or empty series.
+    """
+    store = get_default_store()
+    if store is None:
+        return None
+
+    settlement_date = _parse_settlement_date(transaction.real_settlement_date)
+    if settlement_date is None:
+        logger.info(
+            "Coach appreciation: skipping — transaction %s has no Real settlement date",
+            transaction.id,
+        )
+        return None
+
+    municipality_name = (
+        request.selected_address.municipality
+        if request.selected_address and request.selected_address.municipality
+        else None
+    )
+    province = request.selected_address.province if request.selected_address else None
+
+    town = store.resolve_town(
+        airtable_record_id=transaction.town_record_id,
+        name=municipality_name,
+        province_id=province,
+    )
+    if town is None:
+        logger.info(
+            "Coach appreciation: no town match for transaction %s "
+            "(town_record_id=%s, municipality=%s)",
+            transaction.id,
+            transaction.town_record_id,
+            municipality_name,
+        )
+        return None
+
+    return compute_appreciation(store=store, town=town, settlement_date=settlement_date)
+
+
 async def _build_coach_mock_valuation(request: ValuationRequest) -> ValuationResponse:
     """Instant coach-only valuation for testing the Airtable/report flow.
 
@@ -786,14 +864,14 @@ async def get_coach_transaction(record_id: str) -> TransactionDetail:
 async def generate_coach_transaction_valuation(
     record_id: str,
     live: bool = Query(
-        False,
-        description="Run the live Idealista scrape instead of the instant coach mock.",
+        True,
+        description="Run the live Idealista scrape. Set false for the instant coach mock.",
     ),
 ) -> CoachTransactionValuationResponse:
     """Run the existing valuation pipeline using property fields from Airtable."""
     config = _airtable_config()
     try:
-        transaction = await get_transaction(config=config, record_id=record_id)
+        transaction = await get_transaction_for_valuation(config=config, record_id=record_id)
     except AirtableAPIError as exc:
         if exc.status_code == 404:
             raise HTTPException(status_code=404, detail="Transaction not found")
@@ -808,6 +886,19 @@ async def generate_coach_transaction_valuation(
 
     request = await _valuation_request_from_transaction(transaction)
     valuation = await get_valuation(request) if live else await _build_coach_mock_valuation(request)
+    # Real-data zone appreciation. Failing this should never fail the whole
+    # endpoint — the coach UI degrades gracefully when the block is absent.
+    try:
+        valuation.market_appreciation = _compute_market_appreciation_for_transaction(
+            transaction, request
+        )
+    except Exception as exc:  # noqa: BLE001 — best effort enrichment
+        logger.warning(
+            "Coach appreciation failed for transaction %s: %s",
+            transaction.id,
+            exc,
+            exc_info=True,
+        )
     return CoachTransactionValuationResponse(
         transaction=transaction,
         valuation_request=request,

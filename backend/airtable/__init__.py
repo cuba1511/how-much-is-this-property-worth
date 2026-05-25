@@ -12,6 +12,7 @@ from airtable.client import (
 )
 from airtable.transactions import (
     get_transaction,
+    get_transaction_for_valuation,
     search_transactions,
 )
 
@@ -20,5 +21,6 @@ __all__ = [
     "AirtableConfig",
     "AirtableConfigError",
     "get_transaction",
+    "get_transaction_for_valuation",
     "search_transactions",
 ]
