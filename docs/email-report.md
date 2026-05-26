@@ -26,7 +26,8 @@ ValuationForm
   │
 ConversionSignalsBlock
   ✓ "Te enviamos el reporte a {email}"
-  [Descargar PDF]   ── POST /api/report/pdf ─► same PDF, no email
+  [Ver PDF] / [Descargar PDF]
+       └──────────── POST /api/report/pdf/render ─► same valuation payload, no email
 ```
 
 Why two endpoints:
@@ -35,9 +36,20 @@ Why two endpoints:
   persists it, runs the valuation, schedules the email + PDF send as a
   `BackgroundTask`, and returns the valuation payload synchronously. The
   user sees results in ~5–15s without waiting on email delivery.
-- **`POST /api/report/pdf`** — pure render. Re-uses the same template +
-  generator but doesn't persist anything or send email. Used by the
-  "Descargar PDF" button on the results page (and useful for QA / preview).
+- **`POST /api/report/pdf/render`** — pure render from an already-computed
+  `ValuationResponse` + `ValuationRequest`. Used by the results page PDF
+  viewer and download button, so opening the report doesn't scrape Idealista
+  again.
+- **`POST /api/report/pdf`** — legacy pure render from only a request payload.
+  It re-runs the valuation before rendering and remains useful for QA, but it
+  is intentionally no longer used by the results page.
+
+Both PDF endpoints accept an `include_comparables` flag (body field on
+`/render`, query string on the legacy endpoint). Default `true` keeps the
+full report; setting it to `false` drops the per-listing Idealista cards
+while keeping the aggregate stats (avg €/m², total comparables). The results
+page and CoachPage expose this as a "Con comparables / Sin comparables"
+selector next to the preview/download buttons.
 
 ## Modules
 
@@ -48,7 +60,7 @@ Why two endpoints:
 | `backend/report/renderer.py`                    | `render_report_html(valuation, request_payload, lead?)` — pure function. |
 | `backend/report/pdf.py`                         | `generate_pdf_bytes(html)` via Playwright local Chromium.                |
 | `backend/notifications/email_sender.py`         | `send_valuation_email(lead, valuation, pdf_bytes)` via Resend REST.      |
-| `backend/main.py`                               | Wires it all together in `/api/lead` + `/api/report/pdf`.                |
+| `backend/main.py`                               | Wires it all together in `/api/lead`, `/api/report/pdf/render`, and legacy `/api/report/pdf`. |
 
 ## Configuration
 
@@ -160,7 +172,26 @@ This keeps audit trails honest and avoids race conditions.
 - **CRM sync.** Leads stay in SQLite. Surface them via a simple admin
   endpoint or sync to Pipedrive/HubSpot when the volume justifies it.
 
-## Testing locally
+## Automated tests
+
+The email service is covered without sending real emails or touching the
+network:
+
+```bash
+pytest tests/test_email_sender.py tests/test_email_pipeline.py
+```
+
+These tests mock Resend's HTTP client, PDF generation, and the background
+pipeline side effects. They verify:
+
+- dev mode skips delivery when `RESEND_API_KEY` is unset;
+- Resend payloads include the expected sender, recipient, subject, HTML, and
+  base64 PDF attachment;
+- Resend `>=300` responses raise `EmailDeliveryError`;
+- the background task marks `email_sent` on success and persists
+  `email_error` on delivery failure.
+
+## Testing locally with the app
 
 ```bash
 # 1. install + chromium + npm + cp .env (one-time)

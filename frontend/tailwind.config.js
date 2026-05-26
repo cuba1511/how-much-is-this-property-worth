@@ -136,6 +136,10 @@ export default {
           "0%, 60%, 100%": { opacity: "0.3", transform: "translateY(0)" },
           "30%": { opacity: "1", transform: "translateY(-3px)" },
         },
+        "progress-indeterminate": {
+          "0%": { transform: "translateX(-100%)" },
+          "100%": { transform: "translateX(300%)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -143,6 +147,7 @@ export default {
         "chat-slide-in": "chat-slide-in 0.4s ease-out forwards",
         "chat-bubble-in": "chat-bubble-in 0.3s ease-out forwards",
         "typing-dot": "typing-dot 1.2s ease-in-out infinite",
+        "progress-indeterminate": "progress-indeterminate 1.4s ease-in-out infinite",
       },
     },
   },

@@ -1,30 +1,63 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Clock, MailCheck, PhoneCall, Download, Loader2 } from 'lucide-react'
-import type { LeadInfo, ValuationRequest } from '@/lib/types'
-import { downloadReportPdf } from '@/lib/api'
+import { Clock, MailCheck, PhoneCall, Download, Loader2, Eye, X } from 'lucide-react'
+import type { LeadInfo, ValuationRequest, ValuationResponse } from '@/lib/types'
+import { createReportPdfObjectUrl, downloadReportPdf } from '@/lib/api'
 
 interface ConversionSignalsBlockProps {
   lead?: LeadInfo
   request?: ValuationRequest
+  valuation: ValuationResponse
   totalTransactions?: number
 }
 
 export function ConversionSignalsBlock({
   lead,
   request,
+  valuation,
   totalTransactions,
 }: ConversionSignalsBlockProps) {
   const { t } = useTranslation()
   const [downloading, setDownloading] = useState(false)
+  const [previewing, setPreviewing] = useState(false)
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const [downloadError, setDownloadError] = useState<string | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (pdfUrl) URL.revokeObjectURL(pdfUrl)
+    }
+  }, [pdfUrl])
+
+  async function ensurePdfUrl(): Promise<string | null> {
+    if (!request) return null
+    if (pdfUrl) return pdfUrl
+
+    const url = await createReportPdfObjectUrl({ request, valuation, lead })
+    setPdfUrl(url)
+    return url
+  }
+
+  async function handlePreview() {
+    setPreviewing(true)
+    setDownloadError(null)
+    try {
+      const url = await ensurePdfUrl()
+      if (url) setPreviewOpen(true)
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : t('results.cta.previewError'))
+    } finally {
+      setPreviewing(false)
+    }
+  }
 
   async function handleDownload() {
     if (!request) return
     setDownloading(true)
     setDownloadError(null)
     try {
-      await downloadReportPdf(request)
+      await downloadReportPdf({ request, valuation, lead })
     } catch (err) {
       setDownloadError(err instanceof Error ? err.message : t('results.cta.downloadError'))
     } finally {
@@ -68,6 +101,19 @@ export function ConversionSignalsBlock({
         <button
           type="button"
           className="btn-secondary flex-1"
+          onClick={handlePreview}
+          disabled={previewing || !request}
+        >
+          {previewing ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Eye className="h-4 w-4" />
+          )}
+          {previewing ? t('results.cta.loadingPdf') : t('results.cta.previewPdf')}
+        </button>
+        <button
+          type="button"
+          className="btn-secondary flex-1"
           onClick={handleDownload}
           disabled={downloading || !request}
         >
@@ -84,6 +130,27 @@ export function ConversionSignalsBlock({
         <p className="mt-sm text-sm text-destructive" role="alert">
           {downloadError}
         </p>
+      )}
+
+      {previewOpen && pdfUrl && (
+        <div className="mt-md overflow-hidden rounded-2xl border border-line bg-bg">
+          <div className="flex items-center justify-between gap-sm border-b border-line bg-surface px-md py-sm">
+            <p className="text-sm font-semibold text-ink">{t('results.cta.pdfPreviewTitle')}</p>
+            <button
+              type="button"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-ink-secondary transition-colors hover:bg-bg hover:text-ink"
+              onClick={() => setPreviewOpen(false)}
+              aria-label={t('results.cta.closePdfPreview')}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <iframe
+            title={t('results.cta.pdfPreviewTitle')}
+            src={pdfUrl}
+            className="h-[70vh] w-full bg-white"
+          />
+        </div>
       )}
     </div>
   )

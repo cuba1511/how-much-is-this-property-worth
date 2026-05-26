@@ -179,6 +179,16 @@ export type PollOutcome =
   | { kind: 'timeout' }
   | { kind: 'aborted' }
 
+export interface ReportPdfPayload {
+  request: ValuationRequest
+  valuation: ValuationResponse
+  lead?: LeadInfo
+  /** When false, the backend drops the per-listing comparables section from
+   *  the PDF (aggregate stats are kept). Defaults to true on the server side
+   *  so omitting it preserves the current behavior. */
+  includeComparables?: boolean
+}
+
 /**
  * Poll `getValuationStatus` until the valuation is ready, fails, or we hit
  * the `maxTotalMs` ceiling. Each individual fetch error (network blips) is
@@ -229,29 +239,53 @@ export async function pollValuationUntilReady(
   }
 }
 
-/**
- * Render the valuation PDF and trigger a browser download. Useful for the
- * "Descargar PDF" button on the results page — the user already received the
- * report by email but may want to re-download it without checking their inbox.
- */
-export async function downloadReportPdf(request: ValuationRequest): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/report/pdf`, {
+export async function fetchReportPdf({
+  request,
+  valuation,
+  lead,
+  includeComparables = true,
+}: ReportPdfPayload): Promise<Blob> {
+  const res = await fetch(`${API_BASE}/api/report/pdf/render`, {
     method: 'POST',
     headers: SHARED_HEADERS,
-    body: JSON.stringify(request),
+    body: JSON.stringify({
+      valuation_request: request,
+      valuation,
+      lead,
+      include_comparables: includeComparables,
+    }),
   })
   if (!res.ok) {
     throw new ValuationError('server', `PDF download failed: ${res.status}`, res.status)
   }
-  const blob = await res.blob()
-  const url = URL.createObjectURL(blob)
+
+  return res.blob()
+}
+
+export async function createReportPdfObjectUrl(payload: ReportPdfPayload): Promise<string> {
+  const blob = await fetchReportPdf(payload)
+  return URL.createObjectURL(blob)
+}
+
+/**
+ * Render the current valuation PDF and trigger a browser download. This uses
+ * the valuation already shown on screen, so it does not re-run the scraper.
+ */
+export async function downloadReportPdf(payload: ReportPdfPayload): Promise<void> {
+  const url = await createReportPdfObjectUrl(payload)
   const link = document.createElement('a')
   link.href = url
-  link.download = `prophero-valoracion-${new Date().toISOString().slice(0, 10)}.pdf`
+  // Encode the variant in the filename so coaches who download both versions
+  // for the same client don't end up with two identical filenames in their
+  // Downloads folder.
+  const variantSuffix = payload.includeComparables === false ? '-sin-comparables' : ''
+  link.download = `prophero-valoracion${variantSuffix}-${new Date()
+    .toISOString()
+    .slice(0, 10)}.pdf`
   document.body.appendChild(link)
   link.click()
   link.remove()
-  URL.revokeObjectURL(url)
+  window.setTimeout(() => URL.revokeObjectURL(url), 0)
 }
 
 export async function autocompleteAddresses(

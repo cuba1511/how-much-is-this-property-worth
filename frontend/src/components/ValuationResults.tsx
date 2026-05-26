@@ -85,13 +85,18 @@ export function ValuationResults({ result, request, lead, onReset }: ValuationRe
 
       {/* 7. Comparables */}
       {listings.length > 0 && (
-        <ComparablesBlock listings={listings} requestM2={request.m2} />
+        <ComparablesBlock
+          listings={listings}
+          requestM2={request.m2}
+          finalStage={search_metadata.final_stage}
+        />
       )}
 
       {/* 8. Conversion Signals */}
       <ConversionSignalsBlock
         lead={lead}
         request={request}
+        valuation={result}
         totalTransactions={market_transactions?.summary?.total_transactions}
       />
     </div>

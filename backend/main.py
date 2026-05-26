@@ -63,6 +63,7 @@ from models import (
     Listing,
     MarketAppreciation,
     ResolvedAddress,
+    ReportPdfRenderRequest,
     SearchMetadata,
     SearchStageResult,
     SimpleValuationResponse,
@@ -111,7 +112,7 @@ def _cors_origins() -> list[str]:
         return []
     return ["*"]
 
-DATASET_MAX_ROWS = 10
+DATASET_MAX_ROWS = 5
 DATASET_MIN_ROWS = 3
 
 # In-process TTL cache for /api/valuation/simple. The full valuation pipeline
@@ -677,6 +678,146 @@ def _compute_market_appreciation_for_transaction(
     return compute_appreciation(store=store, town=town, settlement_date=settlement_date)
 
 
+async def _build_no_scrape_valuation(
+    request: ValuationRequest,
+    transaction: Optional[TransactionDetail] = None,
+) -> ValuationResponse:
+    """Build a ValuationResponse WITHOUT scraping Idealista.
+
+    Used by the coach flow when the coach opts into the "sin comparables"
+    variant. We still need a credible headline number for the report, so we
+    anchor it on the real TF Labs municipal €/m² series (latest observation
+    for the resolved town) × ``request.m2``. The €/m² baseline is the same
+    one we use for ``market_appreciation``, so the report stays internally
+    consistent — no Idealista listings, but a real-data estimate.
+
+    When the town can't be resolved or has no series data we fall back to
+    leaving ``estimated_value=None`` so the renderer shows the honest
+    "no estimated" hero block instead of inventing a number.
+    """
+    try:
+        municipio = (
+            municipio_from_resolved_address(request.selected_address)
+            if request.selected_address
+            else await get_municipio_from_address(request.address)
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        logger.error("No-scrape geocoding failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="Geocoding service unavailable")
+
+    valuation_address = (
+        request.selected_address.label if request.selected_address else request.address
+    )
+
+    # Headline figure from the TF Labs municipal series. We use the latest
+    # available observation rather than the settlement-period one because
+    # this is a *current* valuation, not a back-calc of historical worth.
+    market_eur_per_m2: Optional[int] = None
+    estimated_value: Optional[int] = None
+    store = get_default_store()
+    town = None
+    if store is not None:
+        municipality_name = (
+            request.selected_address.municipality
+            if request.selected_address and request.selected_address.municipality
+            else municipio.name
+        )
+        province = (
+            request.selected_address.province
+            if request.selected_address
+            else municipio.province
+        )
+        # Same resolution chain as `_compute_market_appreciation_for_transaction`:
+        # the Airtable Town record id is identical to ``market_towns.town_id``,
+        # so when we have it we get a 100% hit. Falling back to name only is
+        # brittle for bilingual municipalities (e.g. TF Labs stores Alicante as
+        # "Alicante/Alacant" so the plain "Alicante" lookup misses).
+        town = store.resolve_town(
+            airtable_record_id=transaction.town_record_id if transaction else None,
+            name=municipality_name,
+            province_id=province,
+        )
+        if town is not None:
+            latest = store.latest_value(town.town_id)
+            if latest is not None:
+                _period, value = latest
+                if value and value > 0:
+                    market_eur_per_m2 = int(round(value))
+                    estimated_value = int(round(value * request.m2))
+
+    # Confidence band — no comparables to compute σ, so we fall back to the
+    # legacy ±10% so the hero still shows a range. ``confidence_method``
+    # signals this clearly in the report badge.
+    price_range_low = (
+        int(estimated_value * 0.90) if estimated_value is not None else None
+    )
+    price_range_high = (
+        int(estimated_value * 1.10) if estimated_value is not None else None
+    )
+
+    search_url = f"https://www.idealista.com/venta-viviendas/{quote_plus(municipio.name)}/"
+    search_metadata = SearchMetadata(
+        strategy="no_scrape",
+        target_comparables=0,
+        final_stage="market_series",
+        total_duration_ms=0,
+        stages=[
+            SearchStageResult(
+                name="market_series",
+                label="TF Labs zonal €/m²",
+                query=valuation_address,
+                search_url=search_url,
+                listings_found=0,
+                duration_ms=0,
+                bedrooms_mode="skipped",
+                bathrooms_mode="skipped",
+            )
+        ],
+    )
+
+    # We still build the mock transactions block because the report's
+    # "Realidad del mercado" section uses asking-vs-closing context that
+    # gives the coach something to talk about. It's clearly flagged as
+    # ``is_mock`` so the receiver can tell it's not real comparables.
+    market_transactions = build_market_transactions_mock(
+        valuation_address,
+        municipio,
+        m2=request.m2,
+        bedrooms=request.bedrooms,
+        bathrooms=request.bathrooms,
+        listing_avg_price_per_m2=market_eur_per_m2,
+    )
+
+    return ValuationResponse(
+        municipio=municipio,
+        listings=[],
+        stats=ValuationStats(
+            total_comparables=0,
+            avg_price=None,
+            min_price=None,
+            max_price=None,
+            avg_price_per_m2=market_eur_per_m2,
+            estimated_value=estimated_value,
+            price_range_low=price_range_low,
+            price_range_high=price_range_high,
+            estimation_method="market_series" if estimated_value else None,
+            confidence_method="flat_pct" if estimated_value else None,
+        ),
+        search_url=search_url,
+        search_metadata=search_metadata,
+        market_transactions=market_transactions,
+        dataset=ComparablesDataset(
+            rows=[],
+            row_count=0,
+            min_required=DATASET_MIN_ROWS,
+            max_allowed=DATASET_MAX_ROWS,
+        ),
+        regression=None,
+    )
+
+
 async def _build_coach_mock_valuation(request: ValuationRequest) -> ValuationResponse:
     """Instant coach-only valuation for testing the Airtable/report flow.
 
@@ -867,6 +1008,15 @@ async def generate_coach_transaction_valuation(
         True,
         description="Run the live Idealista scrape. Set false for the instant coach mock.",
     ),
+    include_comparables: bool = Query(
+        True,
+        description=(
+            "When false, skip the Idealista scrape entirely and build the "
+            "valuation from the TF Labs municipal €/m² series only. The "
+            "report will have no per-listing comparables but a real-data "
+            "headline number. Overrides ``live`` when false."
+        ),
+    ),
 ) -> CoachTransactionValuationResponse:
     """Run the existing valuation pipeline using property fields from Airtable."""
     config = _airtable_config()
@@ -885,7 +1035,12 @@ async def generate_coach_transaction_valuation(
         raise HTTPException(status_code=502, detail="Airtable unreachable")
 
     request = await _valuation_request_from_transaction(transaction)
-    valuation = await get_valuation(request) if live else await _build_coach_mock_valuation(request)
+    if not include_comparables:
+        valuation = await _build_no_scrape_valuation(request, transaction)
+    elif live:
+        valuation = await get_valuation(request)
+    else:
+        valuation = await _build_coach_mock_valuation(request)
     # Real-data zone appreciation. Failing this should never fail the whole
     # endpoint — the coach UI degrades gracefully when the block is absent.
     try:
@@ -1249,7 +1404,16 @@ async def _build_fast_simple_valuation(request: ValuationRequest) -> SimpleValua
     response_class=Response,
     summary="Render a PDF of the valuation report for the given request payload",
 )
-async def post_report_pdf(request: ValuationRequest) -> Response:
+async def post_report_pdf(
+    request: ValuationRequest,
+    include_comparables: bool = Query(
+        True,
+        description=(
+            "Toggle the per-listing comparables section in the PDF. Aggregate "
+            "stats (avg €/m², total count) always stay in the report."
+        ),
+    ),
+) -> Response:
     """Run a valuation and return the PDF report as `application/pdf`.
 
     Useful for preview / re-download from the frontend without re-sending the
@@ -1260,6 +1424,7 @@ async def post_report_pdf(request: ValuationRequest) -> Response:
     html = render_report_html(
         valuation=valuation,
         request_payload=request.model_dump(),
+        include_comparables=include_comparables,
     )
     try:
         pdf_bytes = await generate_pdf_bytes(html)
@@ -1271,6 +1436,40 @@ async def post_report_pdf(request: ValuationRequest) -> Response:
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": 'attachment; filename="prophero-valoracion.pdf"'},
+    )
+
+
+@app.post(
+    "/api/report/pdf/render",
+    response_class=Response,
+    summary="Render a PDF from an already-computed valuation payload",
+)
+async def post_report_pdf_render(payload: ReportPdfRenderRequest) -> Response:
+    """Return a PDF report without re-running geocoding or scraping.
+
+    The results page already has the full ValuationResponse, so previewing or
+    downloading the report should only render that snapshot to PDF.
+
+    ``payload.include_comparables`` lets the caller pick the report variant
+    (default ``True`` — full report; ``False`` — same numbers without the
+    per-listing Idealista cards).
+    """
+    html = render_report_html(
+        valuation=payload.valuation,
+        request_payload=payload.valuation_request.model_dump(mode="json"),
+        lead=payload.lead,
+        include_comparables=payload.include_comparables,
+    )
+    try:
+        pdf_bytes = await generate_pdf_bytes(html)
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.error("PDF generation failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Could not render PDF report")
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'inline; filename="prophero-valoracion.pdf"'},
     )
 
 

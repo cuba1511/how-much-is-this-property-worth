@@ -243,15 +243,23 @@
         "relaxed": "Match ampliado"
       },
       "floor": "Planta {{floor}}",
-      "groupCount": "{{count}} anuncios"
+      "groupCount": "{{count}} anuncios",
+      "radiusHint": "Radio de búsqueda: {{radius}}m · {{stage}}",
+      "viewOnIdealista": "Ver en Idealista",
+      "noImage": "Foto no disponible"
     },
     "cta": {
       "expiresIn": "Esta análisis caduca en 24h · te enviamos una copia a tu email",
       "talkToAdvisor": "Hablar con un advisor PropHero",
       "requestPdf": "Recibir PDF detallado",
+      "previewPdf": "Ver PDF",
+      "loadingPdf": "Cargando PDF…",
       "downloadPdf": "Descargar PDF",
       "downloadingPdf": "Generando PDF…",
+      "previewError": "No se pudo abrir el visor PDF. Inténtalo de nuevo.",
       "downloadError": "No se pudo descargar el PDF. Inténtalo de nuevo.",
+      "pdfPreviewTitle": "Vista previa del informe PDF",
+      "closePdfPreview": "Cerrar vista previa del PDF",
       "emailSent": "Te enviamos el reporte a {{email}}",
       "greeting": "Hola {{name}}, tu análisis de mercado está listo",
       "basedOn": "Basado en {{count}} transacciones reales"
@@ -304,7 +312,7 @@
   "coach": {
     "eyebrow": "Property coaches",
     "title": "Transacciones de clientes",
-    "subtitle": "Busca una transacción para revisar sus datos y, próximamente, lanzar una nueva valoración.",
+    "subtitle": "Busca una transacción para revisar sus datos y lanzar una nueva valoración.",
     "logout": "Cerrar sesión",
     "login": {
       "title": "Acceso restringido",
@@ -327,6 +335,7 @@
       "unknownError": "No pudimos cargar la transacción.",
       "financialsTitle": "Resumen económico",
       "propertyTitle": "Datos de la propiedad",
+      "clientTitle": "Datos del cliente",
       "totalSpent": "Total gastado"
     },
     "valuation": {
@@ -335,7 +344,16 @@
       "cta": "Generar reporte",
       "generating": "Generando reporte…",
       "resultTitle": "Reporte generado",
-      "unknownError": "No pudimos generar el reporte."
+      "unknownError": "No pudimos generar el reporte.",
+      "variantLabel": "Modo de generación",
+      "variantWith": "Con comparables",
+      "variantWithout": "Sin comparables",
+      "variantWithHint": "Scrapea Idealista en tiempo real (~60s). Genera comparables individuales y precio basado en regresión.",
+      "variantWithoutHint": "Salta el scraping: instantáneo. Usa el €/m² zonal de TF Labs como ancla; no incluye anuncios individuales."
+    },
+    "report": {
+      "pdfTitle": "Reporte PDF para el cliente",
+      "pdfDescription": "Previsualiza el PDF tal cual lo recibe el cliente — formato, datos y branding incluidos — antes de pasar al email."
     },
     "email": {
       "title": "Enviar correo al cliente",
@@ -345,7 +363,9 @@
       "body": "Mensaje",
       "send": "Enviar correo",
       "sending": "Enviando…",
-      "unknownError": "No pudimos enviar el correo."
+      "unknownError": "No pudimos enviar el correo.",
+      "attachmentTitle": "Adjunto que verá el cliente",
+      "attachmentDescription": "Este PDF viaja con el correo. Ábrelo y revísalo: lo que vea el cliente sale de aquí."
     },
     "fields": {
       "transactionName": "Transacción",
@@ -355,7 +375,12 @@
       "landsize": "Superficie",
       "createdAt": "Fecha de creación",
       "price": "Precio base",
-      "finalTotalPrice": "Precio final"
+      "finalTotalPrice": "Precio final",
+      "clientName": "Nombre del cliente",
+      "clientEmail": "Email del cliente",
+      "address": "Dirección",
+      "cadastralReference": "Referencia catastral",
+      "settlementDate": "Fecha de firma"
     }
   }
 }

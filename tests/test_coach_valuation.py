@@ -12,10 +12,12 @@ if str(BACKEND) not in sys.path:
 
 from main import (  # noqa: E402
     _build_coach_mock_valuation,
+    _build_no_scrape_valuation,
     _geocode_catastro_address,
     _normalize_airtable_address_for_valuation,
     _valuation_request_from_transaction,
 )
+from market.price_series import TownMatch  # noqa: E402
 from airtable.client import AirtableConfig  # noqa: E402
 from airtable.transactions import (  # noqa: E402
     VALUATION_FIELDS,
@@ -221,3 +223,115 @@ def test_build_coach_mock_valuation_returns_full_response():
     assert valuation.market_transactions is not None
     assert valuation.dataset is not None
     assert valuation.dataset.row_count == len(valuation.listings)
+
+
+class _FakePriceSeriesStore:
+    """Stub PriceSeriesStore for the no-scrape valuation test.
+
+    Mirrors the two methods ``_build_no_scrape_valuation`` actually calls.
+    Keeping it dumb (no SQLite) lets the test run in <10ms and avoids the
+    ``backend/data/market_price_series.db`` dependency.
+    """
+
+    def __init__(self, *, town: TownMatch | None, eur_per_m2: float | None):
+        self._town = town
+        self._latest = ("2025-12", eur_per_m2) if eur_per_m2 is not None else None
+        self.resolve_calls: list[dict] = []
+
+    def resolve_town(self, **kwargs):
+        self.resolve_calls.append(kwargs)
+        return self._town
+
+    def latest_value(self, town_id: str):
+        return self._latest
+
+
+def test_build_no_scrape_valuation_uses_market_series_anchor(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """When the TF Labs town resolves, the headline value is €/m² × m² with
+    method 'market_series' and no listings/regression."""
+    town = TownMatch(
+        town_id="town-zaragoza",
+        ine_code="50297",
+        town_name="Zaragoza",
+        province_id="ZARAGOZA",
+        community_id="AR",
+        resolution_strategy="name_match",
+    )
+    store = _FakePriceSeriesStore(town=town, eur_per_m2=2_400.0)
+    monkeypatch.setattr("main.get_default_store", lambda: store)
+
+    request = ValuationRequest(
+        address="Calle Cinco de Marzo, 3, Zaragoza, España",
+        m2=90,
+        bedrooms=3,
+        bathrooms=1,
+        selected_address=ResolvedAddress(
+            label="CINCO DE MARZO, 3, ZARAGOZA, 50620",
+            lat=41.721783,
+            lon=-1.029047,
+            municipality="Zaragoza",
+            province="ZARAGOZA",
+            road="Calle Cinco de Marzo",
+            provider="catastro",
+        ),
+        valuation_intent="info",
+    )
+
+    valuation = asyncio.run(_build_no_scrape_valuation(request))
+
+    assert valuation.listings == []
+    assert valuation.regression is None
+    assert valuation.dataset is not None and valuation.dataset.row_count == 0
+    assert valuation.search_metadata.strategy == "no_scrape"
+    assert valuation.search_metadata.final_stage == "market_series"
+    assert valuation.stats.estimation_method == "market_series"
+    assert valuation.stats.confidence_method == "flat_pct"
+    assert valuation.stats.avg_price_per_m2 == 2_400
+    assert valuation.stats.estimated_value == 216_000  # 2400 × 90
+    # ±10% band when there's no comparable σ to lean on.
+    assert valuation.stats.price_range_low == int(216_000 * 0.90)
+    assert valuation.stats.price_range_high == int(216_000 * 1.10)
+    assert store.resolve_calls == [
+        {
+            "airtable_record_id": None,
+            "name": "Zaragoza",
+            "province_id": "ZARAGOZA",
+        }
+    ]
+
+
+def test_build_no_scrape_valuation_degrades_without_price_series(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """When TF Labs has no value for the town we still return a well-formed
+    response, but with no estimated value — better to be honest than to
+    invent a number."""
+    monkeypatch.setattr("main.get_default_store", lambda: None)
+
+    request = ValuationRequest(
+        address="Calle Cinco de Marzo, 3, Zaragoza, España",
+        m2=90,
+        bedrooms=3,
+        bathrooms=1,
+        selected_address=ResolvedAddress(
+            label="CINCO DE MARZO, 3, ZARAGOZA, 50620",
+            lat=41.721783,
+            lon=-1.029047,
+            municipality="Zaragoza",
+            province="ZARAGOZA",
+            road="Calle Cinco de Marzo",
+            provider="catastro",
+        ),
+        valuation_intent="info",
+    )
+
+    valuation = asyncio.run(_build_no_scrape_valuation(request))
+
+    assert valuation.stats.estimated_value is None
+    assert valuation.stats.avg_price_per_m2 is None
+    assert valuation.stats.estimation_method is None
+    assert valuation.stats.confidence_method is None
+    assert valuation.listings == []
+    assert valuation.search_metadata.strategy == "no_scrape"

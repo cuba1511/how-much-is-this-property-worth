@@ -14,7 +14,7 @@ import os
 from pathlib import Path
 import re
 import unicodedata
-from urllib.parse import quote, urlsplit, urlunsplit
+from urllib.parse import quote, urljoin, urlsplit, urlunsplit
 from statistics import median
 from time import perf_counter
 from typing import Optional
@@ -39,12 +39,12 @@ SBR_WS_CDP = os.getenv("BRIGHT_DATA_CDP")
 
 IDEALISTA_BASE = "https://www.idealista.com"
 IDEALISTA_HOME = f"{IDEALISTA_BASE}/"
-TARGET_COMPARABLES = 10
+TARGET_COMPARABLES = 5
 STOP_RULES_BY_STAGE = {
     "same_street": 3,
     "same_microzone": 5,
-    "same_local_area": 8,
-    "municipality": 8,
+    "same_local_area": 5,
+    "municipality": 5,
 }
 INITIAL_CAPTCHA_TIMEOUT_MS = 12_000
 FOLLOW_UP_CAPTCHA_TIMEOUT_MS = 1_500
@@ -500,6 +500,29 @@ def parse_listing_signals(
         "has_storage_room": has_storage_room,
         "has_air_conditioning": has_ac,
     }
+
+
+def normalize_listing_image_url(value: Optional[str]) -> Optional[str]:
+    """Return a browser-loadable image URL from Idealista lazy/srcset values."""
+    if not value:
+        return None
+
+    candidate = normalize_space(str(value))
+    if not candidate:
+        return None
+
+    # Accept values copied from srcset/data-srcset: "url 1x, url 2x".
+    if "," in candidate:
+        candidate = candidate.split(",", 1)[0].strip()
+    if " " in candidate:
+        candidate = candidate.split(" ", 1)[0].strip()
+
+    if not candidate or candidate.startswith("data:"):
+        return None
+
+    return urljoin(IDEALISTA_BASE, candidate)
+
+
 def build_geo_keywords(municipio: MunicipioInfo, address: str) -> list[str]:
     """Build a list of normalized geographic keywords from municipio + address for proximity checks."""
     raw_terms = [
@@ -606,7 +629,7 @@ def build_listing_from_raw(raw: dict, source_stage: str) -> Optional[Listing]:
         bathrooms=listing_baths,
         address=raw.get("address"),
         url=full_url,
-        image_url=raw.get("image"),
+        image_url=normalize_listing_image_url(raw.get("image")),
         floor=floor,
         floor_number=floor_number,
         source_stage=source_stage,
@@ -693,11 +716,17 @@ def rank_candidates(
     return [candidate.listing for candidate in ranked[:max_listings]]
 
 
-def should_stop_after_stage(stage: SearchStageConfig, ranked_listings: list[Listing]) -> bool:
-    threshold = STOP_RULES_BY_STAGE.get(stage.name, TARGET_COMPARABLES)
-    if len(ranked_listings) >= max(threshold, TARGET_COMPARABLES if stage.name == "municipality" else threshold):
-        return True
-    return False
+def should_stop_after_stage(
+    stage: SearchStageConfig,
+    ranked_listings: list[Listing],
+    *,
+    target_comparables: int = TARGET_COMPARABLES,
+) -> bool:
+    threshold = min(
+        STOP_RULES_BY_STAGE.get(stage.name, target_comparables),
+        target_comparables,
+    )
+    return len(ranked_listings) >= threshold
 
 
 async def block_nonessential_resources(route: Route) -> None:
@@ -892,11 +921,35 @@ async def extract_raw_listings(page: Page) -> list[dict]:
                 return value || null;
             };
 
+            const firstImageUrl = (article) => {
+                const img = article.querySelector(
+                    '.item-gallery img, .item-multimedia img, .item-multimedia-pictures img, picture img, img'
+                );
+                const source = article.querySelector('picture source');
+                const candidates = [
+                    img?.currentSrc,
+                    img?.getAttribute('src'),
+                    img?.getAttribute('data-src'),
+                    img?.getAttribute('data-original'),
+                    img?.getAttribute('data-lazy'),
+                    img?.getAttribute('data-ondemand-img'),
+                    img?.getAttribute('srcset'),
+                    img?.getAttribute('data-srcset'),
+                    source?.getAttribute('srcset'),
+                    source?.getAttribute('data-srcset'),
+                ];
+
+                for (const raw of candidates) {
+                    const value = (raw || '').split(',')[0].trim().split(/\\s+/)[0];
+                    if (value && !value.startsWith('data:')) return value;
+                }
+                return null;
+            };
+
             return Array.from(articles).map(article => {
                 const linkEl = article.querySelector('a.item-link');
                 const priceEl = article.querySelector('.item-price, .price-row .item-price');
                 const detailEls = article.querySelectorAll('.item-detail-char .item-detail');
-                const imgEl = article.querySelector('.item-gallery img, .item-multimedia img, .item-multimedia-pictures img');
                 const details = Array.from(detailEls).map(el => {
                     const text = (el.textContent || '').replace(/\\s+/g, ' ').trim();
                     const tooltipChild = el.querySelector('[aria-label], [title], [data-tooltip-text]');
@@ -928,7 +981,7 @@ async def extract_raw_listings(page: Page) -> list[dict]:
                     price: priceEl ? priceEl.textContent.trim() : null,
                     details: details,
                     address: title,
-                    image: imgEl ? (imgEl.getAttribute('src') || imgEl.getAttribute('data-src')) : null,
+                    image: firstImageUrl(article),
                     title: title,
                     tags: tags,
                     parking: parking,
@@ -1192,7 +1245,11 @@ async def scrape_idealista_listings(
                 )
 
                 ranked_so_far = rank_candidates(candidates, max_listings=max_listings)
-                if should_stop_after_stage(stage, ranked_so_far):
+                if should_stop_after_stage(
+                    stage,
+                    ranked_so_far,
+                    target_comparables=max_listings,
+                ):
                     break
 
             ranked_listings = rank_candidates(candidates, max_listings=max_listings)
@@ -1213,7 +1270,7 @@ async def scrape_idealista_listings(
 
     search_metadata = SearchMetadata(
         strategy="layered_geography",
-        target_comparables=TARGET_COMPARABLES,
+        target_comparables=max_listings,
         final_stage=final_stage,
         total_duration_ms=total_duration_ms,
         stages=executed_stages,

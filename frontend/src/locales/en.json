@@ -243,15 +243,23 @@
         "relaxed": "Broad match"
       },
       "floor": "Floor {{floor}}",
-      "groupCount": "{{count}} listings"
+      "groupCount": "{{count}} listings",
+      "radiusHint": "Search radius: {{radius}}m · {{stage}}",
+      "viewOnIdealista": "View on Idealista",
+      "noImage": "Photo unavailable"
     },
     "cta": {
       "expiresIn": "This analysis expires in 24h · we sent a copy to your email",
       "talkToAdvisor": "Talk to a PropHero advisor",
       "requestPdf": "Request detailed PDF",
+      "previewPdf": "View PDF",
+      "loadingPdf": "Loading PDF…",
       "downloadPdf": "Download PDF",
       "downloadingPdf": "Generating PDF…",
+      "previewError": "Could not open the PDF viewer. Please try again.",
       "downloadError": "Could not download the PDF. Please try again.",
+      "pdfPreviewTitle": "PDF report preview",
+      "closePdfPreview": "Close PDF preview",
       "emailSent": "We sent the report to {{email}}",
       "greeting": "Hi {{name}}, your market analysis is ready",
       "basedOn": "Based on {{count}} real transactions"
@@ -327,6 +335,7 @@
       "unknownError": "We couldn't load this transaction.",
       "financialsTitle": "Financial summary",
       "propertyTitle": "Property data",
+      "clientTitle": "Client data",
       "totalSpent": "Total spent"
     },
     "valuation": {
@@ -335,7 +344,16 @@
       "cta": "Generate report",
       "generating": "Generating report…",
       "resultTitle": "Generated report",
-      "unknownError": "We couldn't generate the report."
+      "unknownError": "We couldn't generate the report.",
+      "variantLabel": "Generation mode",
+      "variantWith": "With comparables",
+      "variantWithout": "Without comparables",
+      "variantWithHint": "Scrapes Idealista in real time (~60s). Produces individual comparables and a regression-based price.",
+      "variantWithoutHint": "Skips scraping: instant. Anchors the value on the TF Labs zonal €/m²; no individual listings."
+    },
+    "report": {
+      "pdfTitle": "Client-facing PDF report",
+      "pdfDescription": "Preview the PDF exactly as the client receives it — formatting, data, and branding included — before moving on to the email."
     },
     "email": {
       "title": "Send email to client",
@@ -345,7 +363,9 @@
       "body": "Message",
       "send": "Send email",
       "sending": "Sending…",
-      "unknownError": "We couldn't send the email."
+      "unknownError": "We couldn't send the email.",
+      "attachmentTitle": "Attachment the client will see",
+      "attachmentDescription": "This PDF travels with the email. Open it and review it — what the client sees comes from here."
     },
     "fields": {
       "transactionName": "Transaction",
@@ -355,7 +375,12 @@
       "landsize": "Land size",
       "createdAt": "Created at",
       "price": "Base price",
-      "finalTotalPrice": "Final price"
+      "finalTotalPrice": "Final price",
+      "clientName": "Client name",
+      "clientEmail": "Client email",
+      "address": "Address",
+      "cadastralReference": "Cadastral reference",
+      "settlementDate": "Settlement date"
     }
   }
 }

@@ -21,7 +21,7 @@ from valuation.regression import predict_from_regression
 logger = logging.getLogger(__name__)
 
 # ── Tuning knobs (must mirror main.py until the MVP graduates) ───────────
-DATASET_MAX_ROWS = 10
+DATASET_MAX_ROWS = 5
 DATASET_MIN_ROWS = 3
 
 OLS_MIN_SAMPLE_SIZE = 6

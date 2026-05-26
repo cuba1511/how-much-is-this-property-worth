@@ -141,6 +141,13 @@ Generate a PAT at <https://airtable.com/create/tokens> with scope
   `?live=false` to return the instant mock `ValuationResponse`
   (`strategy=coach_mock`) when coaches need to test the investor report and
   email flow without waiting on the scraper.
+- Add `?include_comparables=false` to skip Idealista scraping entirely and
+  build the response from the TF Labs municipal €/m² series only
+  (`strategy=no_scrape`, `estimation_method=market_series`). Returns in <2s
+  with a real-data headline anchor, empty `listings`, no `regression`, and
+  triggers the methodology copy that explicitly attributes the figure to
+  TF Labs. This is the variant surfaced as the "Sin comparables" toggle on
+  the CoachPage **Generar reporte** card.
 - The coach result view intentionally does **not** render the public valuation
   dashboard. It renders an investor-facing report: sale range, **plusvalía de
   zona** (real TF Labs €/m² appreciation since the `Real settlement date`),

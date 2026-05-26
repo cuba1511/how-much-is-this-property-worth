@@ -220,9 +220,19 @@ export async function getTransaction(
 
 export async function generateTransactionValuation(
   recordId: string,
-  { live = true }: { live?: boolean } = {},
+  {
+    live = true,
+    includeComparables = true,
+  }: { live?: boolean; includeComparables?: boolean } = {},
 ): Promise<CoachTransactionValuationResponse> {
-  const params = new URLSearchParams({ live: String(live) })
+  // ``include_comparables=false`` short-circuits the Idealista scrape on the
+  // backend, so the request returns in <1s (the time it takes to geocode +
+  // look up the TF Labs €/m² for the town). Useful when the coach only
+  // needs the market anchor + Airtable context, not fresh comparables.
+  const params = new URLSearchParams({
+    live: String(live),
+    include_comparables: String(includeComparables),
+  })
   let res: Response
   try {
     res = await fetch(

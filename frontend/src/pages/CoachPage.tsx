@@ -7,16 +7,23 @@ import {
   Building2,
   Calculator,
   CheckCircle2,
+  Download,
+  Eye,
   FileText,
   Loader2,
   LogOut,
   MailCheck,
   MapPin,
+  Paperclip,
+  Phone,
   Search,
   Send,
+  Sparkles,
+  X,
   type LucideIcon,
 } from 'lucide-react'
 import { Navbar } from '@/components/Navbar'
+import { MapView } from '@/components/MapView'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
@@ -27,6 +34,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  createReportPdfObjectUrl,
+  downloadReportPdf,
+  type ReportPdfPayload,
+} from '@/lib/api'
+import { stageRadiusMeters } from '@/lib/results'
 import {
   CoachTransactionValuationResponse,
   CoachApiError,
@@ -44,8 +57,8 @@ import {
 
 const SEARCH_DEBOUNCE_MS = 300
 const REPORT_PROGRESS_CAP = 0.95
-const REPORT_PROGRESS_TAU_SECONDS = 85
-const REPORT_LONG_RUNNING_HINT_AFTER_S = 150
+const REPORT_PROGRESS_TAU_SECONDS = 30
+const REPORT_LONG_RUNNING_HINT_AFTER_S = 90
 
 type ReportLoadingPhaseKey =
   | 'resolving'
@@ -72,28 +85,28 @@ const REPORT_LOADING_PHASES: ReportLoadingPhase[] = [
   },
   {
     key: 'scraping',
-    from: 8,
+    from: 4,
     icon: Search,
     label: 'Buscando comparables reales',
-    detail: 'Bright Data está abriendo Idealista y aplicando filtros de zona, m², habitaciones y baños.',
+    detail: 'Abrimos Idealista en vivo y aplicamos filtros de zona, m², habitaciones y baños.',
   },
   {
     key: 'enriching',
-    from: 45,
+    from: 20,
     icon: Building2,
     label: 'Leyendo anuncios activos',
     detail: 'Revisamos los mejores comparables para extraer precio, superficie y características útiles.',
   },
   {
     key: 'pricing',
-    from: 95,
+    from: 40,
     icon: BarChart3,
     label: 'Calculando rango de salida',
     detail: 'Combinamos comparables, €/m² y regresión para construir el precio recomendado.',
   },
   {
     key: 'reporting',
-    from: 140,
+    from: 55,
     icon: Calculator,
     label: 'Armando reporte inversor',
     detail: 'Añadimos escenarios, plusvalía de zona y lectura de mercado para el coach.',
@@ -126,6 +139,39 @@ function formatCurrency(value: number | null | undefined): string {
     currency: 'EUR',
     maximumFractionDigits: 0,
   }).format(value)
+}
+
+// Round to a "clean" step so coach narratives don't expose calculator precision
+// like "151.842 €". €1.000 reads as a deliberate estimate, not a hard number.
+function roundToStep(value: number, step = 1000): number {
+  if (!Number.isFinite(value)) return 0
+  return Math.round(value / step) * step
+}
+
+function formatCurrencyRange(low: number | null, high: number | null): string {
+  if (low === null || high === null) return '—'
+  if (low === high) return formatCurrency(low)
+  const lowNumber = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 0 }).format(low)
+  return `${lowNumber} – ${formatCurrency(high)}`
+}
+
+// Build a "soft" band around an anchor so each scenario reads as a range, not
+// a punctual number. Spread is intentionally narrow (~3%) so the three
+// scenario bands don't collapse into one another; rounding to €1k keeps the
+// price feel coach-driven rather than calculator-driven.
+function priceBand(
+  anchor: number | null | undefined,
+  spreadPct: number,
+  step = 1000,
+): { low: number | null; high: number | null } {
+  if (anchor === null || anchor === undefined || !Number.isFinite(anchor)) {
+    return { low: null, high: null }
+  }
+  const rawLow = anchor * (1 - spreadPct)
+  const rawHigh = anchor * (1 + spreadPct)
+  const low = Math.max(0, roundToStep(rawLow, step))
+  const high = Math.max(low + step, roundToStep(rawHigh, step))
+  return { low, high }
 }
 
 function formatPricePerM2(value: number | null | undefined): string {
@@ -198,6 +244,25 @@ function formatPeriod(period: string | null | undefined): string {
   if (!year || Number.isNaN(monthIdx)) return period
   const date = new Date(Number(year), monthIdx, 1)
   return date.toLocaleDateString('es-ES', { month: 'short', year: 'numeric' })
+}
+
+function searchStageLabel(stage: string): string {
+  switch (stage) {
+    case 'same_street':
+      return 'misma calle'
+    case 'same_microzone':
+      return 'microzona'
+    case 'same_local_area':
+      return 'área local'
+    case 'municipality':
+      return 'municipio'
+    case 'alicante_local_box':
+      return 'cerca de la dirección'
+    case 'alicante_municipality':
+      return 'municipio'
+    default:
+      return stage.replaceAll('_', ' ')
+  }
 }
 
 function clientName(transactionName: string): string {
@@ -495,11 +560,15 @@ function TransactionDetailPanel({
     useState<CoachTransactionValuationResponse | null>(null)
   const [valuationLoading, setValuationLoading] = useState(false)
   const [valuationError, setValuationError] = useState<string | null>(null)
+  // Toggle for the "Generar reporte" CTA: when false we skip the Idealista
+  // scrape and the report is built from the TF Labs municipal €/m² instead.
+  // Coaches who don't need fresh comparables save ~60s and one Bright Data
+  // session every time they click.
+  const [includeComparables, setIncludeComparables] = useState(true)
   const [reportView, setReportView] = useState<ReportFlowView>('setup')
   const generationRef = useRef<HTMLDivElement | null>(null)
   const reportRef = useRef<HTMLDivElement | null>(null)
   const composerRef = useRef<HTMLDivElement | null>(null)
-  const reportVisible = Boolean(valuationResult) && reportView !== 'setup'
   const composerUnlocked = Boolean(valuationResult) && reportView === 'composer'
 
   useEffect(() => {
@@ -527,10 +596,10 @@ function TransactionDetailPanel({
   }, [valuationLoading])
 
   useEffect(() => {
-    if (reportVisible) {
+    if (reportView === 'report') {
       reportRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
-  }, [reportVisible])
+  }, [reportView])
 
   useEffect(() => {
     if (composerUnlocked) {
@@ -555,7 +624,9 @@ function TransactionDetailPanel({
     setValuationResult(null)
     setReportView('setup')
     try {
-      const response = await generateTransactionValuation(transactionId)
+      const response = await generateTransactionValuation(transactionId, {
+        includeComparables,
+      })
       setValuationResult(response)
       setReportView('report')
     } catch (err) {
@@ -614,7 +685,7 @@ function TransactionDetailPanel({
           />
           <CoachReportLoadingDialog open={valuationLoading} />
 
-          {reportVisible && valuationResult && (
+          {reportView === 'report' && valuationResult && (
             <div ref={reportRef} className="grid gap-md">
               <div className="flex items-center justify-between gap-sm">
                 <Button
@@ -632,21 +703,30 @@ function TransactionDetailPanel({
                 transaction={data}
                 valuationResult={valuationResult}
               />
-              {!composerUnlocked && (
-                <Card className="flex flex-col gap-md border-primary/20 bg-primary/5 p-lg md:flex-row md:items-center md:justify-between md:p-xl">
-                  <div>
-                    <p className="text-sm font-semibold text-ink">Reporte revisado</p>
-                    <p className="mt-1 max-w-2xl text-sm text-ink-secondary">
-                      Cuando el rango, la plusvalía y los comparables estén correctos, continúa al
-                      editor del mensaje para preparar el envío al cliente.
-                    </p>
-                  </div>
-                  <Button type="button" onClick={() => setReportView('composer')}>
-                    Continuar a email
-                    <Send className="h-4 w-4" />
-                  </Button>
-                </Card>
-              )}
+              <Card className="p-md md:p-lg">
+                <CoachReportPdfPreview
+                  valuationResult={valuationResult}
+                  variant="report"
+                />
+              </Card>
+              <Card className="flex flex-col gap-md border-primary/20 bg-primary/5 p-lg md:flex-row md:items-center md:justify-between md:p-xl">
+                <div>
+                  <p className="text-sm font-semibold text-ink">Reporte revisado</p>
+                  <p className="mt-1 max-w-2xl text-sm text-ink-secondary">
+                    Cuando el rango, la plusvalía y los comparables estén correctos, continúa al
+                    editor del mensaje para preparar el envío al cliente.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="lg"
+                  onClick={() => setReportView('composer')}
+                  className="w-full rounded-xl shadow-card transition-shadow hover:shadow-lift sm:w-auto"
+                >
+                  Continuar a email
+                  <Send className="h-4 w-4" />
+                </Button>
+              </Card>
             </div>
           )}
 
@@ -673,6 +753,65 @@ function TransactionDetailPanel({
 
           {(!valuationResult || reportView === 'setup') && (
             <>
+              <Card className="p-lg md:p-xl">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-ink-secondary">
+                  {t('coach.detail.clientTitle')}
+                </h3>
+                <dl className="mt-md grid grid-cols-1 gap-md md:grid-cols-3">
+                  <Metric
+                    label={t('coach.fields.clientName')}
+                    value={clientName(data.transaction_name)}
+                  />
+                  <Metric
+                    label={t('coach.fields.clientEmail')}
+                    value={
+                      data.client_email ? (
+                        <a
+                          href={`mailto:${data.client_email}`}
+                          className="break-all text-primary underline-offset-2 hover:underline"
+                        >
+                          {data.client_email}
+                        </a>
+                      ) : (
+                        '—'
+                      )
+                    }
+                  />
+                  <Metric
+                    label={t('coach.fields.settlementDate')}
+                    value={formatDate(data.real_settlement_date)}
+                  />
+                </dl>
+              </Card>
+
+              <Card className="p-lg md:p-xl">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-ink-secondary">
+                  {t('coach.detail.propertyTitle')}
+                </h3>
+                <dl className="mt-md grid grid-cols-1 gap-md md:grid-cols-2">
+                  <Metric label={t('coach.fields.address')} value={data.address ?? '—'} />
+                  <Metric
+                    label={t('coach.fields.cadastralReference')}
+                    value={
+                      data.cadastral_reference ? (
+                        <span className="font-mono text-sm">{data.cadastral_reference}</span>
+                      ) : (
+                        '—'
+                      )
+                    }
+                  />
+                </dl>
+                <dl className="mt-md grid grid-cols-2 gap-md md:grid-cols-4">
+                  <Metric label={t('coach.fields.type')} value={data.type ?? '—'} />
+                  <Metric label={t('coach.fields.bedrooms')} value={formatNumber(data.bedrooms)} />
+                  <Metric label={t('coach.fields.bathrooms')} value={formatNumber(data.bathrooms)} />
+                  <Metric
+                    label={t('coach.fields.landsize')}
+                    value={formatNumber(data.landsize_m2, ' m²')}
+                  />
+                </dl>
+              </Card>
+
               <Card className="p-lg md:p-xl">
                 <h3 className="text-sm font-semibold uppercase tracking-wide text-ink-secondary">
                   {t('coach.detail.financialsTitle')}
@@ -707,21 +846,6 @@ function TransactionDetailPanel({
                 )}
               </Card>
 
-              <Card className="p-lg md:p-xl">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-ink-secondary">
-                  {t('coach.detail.propertyTitle')}
-                </h3>
-                <dl className="mt-md grid grid-cols-2 gap-md md:grid-cols-4">
-                  <Metric label={t('coach.fields.bedrooms')} value={formatNumber(data.bedrooms)} />
-                  <Metric label={t('coach.fields.bathrooms')} value={formatNumber(data.bathrooms)} />
-                  <Metric
-                    label={t('coach.fields.landsize')}
-                    value={formatNumber(data.landsize_m2, ' m²')}
-                  />
-                  <Metric label={t('coach.fields.type')} value={data.type ?? '—'} />
-                </dl>
-              </Card>
-
               <Card ref={generationRef} className="p-lg md:p-xl">
                 <h3 className="text-sm font-semibold uppercase tracking-wide text-ink-secondary">
                   {t('coach.valuation.title')}
@@ -737,29 +861,89 @@ function TransactionDetailPanel({
                     {valuationError}
                   </div>
                 )}
-                <Button
-                  type="button"
-                  className="mt-md"
-                  onClick={() => {
-                    if (valuationResult) {
-                      setReportView('report')
-                      return
-                    }
-                    void handleGenerateValuation()
-                  }}
-                  disabled={valuationLoading}
-                >
-                  {valuationLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : valuationResult ? (
-                    <FileText className="h-4 w-4" />
-                  ) : null}
-                  {valuationLoading
-                    ? t('coach.valuation.generating')
-                    : valuationResult
-                      ? 'Ver reporte generado'
-                      : t('coach.valuation.cta')}
-                </Button>
+
+                {!valuationResult && (
+                  <div className="mt-md flex flex-col gap-sm">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-ink-secondary">
+                      {t('coach.valuation.variantLabel')}
+                    </p>
+                    <div
+                      role="radiogroup"
+                      aria-label={t('coach.valuation.variantLabel')}
+                      className="inline-flex w-full gap-1 rounded-2xl border border-line/60 bg-surface-muted p-1 sm:w-auto"
+                    >
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={includeComparables}
+                        onClick={() => setIncludeComparables(true)}
+                        disabled={valuationLoading}
+                        className={`flex-1 rounded-xl px-md py-sm text-sm font-semibold transition-all duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none ${
+                          includeComparables
+                            ? 'bg-surface text-ink shadow-card ring-1 ring-line/40'
+                            : 'text-ink-muted hover:text-ink'
+                        }`}
+                      >
+                        {t('coach.valuation.variantWith')}
+                      </button>
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={!includeComparables}
+                        onClick={() => setIncludeComparables(false)}
+                        disabled={valuationLoading}
+                        className={`flex-1 rounded-xl px-md py-sm text-sm font-semibold transition-all duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none ${
+                          !includeComparables
+                            ? 'bg-surface text-ink shadow-card ring-1 ring-line/40'
+                            : 'text-ink-muted hover:text-ink'
+                        }`}
+                      >
+                        {t('coach.valuation.variantWithout')}
+                      </button>
+                    </div>
+                    <p className="text-xs leading-relaxed text-ink-muted">
+                      {includeComparables
+                        ? t('coach.valuation.variantWithHint')
+                        : t('coach.valuation.variantWithoutHint')}
+                    </p>
+                  </div>
+                )}
+
+                <div className="mt-lg flex flex-col gap-sm sm:flex-row sm:items-center sm:gap-md">
+                  <Button
+                    type="button"
+                    size="lg"
+                    onClick={() => {
+                      if (valuationResult) {
+                        setReportView('report')
+                        return
+                      }
+                      void handleGenerateValuation()
+                    }}
+                    disabled={valuationLoading}
+                    className="w-full rounded-xl px-lg font-semibold shadow-card transition-shadow hover:shadow-lift focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2 sm:w-auto"
+                  >
+                    {valuationLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : valuationResult ? (
+                      <FileText className="h-4 w-4" />
+                    ) : (
+                      <Sparkles className="h-4 w-4" />
+                    )}
+                    {valuationLoading
+                      ? t('coach.valuation.generating')
+                      : valuationResult
+                        ? 'Ver reporte generado'
+                        : t('coach.valuation.cta')}
+                  </Button>
+                  {!valuationResult && !valuationLoading && (
+                    <p className="text-xs text-ink-muted">
+                      {includeComparables
+                        ? 'Tarda ~60s · scraping en vivo'
+                        : 'Instantáneo · sin scraping'}
+                    </p>
+                  )}
+                </div>
               </Card>
             </>
           )}
@@ -860,16 +1044,18 @@ function CoachReportLoadingDialog({ open }: CoachReportLoadingDialogProps) {
   const [elapsed, setElapsed] = useState(0)
 
   useEffect(() => {
-    if (!open) {
-      setElapsed(0)
-      return
-    }
+    if (!open) return
 
     const start = performance.now()
+    const updateElapsed = () => setElapsed((performance.now() - start) / 1000)
+    const resetId = window.setTimeout(updateElapsed, 0)
     const id = window.setInterval(() => {
-      setElapsed((performance.now() - start) / 1000)
+      updateElapsed()
     }, 250)
-    return () => window.clearInterval(id)
+    return () => {
+      window.clearTimeout(resetId)
+      window.clearInterval(id)
+    }
   }, [open])
 
   const progress = computeReportProgress(elapsed)
@@ -887,7 +1073,7 @@ function CoachReportLoadingDialog({ open }: CoachReportLoadingDialogProps) {
         <DialogHeader>
           <DialogTitle>Generando reporte con comparables reales</DialogTitle>
           <DialogDescription>
-            Esto puede tardar un poco porque estamos usando Bright Data para leer Idealista en vivo.
+            Estamos preparando los comparables y el informe. Aparecerá automáticamente cuando termine.
           </DialogDescription>
         </DialogHeader>
 
@@ -956,8 +1142,7 @@ function CoachReportLoadingDialog({ open }: CoachReportLoadingDialogProps) {
           </p>
           {elapsed >= REPORT_LONG_RUNNING_HINT_AFTER_S && (
             <p className="rounded-xl border border-primary/20 bg-primary/5 px-md py-sm text-center text-xs text-ink-secondary">
-              Sigue trabajando. Algunos anuncios requieren más tiempo por CAPTCHA, detalle de ficha o calentamiento
-              de Bright Data.
+              Sigue trabajando. Algunos anuncios requieren más tiempo por CAPTCHA o por la carga de detalle de la ficha.
             </p>
           )}
         </div>
@@ -985,56 +1170,101 @@ function CoachClientReportComposer({
   const stats = valuationResult.valuation.stats
   const appreciation = valuationResult.valuation.market_appreciation ?? null
   const invested = totalSpent(transaction)
-  const recommended = stats.estimated_value ?? null
-  const quickPrice = stats.price_range_low ?? (recommended ? Math.round(recommended * 0.94) : null)
-  const aspirationalPrice = stats.price_range_high ?? (recommended ? Math.round(recommended * 1.04) : null)
+  const hasComparables = valuationResult.valuation.listings.length > 0
+  const isNoScrape = valuationResult.valuation.search_metadata.strategy === 'no_scrape'
+
+  // Mirror the investor-report anchors and ±3% bands so the email reads with
+  // the same ranges the coach just validated on screen.
+  const recommendedAnchor = stats.estimated_value ?? null
+  const quickAnchor =
+    stats.price_range_low ?? (recommendedAnchor ? Math.round(recommendedAnchor * 0.94) : null)
+  const aspirationalAnchor =
+    stats.price_range_high ?? (recommendedAnchor ? Math.round(recommendedAnchor * 1.04) : null)
+  const quickBand = priceBand(quickAnchor, 0.025)
+  const recommendedBand = priceBand(recommendedAnchor, 0.03)
+  const aspirationalBand = priceBand(aspirationalAnchor, 0.025)
+
   const purchasePpm2 = pricePerM2(invested, valuationResult.valuation_request.m2)
   const currentPpm2 = appreciation
     ? Math.round(appreciation.to_eur_per_m2)
-    : pricePerM2(recommended, valuationResult.valuation_request.m2) ?? stats.avg_price_per_m2 ?? null
+    : pricePerM2(recommendedAnchor, valuationResult.valuation_request.m2) ?? stats.avg_price_per_m2 ?? null
   const zonePlusvalia = appreciation && invested ? Math.round(invested * appreciation.pct_change) : null
-  const recommendedGain = capitalGain(recommended, invested)
-  const recommendedRoi = roiPercent(recommendedGain, invested)
+  const recommendedGainLow = capitalGain(recommendedBand.low, invested)
+  const recommendedGainHigh = capitalGain(recommendedBand.high, invested)
+  const recommendedRoiLow = roiPercent(recommendedGainLow, invested)
+  const recommendedRoiHigh = roiPercent(recommendedGainHigh, invested)
+  const recommendedRoiText =
+    recommendedRoiLow !== null && recommendedRoiHigh !== null
+      ? recommendedRoiLow === recommendedRoiHigh
+        ? formatPercent(recommendedRoiLow)
+        : `${formatPercent(recommendedRoiLow)} – ${formatPercent(recommendedRoiHigh)}`
+      : null
+  const settlementDate = formatDate(transaction.real_settlement_date)
   const defaultTo = transaction.client_email ?? ''
   const defaultSubject = `Informe de performance PropHero — ${valuationResult.valuation_request.address}`
+  const dataSourceLine = isNoScrape
+    ? 'Fuente del rango: mediana €/m² del municipio (serie pública TF Labs), aplicada a la superficie del inmueble. Sin comparables individuales en este reporte.'
+    : 'Fuente del rango: comparables activos en Idealista al momento de la valoración (precio, m², habitaciones y baños).'
   const initialSections: EditableReportSection[] = [
     {
       id: 'summary',
       title: '1. Resumen ejecutivo',
       body: [
         `Hemos actualizado la lectura de mercado de ${valuationResult.valuation_request.address}.`,
-        `El rango estimado de venta hoy está entre ${formatCurrency(quickPrice)} y ${formatCurrency(aspirationalPrice)}, con un precio recomendado de salida de ${formatCurrency(recommended)}.`,
+        `Estimamos un rango de venta hoy entre ${formatCurrencyRange(quickBand.low, aspirationalBand.high)}, con un rango recomendado de salida de ${formatCurrencyRange(recommendedBand.low, recommendedBand.high)}.`,
         purchasePpm2 && currentPpm2
           ? `Compró a ${formatPricePerM2(purchasePpm2)} y la zona hoy se mueve cerca de ${formatPricePerM2(currentPpm2)}.`
           : null,
-        'Este rango busca equilibrar liquidez, negociación esperada y captura de plusvalía.',
+        'Trabajamos en rangos conservadores (redondeados a €1.000) para equilibrar liquidez, negociación esperada y captura de plusvalía.',
       ].filter(Boolean).join('\n'),
     },
     {
       id: 'gain',
       title: '2. Plusvalía y ganancia estimada',
-      body: [
-        invested ? `Total pagado registrado en Airtable: ${formatCurrency(invested)}.` : 'Total pagado: pendiente de confirmar.',
-        transaction.price ? `Precio base: ${formatCurrency(transaction.price)}.` : null,
-        purchasePpm2 ? `€/m² de compra: ${formatPricePerM2(purchasePpm2)}.` : null,
-        appreciation
-          ? `€/m² mediano del municipio (${appreciation.town_name}) entre ${formatPeriod(appreciation.from_period)} y ${formatPeriod(appreciation.to_period)}: ${formatPricePerM2(Math.round(appreciation.from_eur_per_m2))} → ${formatPricePerM2(Math.round(appreciation.to_eur_per_m2))} (${formatPercent(appreciation.pct_change * 100)}${appreciation.annualized_pct_change !== null ? `, ${formatPercent(appreciation.annualized_pct_change * 100)} anualizado` : ''}).`
-          : currentPpm2 ? `€/m² de mercado hoy: ${formatPricePerM2(currentPpm2)}.` : null,
-        zonePlusvalia !== null
-          ? `Plusvalía teórica si la propiedad siguió la mediana del municipio: ${formatCurrency(zonePlusvalia)}.`
-          : null,
-        recommendedGain !== null
-          ? `Ganancia al precio recomendado de venta: ${formatCurrency(recommendedGain)} (${formatPercent(recommendedRoi)}).`
-          : 'Ganancia al precio recomendado: pendiente de confirmar.',
-      ].filter(Boolean).join('\n'),
+      body: appreciation
+        ? [
+            `Apreciación de zona desde la compra · ${appreciation.town_name}: ${formatPercent(appreciation.pct_change * 100)}`,
+            `Mediana €/m² del municipio entre el mes de la firma (${formatPeriod(appreciation.from_period)}) y el último dato disponible (${formatPeriod(appreciation.to_period)}).`,
+            '',
+            `€/m² al firmar: ${formatPricePerM2(Math.round(appreciation.from_eur_per_m2))}`,
+            `€/m² más reciente: ${formatPricePerM2(Math.round(appreciation.to_eur_per_m2))}`,
+            `Período: ${appreciation.months_elapsed} meses`,
+            appreciation.annualized_pct_change !== null
+              ? `Anualizado: ${formatPercent(appreciation.annualized_pct_change * 100)}`
+              : null,
+            '',
+            invested && zonePlusvalia !== null
+              ? `Aplicado a la inversión de ${formatCurrency(invested)}, la apreciación de la zona equivale a ${formatCurrency(zonePlusvalia)} de plusvalía teórica si la propiedad siguió la mediana del municipio.`
+              : null,
+            recommendedGainLow !== null && recommendedGainHigh !== null
+              ? `Ganancia estimada en el rango recomendado: ${formatCurrencyRange(recommendedGainLow, recommendedGainHigh)}${recommendedRoiText ? ` (ROI ${recommendedRoiText})` : ''}.`
+              : null,
+          ]
+            .filter((value) => value !== null)
+            .join('\n')
+        : [
+            transaction.real_settlement_date ? `Fecha de compra: ${settlementDate}.` : null,
+            invested
+              ? `Total pagado: ${formatCurrency(invested)}.`
+              : 'Total pagado: pendiente de confirmar.',
+            purchasePpm2 ? `€/m² de compra: ${formatPricePerM2(purchasePpm2)}.` : null,
+            currentPpm2 ? `€/m² de mercado hoy: ${formatPricePerM2(currentPpm2)}.` : null,
+            recommendedGainLow !== null && recommendedGainHigh !== null
+              ? `Ganancia estimada en el rango recomendado: ${formatCurrencyRange(recommendedGainLow, recommendedGainHigh)}${recommendedRoiText ? ` (ROI ${recommendedRoiText})` : ''}.`
+              : 'Ganancia al rango recomendado: pendiente de confirmar.',
+          ]
+            .filter(Boolean)
+            .join('\n'),
     },
     {
       id: 'scenarios',
       title: '3. Escenarios de salida',
       body: [
-        `Venta rápida: salir cerca de ${formatCurrency(quickPrice)} para generar tracción y reducir tiempo en mercado.`,
-        `Escenario recomendado: salir cerca de ${formatCurrency(recommended)} para capturar plusvalía manteniendo una salida realista.`,
-        `Escenario aspiracional: testar hasta ${formatCurrency(aspirationalPrice)} si no hay urgencia por vender.`,
+        `Venta rápida: salir entre ${formatCurrencyRange(quickBand.low, quickBand.high)} para generar tracción y acortar el tiempo en mercado.`,
+        `Escenario recomendado: salir entre ${formatCurrencyRange(recommendedBand.low, recommendedBand.high)} para capturar plusvalía manteniendo una salida realista.`,
+        `Escenario aspiracional: testar entre ${formatCurrencyRange(aspirationalBand.low, aspirationalBand.high)} si no hay urgencia por vender.`,
+        '',
+        'Los tiempos exactos de venta dependen de demanda, estacionalidad y producto; los acordamos contigo según la estrategia elegida.',
       ].join('\n'),
     },
     {
@@ -1044,8 +1274,12 @@ function CoachClientReportComposer({
         appreciation
           ? `La zona de ${appreciation.town_name} ha apreciado un ${formatPercent(appreciation.pct_change * 100)} desde la firma (${formatPeriod(appreciation.from_period)} → ${formatPeriod(appreciation.to_period)}).`
           : null,
-        'Los comparables activos en el municipio sostienen el rango propuesto.',
+        hasComparables
+          ? 'Los comparables activos en el municipio sostienen el rango propuesto.'
+          : 'Sin comparables individuales, el rango se ancla en la mediana €/m² del municipio publicada por TF Labs.',
         'La recomendación es definir el precio de salida según prioridad: velocidad de venta o maximización de retorno.',
+        '',
+        dataSourceLine,
       ].filter(Boolean).join('\n'),
     },
     {
@@ -1148,6 +1382,11 @@ function CoachClientReportComposer({
           </label>
         </div>
 
+        <CoachReportPdfPreview
+          valuationResult={valuationResult}
+          variant="composer"
+        />
+
         {mode === 'preview' ? (
           <div className="rounded-2xl border border-line bg-white p-lg shadow-sm">
             <div className="border-b border-line pb-md">
@@ -1211,8 +1450,10 @@ function CoachClientReportComposer({
         </p>
         <Button
           type="button"
+          size="lg"
           onClick={handleSend}
           disabled={sending || !to.trim() || !subject.trim() || sections.every((section) => !section.body.trim())}
+          className="w-full rounded-xl shadow-card transition-shadow hover:shadow-lift sm:w-auto"
         >
           {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           {sending ? t('coach.email.sending') : 'Enviar al cliente'}
@@ -1227,18 +1468,55 @@ interface CoachInvestorReportProps {
   valuationResult: CoachTransactionValuationResponse
 }
 
+function ComparableThumbnail({ listing }: { listing: CoachTransactionValuationResponse['valuation']['listings'][number] }) {
+  const [failed, setFailed] = useState(false)
+
+  if (!listing.image_url || failed) {
+    return (
+      <div className="flex h-16 w-20 shrink-0 items-center justify-center rounded-xl bg-surface-muted px-2 text-center text-[10px] leading-tight text-ink-muted">
+        Sin foto
+      </div>
+    )
+  }
+
+  return (
+    <img
+      src={listing.image_url}
+      alt={listing.title}
+      className="h-16 w-20 shrink-0 rounded-xl bg-surface-muted object-cover"
+      loading="lazy"
+      onError={() => setFailed(true)}
+    />
+  )
+}
+
 function CoachInvestorReport({ transaction, valuationResult }: CoachInvestorReportProps) {
   const valuation = valuationResult.valuation
   const stats = valuationResult.valuation.stats
   const appreciation = valuation.market_appreciation ?? null
   const listings = valuation.listings.slice(0, 5)
   const invested = totalSpent(transaction)
+  const hasComparables = listings.length > 0
+  const isNoScrape = valuation.search_metadata.strategy === 'no_scrape'
+  const isMockComparables = valuation.search_metadata.strategy === 'coach_mock'
 
-  // Comparable-based exit range (still computed from listings — the user
-  // explicitly asked to keep comparables and drop the closings mock).
-  const recommended = stats.estimated_value ?? null
-  const quickPrice = stats.price_range_low ?? (recommended ? Math.round(recommended * 0.94) : null)
-  const aspirationalPrice = stats.price_range_high ?? (recommended ? Math.round(recommended * 1.04) : null)
+  // Anchor points come straight from the backend valuation stats. We
+  // intentionally do NOT show these as punctual numbers anymore — coaches
+  // requested ranges so the client doesn't read a calculator-precise figure
+  // and treat it as a guaranteed asking price.
+  const recommendedAnchor = stats.estimated_value ?? null
+  const quickAnchor =
+    stats.price_range_low ?? (recommendedAnchor ? Math.round(recommendedAnchor * 0.94) : null)
+  const aspirationalAnchor =
+    stats.price_range_high ?? (recommendedAnchor ? Math.round(recommendedAnchor * 1.04) : null)
+
+  // ~3% spread around each anchor → tight enough that the three scenario
+  // bands stay distinct, wide enough that the client reads it as a range.
+  // Rounded to €1k so the numbers look coach-curated, not formula-emitted.
+  const quickBand = priceBand(quickAnchor, 0.025)
+  const recommendedBand = priceBand(recommendedAnchor, 0.03)
+  const aspirationalBand = priceBand(aspirationalAnchor, 0.025)
+
   const purchasePpm2 = pricePerM2(invested, valuationResult.valuation_request.m2)
 
   // €/m² zona hoy now comes from the TF Labs municipal price series when
@@ -1246,42 +1524,75 @@ function CoachInvestorReport({ transaction, valuationResult }: CoachInvestorRepo
   // when the appreciation lookup fails to resolve a town.
   const currentPpm2 = appreciation
     ? Math.round(appreciation.to_eur_per_m2)
-    : pricePerM2(recommended, valuationResult.valuation_request.m2) ?? stats.avg_price_per_m2 ?? null
+    : pricePerM2(recommendedAnchor, valuationResult.valuation_request.m2) ?? stats.avg_price_per_m2 ?? null
   const ppm2DeltaPct = appreciation
     ? appreciation.pct_change * 100
     : purchasePpm2 && currentPpm2 ? ((currentPpm2 - purchasePpm2) / purchasePpm2) * 100 : null
 
   // Two distinct gain figures, per product spec:
   //   1) zonePlusvalia = real-market appreciation × invested (data: TF Labs CSV)
-  //   2) recommendedGain = exit at recommended price vs invested (data: comparables OLS)
+  //   2) recommended scenario gain = exit at recommended range vs invested
   const zonePlusvalia = appreciation && invested ? Math.round(invested * appreciation.pct_change) : null
-  const recommendedGain = capitalGain(recommended, invested)
-  const recommendedRoi = roiPercent(recommendedGain, invested)
+  const recommendedGainLow = capitalGain(recommendedBand.low, invested)
+  const recommendedGainHigh = capitalGain(recommendedBand.high, invested)
+  const recommendedRoiLow = roiPercent(recommendedGainLow, invested)
+  const recommendedRoiHigh = roiPercent(recommendedGainHigh, invested)
+  const settlementDate = formatDate(transaction.real_settlement_date)
+  const selectedAddress = valuationResult.valuation_request.selected_address
+  const mapLat = selectedAddress?.lat ?? valuation.municipio.lat
+  const mapLon = selectedAddress?.lon ?? valuation.municipio.lon
+  const mapPosition: [number, number] | null = mapLat != null && mapLon != null ? [mapLat, mapLon] : null
+  const searchRadius = stageRadiusMeters(valuation.search_metadata.final_stage)
+  const searchStage = searchStageLabel(valuation.search_metadata.final_stage)
+
+  // Methodology blurb — we adapt the data-source label to whatever the
+  // backend actually used so the report doesn't claim "comparables activos"
+  // when we only have the TF Labs €/m² anchor.
+  const methodologySource = isNoScrape
+    ? 'mediana €/m² del municipio (serie pública TF Labs) aplicada a la superficie del inmueble'
+    : stats.estimation_method === 'ols_lstsq'
+      ? 'regresión sobre comparables activos en Idealista (precio, m², habitaciones, baños)'
+      : 'mediana €/m² de comparables activos en Idealista aplicada a la superficie del inmueble'
+
+  const comparablesBadge = isNoScrape
+    ? 'TF Labs zonal'
+    : isMockComparables
+      ? 'Mock test'
+      : 'Live'
 
   const scenarios = [
     {
       label: 'Venta rápida',
-      description: 'Precio para generar tracción y reducir tiempo en mercado.',
-      price: quickPrice,
-      gain: capitalGain(quickPrice, invested),
-      roi: roiPercent(capitalGain(quickPrice, invested), invested),
-      timing: '30–60 días',
+      description: 'Precio agresivo para acelerar interés y reducir tiempo en mercado.',
+      band: quickBand,
+      gainLow: capitalGain(quickBand.low, invested),
+      gainHigh: capitalGain(quickBand.high, invested),
+      roiLow: roiPercent(capitalGain(quickBand.low, invested), invested),
+      roiHigh: roiPercent(capitalGain(quickBand.high, invested), invested),
+      timing: 'Rotación rápida',
+      timingHint: 'Estrategia para minimizar días en mercado.',
     },
     {
       label: 'Recomendado',
       description: 'Balance entre capturar plusvalía y mantener una salida realista.',
-      price: recommended,
-      gain: recommendedGain,
-      roi: recommendedRoi,
-      timing: '60–90 días',
+      band: recommendedBand,
+      gainLow: recommendedGainLow,
+      gainHigh: recommendedGainHigh,
+      roiLow: recommendedRoiLow,
+      roiHigh: recommendedRoiHigh,
+      timing: 'Timing equilibrado',
+      timingHint: 'Punto de partida sugerido al cliente.',
     },
     {
       label: 'Aspiracional',
       description: 'Para maximizar precio si el cliente puede esperar más.',
-      price: aspirationalPrice,
-      gain: capitalGain(aspirationalPrice, invested),
-      roi: roiPercent(capitalGain(aspirationalPrice, invested), invested),
-      timing: '90–150 días',
+      band: aspirationalBand,
+      gainLow: capitalGain(aspirationalBand.low, invested),
+      gainHigh: capitalGain(aspirationalBand.high, invested),
+      roiLow: roiPercent(capitalGain(aspirationalBand.low, invested), invested),
+      roiHigh: roiPercent(capitalGain(aspirationalBand.high, invested), invested),
+      timing: 'Más tiempo en mercado',
+      timingHint: 'Requiere paciencia y revisión de precio si no hay tracción.',
     },
   ]
 
@@ -1304,16 +1615,20 @@ function CoachInvestorReport({ transaction, valuationResult }: CoachInvestorRepo
           <div className="rounded-2xl border border-primary/20 bg-white/80 p-md shadow-sm">
             <p className="text-xs uppercase tracking-wide text-ink-muted">Rango de venta hoy</p>
             <p className="mt-1 text-2xl font-semibold text-primary">
-              {formatCurrency(quickPrice)} – {formatCurrency(aspirationalPrice)}
+              {formatCurrencyRange(quickBand.low, aspirationalBand.high)}
             </p>
             <p className="mt-1 text-xs text-ink-secondary">
-              Precio recomendado: {formatCurrency(recommended)}
+              Recomendado: {formatCurrencyRange(recommendedBand.low, recommendedBand.high)}
+            </p>
+            <p className="mt-1 text-[11px] text-ink-muted">
+              Rangos conservadores · redondeados a €1.000
             </p>
           </div>
         </div>
       </div>
 
-      <div className="grid gap-md p-lg md:grid-cols-4 md:p-xl">
+      <div className="grid gap-md p-lg sm:grid-cols-2 md:grid-cols-5 md:p-xl">
+        <Metric label="Fecha de compra" value={settlementDate} />
         <Metric label="Total pagado" value={formatCurrency(invested)} emphasis />
         <Metric label="€/m² compra" value={formatPricePerM2(purchasePpm2)} />
         <Metric
@@ -1325,15 +1640,19 @@ function CoachInvestorReport({ transaction, valuationResult }: CoachInvestorRepo
           }
         />
         <Metric
-          label={appreciation ? 'Plusvalía de zona' : 'Ganancia al precio recomendado'}
+          label={appreciation ? 'Plusvalía de zona' : 'Ganancia (rango recomendado)'}
           value={
             appreciation ? (
               <span className={zonePlusvalia !== null && zonePlusvalia >= 0 ? 'text-emerald-700' : ''}>
                 {formatCurrency(zonePlusvalia)} {appreciation && `(${formatPercent(appreciation.pct_change * 100)})`}
               </span>
             ) : (
-              <span className={recommendedGain !== null && recommendedGain >= 0 ? 'text-emerald-700' : ''}>
-                {formatCurrency(recommendedGain)} {recommendedRoi !== null && `(${formatPercent(recommendedRoi)})`}
+              <span
+                className={
+                  recommendedGainLow !== null && recommendedGainLow >= 0 ? 'text-emerald-700' : ''
+                }
+              >
+                {formatCurrencyRange(recommendedGainLow, recommendedGainHigh)}
               </span>
             )
           }
@@ -1358,131 +1677,384 @@ function CoachInvestorReport({ transaction, valuationResult }: CoachInvestorRepo
                 {formatPercent(appreciation.pct_change * 100)}
               </p>
             </div>
-            <dl className="mt-md grid gap-md text-sm md:grid-cols-4">
+            <div className="mt-md grid gap-md md:grid-cols-[1fr_240px] md:items-start">
               <div>
-                <dt className="text-xs uppercase tracking-wide text-ink-muted">€/m² al firmar</dt>
-                <dd className="text-sm font-semibold text-ink">
-                  {formatPricePerM2(Math.round(appreciation.from_eur_per_m2))}
-                </dd>
+                <dl className="grid gap-md text-sm sm:grid-cols-2 md:grid-cols-4">
+                  <div>
+                    <dt className="text-xs uppercase tracking-wide text-ink-muted">€/m² al firmar</dt>
+                    <dd className="text-sm font-semibold text-ink">
+                      {formatPricePerM2(Math.round(appreciation.from_eur_per_m2))}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs uppercase tracking-wide text-ink-muted">€/m² más reciente</dt>
+                    <dd className="text-sm font-semibold text-ink">
+                      {formatPricePerM2(Math.round(appreciation.to_eur_per_m2))}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs uppercase tracking-wide text-ink-muted">Período</dt>
+                    <dd className="text-sm font-semibold text-ink">
+                      {appreciation.months_elapsed} meses
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs uppercase tracking-wide text-ink-muted">Anualizado</dt>
+                    <dd className="text-sm font-semibold text-ink">
+                      {appreciation.annualized_pct_change !== null
+                        ? formatPercent(appreciation.annualized_pct_change * 100)
+                        : '—'}
+                    </dd>
+                  </div>
+                </dl>
+                {invested && zonePlusvalia !== null && (
+                  <p className="mt-md text-sm text-ink-secondary">
+                    Aplicado a la inversión de <strong className="text-ink">{formatCurrency(invested)}</strong>,
+                    la apreciación de la zona equivale a <strong className="text-emerald-700">{formatCurrency(zonePlusvalia)}</strong>{' '}
+                    de plusvalía teórica si la propiedad siguió la mediana del municipio.
+                  </p>
+                )}
               </div>
-              <div>
-                <dt className="text-xs uppercase tracking-wide text-ink-muted">€/m² más reciente</dt>
-                <dd className="text-sm font-semibold text-ink">
-                  {formatPricePerM2(Math.round(appreciation.to_eur_per_m2))}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs uppercase tracking-wide text-ink-muted">Período</dt>
-                <dd className="text-sm font-semibold text-ink">
-                  {appreciation.months_elapsed} meses
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs uppercase tracking-wide text-ink-muted">Anualizado</dt>
-                <dd className="text-sm font-semibold text-ink">
-                  {appreciation.annualized_pct_change !== null
-                    ? formatPercent(appreciation.annualized_pct_change * 100)
-                    : '—'}
-                </dd>
-              </div>
-            </dl>
-            {invested && zonePlusvalia !== null && (
-              <p className="mt-md text-sm text-ink-secondary">
-                Aplicado a la inversión de <strong className="text-ink">{formatCurrency(invested)}</strong>,
-                la apreciación de la zona equivale a <strong className="text-emerald-700">{formatCurrency(zonePlusvalia)}</strong>{' '}
-                de plusvalía teórica si la propiedad siguió la mediana del municipio.
-              </p>
-            )}
+              {mapPosition && (
+                <figure className="overflow-hidden rounded-xl border border-emerald-200 bg-white">
+                  <div className="h-[180px] w-full">
+                    <MapView propertyPosition={mapPosition} height="180px" zoom={14} />
+                  </div>
+                  <figcaption className="border-t border-emerald-200/70 bg-white px-3 py-2 text-[11px] uppercase tracking-wide text-ink-muted">
+                    {appreciation.town_name}
+                  </figcaption>
+                </figure>
+              )}
+            </div>
           </div>
         </div>
       )}
 
       <div className="border-t border-line/70 px-lg py-md md:px-xl">
         <div className="grid gap-md md:grid-cols-3">
-          {scenarios.map((scenario) => (
-            <div key={scenario.label} className="rounded-2xl border border-line bg-surface p-md">
-              <p className="text-sm font-semibold text-ink">{scenario.label}</p>
-              <p className="mt-1 text-xs text-ink-secondary">{scenario.description}</p>
-              <dl className="mt-md grid gap-2 text-sm">
-                <div className="flex justify-between gap-3">
-                  <dt className="text-ink-muted">Precio salida</dt>
-                  <dd className="font-semibold text-ink">{formatCurrency(scenario.price)}</dd>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <dt className="text-ink-muted">Ganancia vs compra</dt>
-                  <dd className="font-semibold text-ink">{formatCurrency(scenario.gain)}</dd>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <dt className="text-ink-muted">ROI</dt>
-                  <dd className="font-semibold text-ink">{formatPercent(scenario.roi)}</dd>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <dt className="text-ink-muted">Tiempo venta</dt>
-                  <dd className="font-semibold text-ink">{scenario.timing}</dd>
-                </div>
-              </dl>
-            </div>
-          ))}
+          {scenarios.map((scenario) => {
+            const roiDisplay =
+              scenario.roiLow === null || scenario.roiHigh === null
+                ? '—'
+                : scenario.roiLow === scenario.roiHigh
+                  ? formatPercent(scenario.roiLow)
+                  : `${formatPercent(scenario.roiLow)} – ${formatPercent(scenario.roiHigh)}`
+            return (
+              <div key={scenario.label} className="rounded-2xl border border-line bg-surface p-md">
+                <p className="text-sm font-semibold text-ink">{scenario.label}</p>
+                <p className="mt-1 text-xs text-ink-secondary">{scenario.description}</p>
+                <dl className="mt-md grid gap-2 text-sm">
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-ink-muted">Rango de salida</dt>
+                    <dd className="font-semibold text-ink">
+                      {formatCurrencyRange(scenario.band.low, scenario.band.high)}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-ink-muted">Ganancia vs compra</dt>
+                    <dd className="font-semibold text-ink">
+                      {formatCurrencyRange(scenario.gainLow, scenario.gainHigh)}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-ink-muted">ROI</dt>
+                    <dd className="font-semibold text-ink">{roiDisplay}</dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-ink-muted">Timing</dt>
+                    <dd className="font-semibold text-ink">{scenario.timing}</dd>
+                  </div>
+                </dl>
+                <p className="mt-3 text-[11px] leading-snug text-ink-muted">{scenario.timingHint}</p>
+              </div>
+            )
+          })}
         </div>
+        <p className="mt-md text-[11px] leading-relaxed text-ink-muted">
+          Los rangos están redondeados a €1.000 para evitar precisión falsa. El{' '}
+          <strong className="text-ink">tiempo real de venta</strong> depende de demanda, estacionalidad y
+          producto — lo acordamos con el coach según la estrategia elegida, no proviene del modelo.
+        </p>
       </div>
 
       <div className="border-t border-line/70 bg-surface-muted px-lg py-md md:px-xl">
         <p className="text-sm font-semibold text-ink">Lectura de mercado para el cliente</p>
         <p className="mt-1 text-sm text-ink-secondary">
-          {appreciation
-            ? `La zona de ${appreciation.town_name} ha apreciado un ${formatPercent(appreciation.pct_change * 100)} desde la firma. La salida recomendada (${formatCurrency(recommended)}) se calcula sobre comparables activos y captura plusvalía sin alejarse del mercado actual.`
-            : 'La salida recomendada se calcula sobre los comparables activos en el municipio. El rango entre venta rápida y aspiracional cubre los escenarios de liquidez vs maximización de retorno.'}
+          {appreciation && hasComparables
+            ? `La zona de ${appreciation.town_name} ha apreciado un ${formatPercent(appreciation.pct_change * 100)} desde la firma. El rango recomendado (${formatCurrencyRange(recommendedBand.low, recommendedBand.high)}) se construye sobre comparables activos hoy y captura plusvalía sin alejarse del mercado.`
+            : appreciation
+              ? `La zona de ${appreciation.town_name} ha apreciado un ${formatPercent(appreciation.pct_change * 100)} desde la firma. Sin comparables individuales, anclamos el rango recomendado (${formatCurrencyRange(recommendedBand.low, recommendedBand.high)}) en la mediana €/m² del municipio publicada por TF Labs.`
+              : hasComparables
+                ? 'El rango recomendado se construye sobre los comparables activos en el municipio. Los tres escenarios cubren liquidez vs maximización de retorno.'
+                : 'Sin comparables individuales, anclamos el rango recomendado en la mediana €/m² del municipio (serie TF Labs). Útil como termómetro de zona; menos preciso que con comparables activos.'}
+        </p>
+        <p className="mt-2 text-[11px] leading-relaxed text-ink-muted">
+          Fuente del rango: {methodologySource}.
         </p>
       </div>
 
-      <div className="border-t border-line/70 px-lg py-lg md:px-xl">
-        <div className="flex items-baseline justify-between gap-md">
-          <div>
-            <p className="text-sm font-semibold text-ink">Comparables activos</p>
-            <p className="text-xs text-ink-secondary">
-              Qué está viendo el comprador en el mercado hoy.
+      {hasComparables ? (
+        <div className="border-t border-line/70 px-lg py-lg md:px-xl">
+          <div className="flex items-baseline justify-between gap-md">
+            <div>
+              <p className="text-sm font-semibold text-ink">Comparables activos</p>
+              <p className="text-xs text-ink-secondary">
+                Qué está viendo el comprador en el mercado hoy.
+              </p>
+            </div>
+            <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+              {comparablesBadge}
+            </span>
+          </div>
+          <div className="mt-md overflow-hidden rounded-2xl border border-line">
+            {listings.map((listing) => (
+              <a
+                key={listing.url}
+                href={listing.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group flex gap-md border-b border-line/70 p-md transition-colors last:border-b-0 hover:bg-surface-muted focus:bg-surface-muted focus:outline-none"
+                title={listing.url}
+              >
+                <ComparableThumbnail listing={listing} />
+                <div className="grid min-w-0 flex-1 grid-cols-[1fr_auto] gap-md">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-ink group-hover:text-primary group-hover:underline">
+                      {listing.title}
+                    </p>
+                    {listing.address && (
+                      <p className="mt-0.5 truncate text-xs text-ink-muted">{listing.address}</p>
+                    )}
+                    <p className="mt-1 text-xs text-ink-secondary">
+                      {[formatNumber(listing.m2 ?? null, ' m²'), formatNumber(listing.bedrooms ?? null, ' hab.'), formatNumber(listing.bathrooms ?? null, ' baños')]
+                        .filter((value) => value !== '—')
+                        .join(' · ')}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-sm font-semibold text-ink">{formatCurrency(listing.price)}</p>
+                    <p className="text-xs text-ink-muted">{formatPricePerM2(listing.price_per_m2)}</p>
+                  </div>
+                </div>
+              </a>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="border-t border-line/70 px-lg py-lg md:px-xl">
+          <div className="rounded-2xl border border-line bg-surface-muted p-md">
+            <div className="flex items-baseline justify-between gap-md">
+              <p className="text-sm font-semibold text-ink">Sin comparables individuales</p>
+              <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+                {comparablesBadge}
+              </span>
+            </div>
+            <p className="mt-2 text-sm text-ink-secondary">
+              Este reporte no incluye anuncios activos. El rango proviene de la mediana €/m² del
+              municipio publicada por TF Labs aplicada a los {valuationResult.valuation_request.m2} m²
+              del inmueble. Para incluir comparables individuales, vuelve atrás y selecciona
+              <strong className="text-ink"> Con comparables</strong>.
             </p>
           </div>
-          <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-            {valuation.search_metadata.strategy === 'coach_mock' ? 'Mock test' : 'Live'}
-          </span>
         </div>
-        <div className="mt-md overflow-hidden rounded-2xl border border-line">
-          {listings.map((listing) => (
-            <div key={listing.url} className="grid grid-cols-[1fr_auto] gap-md border-b border-line/70 p-md last:border-b-0">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-ink">{listing.title}</p>
-                <p className="mt-1 text-xs text-ink-secondary">
-                  {[formatNumber(listing.m2 ?? null, ' m²'), formatNumber(listing.bedrooms ?? null, ' hab.'), formatNumber(listing.bathrooms ?? null, ' baños')]
-                    .filter((value) => value !== '—')
-                    .join(' · ')}
+      )}
+
+      {mapPosition && hasComparables && (
+        <div className="border-t border-line/70 px-lg py-md md:px-xl">
+          <div className="rounded-2xl border border-line bg-surface-muted p-md">
+            <div className="flex flex-col gap-1 md:flex-row md:items-baseline md:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-ink">Mapa y radio de comparables</p>
+                <p className="text-xs text-ink-secondary">
+                  Dirección valorada y radio usado para seleccionar comparables activos.
                 </p>
               </div>
-              <div className="text-right">
-                <p className="text-sm font-semibold text-ink">{formatCurrency(listing.price)}</p>
-                <p className="text-xs text-ink-muted">{formatPricePerM2(listing.price_per_m2)}</p>
-              </div>
+              <p className="text-sm font-semibold text-primary">
+                {searchRadius}m · {searchStage}
+              </p>
             </div>
-          ))}
+            <div className="mt-md overflow-hidden rounded-2xl border border-line bg-white">
+              <MapView
+                propertyPosition={mapPosition}
+                radiusMeters={searchRadius}
+                height="260px"
+              />
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="border-t border-line/70 bg-ink px-lg py-lg text-white md:px-xl">
         <div className="grid gap-md md:grid-cols-[1fr_auto] md:items-center">
           <div>
-            <p className="text-lg font-semibold">Siguiente paso recomendado</p>
+            <p className="text-lg font-semibold">
+              ¿Quieres aterrizar estos números con un experto?
+            </p>
             <p className="mt-1 max-w-2xl text-sm text-white/75">
-              Usar este rango para llamar al cliente con una conversación simple:
-              cuánto invirtió, cuánto ha ganado y qué precio conviene si quiere vender rápido
-              versus maximizar retorno.
+              Agenda una llamada <strong className="text-white">gratuita</strong> con el
+              equipo de PropHero para gestionar la desinversión, validar el precio de
+              salida y construir un plan comercial concreto sobre esta propiedad.
             </p>
           </div>
-          <div className="rounded-2xl bg-white px-md py-sm text-sm font-semibold text-ink">
-            Agendar llamada de salida
-          </div>
+          <a
+            href="https://prophero.com/contacto"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-md py-sm text-sm font-semibold text-ink shadow-sm transition hover:bg-white/90"
+          >
+            <Phone className="h-4 w-4" aria-hidden="true" />
+            Llamada gratuita con PropHero
+          </a>
         </div>
       </div>
     </Card>
+  )
+}
+
+interface CoachReportPdfPreviewProps {
+  valuationResult: CoachTransactionValuationResponse
+  variant: 'report' | 'composer'
+}
+
+// Renders "Ver PDF" / "Descargar PDF" actions for the report PDF that will be
+// attached to the coach email. Reuses the /api/report/pdf/render endpoint via
+// `createReportPdfObjectUrl` so the preview never re-runs the scraper — it
+// just turns the in-memory valuation into a PDF.
+function CoachReportPdfPreview({ valuationResult, variant }: CoachReportPdfPreviewProps) {
+  const { t } = useTranslation()
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null)
+  const [previewing, setPreviewing] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (pdfUrl) URL.revokeObjectURL(pdfUrl)
+    }
+  }, [pdfUrl])
+
+  const payload: ReportPdfPayload = {
+    request: valuationResult.valuation_request,
+    valuation: valuationResult.valuation,
+  }
+
+  async function ensurePdfUrl(): Promise<string | null> {
+    if (pdfUrl) return pdfUrl
+    const url = await createReportPdfObjectUrl(payload)
+    setPdfUrl(url)
+    return url
+  }
+
+  async function handlePreview() {
+    setPreviewing(true)
+    setError(null)
+    try {
+      const url = await ensurePdfUrl()
+      if (url) setPreviewOpen(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('results.cta.previewError'))
+    } finally {
+      setPreviewing(false)
+    }
+  }
+
+  async function handleDownload() {
+    setDownloading(true)
+    setError(null)
+    try {
+      await downloadReportPdf(payload)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('results.cta.downloadError'))
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  const isComposer = variant === 'composer'
+  const title = isComposer
+    ? t('coach.email.attachmentTitle')
+    : t('coach.report.pdfTitle')
+  const description = isComposer
+    ? t('coach.email.attachmentDescription')
+    : t('coach.report.pdfDescription')
+
+  return (
+    <div className="rounded-2xl border border-line bg-surface-muted p-md">
+      <div className="flex flex-col gap-md md:flex-row md:items-start md:justify-between">
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <Paperclip className="h-4 w-4" aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-ink">{title}</p>
+            <p className="mt-1 text-xs text-ink-secondary">{description}</p>
+            <p className="mt-1 text-xs font-mono text-ink-muted">
+              prophero-valoracion.pdf
+            </p>
+          </div>
+        </div>
+        <div className="flex shrink-0 gap-sm">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handlePreview}
+            disabled={previewing}
+          >
+            {previewing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Eye className="h-4 w-4" />
+            )}
+            {previewing ? t('results.cta.loadingPdf') : t('results.cta.previewPdf')}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleDownload}
+            disabled={downloading}
+          >
+            {downloading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
+            {downloading ? t('results.cta.downloadingPdf') : t('results.cta.downloadPdf')}
+          </Button>
+        </div>
+      </div>
+
+      {error && (
+        <p className="mt-sm text-sm text-destructive" role="alert">
+          {error}
+        </p>
+      )}
+
+      {previewOpen && pdfUrl && (
+        <div className="mt-md overflow-hidden rounded-2xl border border-line bg-bg">
+          <div className="flex items-center justify-between gap-sm border-b border-line bg-surface px-md py-sm">
+            <p className="text-sm font-semibold text-ink">
+              {t('results.cta.pdfPreviewTitle')}
+            </p>
+            <button
+              type="button"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-ink-secondary transition-colors hover:bg-bg hover:text-ink"
+              onClick={() => setPreviewOpen(false)}
+              aria-label={t('results.cta.closePdfPreview')}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <iframe
+            title={t('results.cta.pdfPreviewTitle')}
+            src={pdfUrl}
+            className="h-[70vh] w-full bg-white"
+          />
+        </div>
+      )}
+    </div>
   )
 }
 

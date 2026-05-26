@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ExternalLink, MapPin, Grid3X3, MapPinned } from 'lucide-react'
 import type { Listing } from '@/lib/types'
+import { stageRadiusMeters } from '@/lib/results'
 import { formatPrice, formatPricePerM2 } from './shared/formatters'
 
 type SortKey = 'price' | 'ppm' | 'sizeMatch'
@@ -9,6 +10,7 @@ type SortKey = 'price' | 'ppm' | 'sizeMatch'
 interface ComparablesBlockProps {
   listings: Listing[]
   requestM2: number
+  finalStage: string
 }
 
 interface StageGroup {
@@ -57,9 +59,10 @@ function sortListings(listings: Listing[], sortBy: SortKey, requestM2: number): 
   }
 }
 
-export function ComparablesBlock({ listings, requestM2 }: ComparablesBlockProps) {
+export function ComparablesBlock({ listings, requestM2, finalStage }: ComparablesBlockProps) {
   const { t } = useTranslation()
   const [sortBy, setSortBy] = useState<SortKey>('price')
+  const radius = stageRadiusMeters(finalStage)
 
   const groups = useMemo<StageGroup[]>(() => {
     const map = new Map<string, Listing[]>()
@@ -83,9 +86,17 @@ export function ComparablesBlock({ listings, requestM2 }: ComparablesBlockProps)
   return (
     <div>
       <div className="flex items-center justify-between mb-md flex-wrap gap-sm">
-        <h2 className="text-base font-semibold text-ink">
-          {t('results.comparablesSection.title', { count: listings.length })}
-        </h2>
+        <div>
+          <h2 className="text-base font-semibold text-ink">
+            {t('results.comparablesSection.title', { count: listings.length })}
+          </h2>
+          <p className="mt-1 text-xs text-ink-muted">
+            {t('results.comparablesSection.radiusHint', {
+              radius,
+              stage: t(`results.stages.${finalStage}`, { defaultValue: finalStage }),
+            })}
+          </p>
+        </div>
         <div className="flex gap-1">
           {(['price', 'ppm', 'sizeMatch'] as const).map((key) => (
             <button
@@ -131,16 +142,20 @@ export function ComparablesBlock({ listings, requestM2 }: ComparablesBlockProps)
                     rel="noopener noreferrer"
                     className={`group flex flex-col rounded-xl border-2 bg-surface shadow-card transition hover:shadow-lift overflow-hidden ${style.accent}`}
                   >
-                    {listing.image_url && (
-                      <div className="h-36 overflow-hidden bg-surface-muted">
+                    <div className="h-36 overflow-hidden bg-surface-muted">
+                      {listing.image_url ? (
                         <img
                           src={listing.image_url}
                           alt={listing.title}
                           className="h-full w-full object-cover transition group-hover:scale-105"
                           loading="lazy"
                         />
-                      </div>
-                    )}
+                      ) : (
+                        <div className="flex h-full items-center justify-center px-md text-center text-xs text-ink-muted">
+                          {t('results.comparablesSection.noImage')}
+                        </div>
+                      )}
+                    </div>
                     <div className="flex flex-col gap-xs p-md flex-1">
                       <p className="text-sm font-semibold text-ink line-clamp-2 leading-snug">
                         {listing.title}
@@ -179,7 +194,10 @@ export function ComparablesBlock({ listings, requestM2 }: ComparablesBlockProps)
                             )}
                           </div>
                         </div>
-                        <ExternalLink className="h-3.5 w-3.5 shrink-0 text-ink-muted group-hover:text-primary transition-colors" />
+                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary">
+                          {t('results.comparablesSection.viewOnIdealista')}
+                          <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                        </span>
                       </div>
                     </div>
                   </a>

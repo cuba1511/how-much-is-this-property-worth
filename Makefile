@@ -70,7 +70,8 @@ dev: $(VENV) $(FRONT)/node_modules
 dev-stop:
 	-@lsof -nP -iTCP:8001 -sTCP:LISTEN -t 2>/dev/null | xargs -r kill -KILL
 	-@lsof -nP -iTCP:5173 -sTCP:LISTEN -t 2>/dev/null | xargs -r kill -KILL
-	@echo "✓ Ports 8001 and 5173 free."
+	-@lsof -nP -iTCP:5174 -sTCP:LISTEN -t 2>/dev/null | xargs -r kill -KILL
+	@echo "✓ Ports 8001, 5173 and 5174 free."
 
 # ── VPS (Docker + Caddy) ─────────────────────────────────────────────────────
 

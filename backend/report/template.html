@@ -212,6 +212,77 @@
       color: var(--ph-blue-dark);
       margin-left: 4mm;
     }
+    .search-radius {
+      margin: -1mm 0 4mm;
+      color: var(--ph-text-muted);
+      font-size: 9pt;
+    }
+    .listing-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 4mm;
+      margin-top: 4mm;
+    }
+    .listing-card {
+      display: grid;
+      grid-template-columns: 36mm 1fr;
+      gap: 4mm;
+      padding: 3mm;
+      border: 1px solid var(--ph-line);
+      border-radius: 8px;
+      background: #fff;
+      break-inside: avoid;
+    }
+    .listing-photo {
+      width: 36mm;
+      height: 27mm;
+      border-radius: 6px;
+      background: var(--ph-bg-muted);
+      object-fit: cover;
+    }
+    .listing-photo-placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 36mm;
+      height: 27mm;
+      border-radius: 6px;
+      background: var(--ph-bg-muted);
+      color: var(--ph-text-muted);
+      font-size: 8pt;
+      text-align: center;
+    }
+    .listing-card .listing-title {
+      max-width: none;
+      white-space: normal;
+      line-height: 1.25;
+    }
+    .listing-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 2mm;
+      margin: 2mm 0;
+      color: var(--ph-text-secondary);
+      font-size: 8.5pt;
+    }
+    .listing-price-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 4mm;
+      align-items: flex-end;
+      margin-top: 2mm;
+    }
+    .listing-price {
+      font-size: 12pt;
+      font-weight: 700;
+      color: var(--ph-text);
+    }
+    .listing-link {
+      color: var(--ph-blue);
+      font-weight: 600;
+      font-size: 8.5pt;
+      text-decoration: none;
+    }
 
     /* Methodology block */
     .methodology {
@@ -279,6 +350,8 @@
           <span class="badge method-ols">Modelo de regresión multivariable</span>
         {% elif estimation_method == 'avg_ppm2' %}
           <span class="badge method-avg">Promedio ponderado de comparables</span>
+        {% elif estimation_method == 'market_series' %}
+          <span class="badge method-avg">€/m² zonal (TF Labs)</span>
         {% endif %}
         {% if confidence_method == 'sample_std' %}
           <span class="badge confidence-sample">Rango basado en dispersión real del mercado (±1σ)</span>
@@ -333,46 +406,61 @@
     </div>
   </div>
 
-  {% if listings %}
+  {% if include_comparables and listings %}
   <h2>Comparables analizados</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>Listing</th>
-        <th class="right">m²</th>
-        <th class="right">Hab</th>
-        <th class="right">Baños</th>
-        <th class="right">Precio</th>
-        <th class="right">€/m²</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for lst in listings[:10] %}
-      <tr>
-        <td>
+  <p class="search-radius">
+    Radio de búsqueda usado: <strong>{{ search_radius_meters }}m</strong> · {{ final_stage_label }}
+  </p>
+  <div class="listing-grid">
+      {% for lst in listings[:5] %}
+      <article class="listing-card">
+        {% if lst.image_url %}
+          <img class="listing-photo" src="{{ lst.image_url }}" alt="{{ lst.title }}">
+        {% else %}
+          <div class="listing-photo-placeholder">Foto no disponible</div>
+        {% endif %}
+        <div>
           <div class="listing-title">{{ lst.title }}</div>
-          {% if lst.source_stage %}<span class="listing-stage">{{ lst.source_stage | replace('_', ' ') }}</span>{% endif %}
-        </td>
-        <td class="right">{{ lst.m2 or '—' }}</td>
-        <td class="right">{{ lst.bedrooms if lst.bedrooms is not none else '—' }}</td>
-        <td class="right">{{ lst.bathrooms if lst.bathrooms is not none else '—' }}</td>
-        <td class="right">{{ lst.price | money or '—' }}</td>
-        <td class="right">{{ lst.price_per_m2 | money or '—' }}</td>
-      </tr>
+          {% if lst.source_stage_label %}<span class="listing-stage">{{ lst.source_stage_label }}</span>{% endif %}
+          {% if lst.address %}<div class="label" style="margin-top: 2mm;">{{ lst.address }}</div>{% endif %}
+          <div class="listing-meta">
+            <span>{{ lst.m2 or '—' }} m²</span>
+            <span>{{ lst.bedrooms if lst.bedrooms is not none else '—' }} hab</span>
+            <span>{{ lst.bathrooms if lst.bathrooms is not none else '—' }} baños</span>
+            {% if lst.floor %}<span>{{ lst.floor }}</span>{% endif %}
+          </div>
+          <div class="listing-price-row">
+            <div>
+              <div class="listing-price">{{ lst.price | money or '—' }}</div>
+              <div class="label">{{ lst.price_per_m2 | money or '—' }} / m²</div>
+            </div>
+            <a class="listing-link" href="{{ lst.url }}">Ver en Idealista</a>
+          </div>
+        </div>
+      </article>
       {% endfor %}
-    </tbody>
-  </table>
+  </div>
   {% endif %}
 
   <section class="methodology">
     <strong>Cómo calculamos este valor.</strong>
+    {% if estimation_method == 'market_series' %}
+    Anclamos el valor en el €/m² medio del municipio publicado por TF Labs
+    (Sale Price SQM P50, observación más reciente) y lo aplicamos a la
+    superficie del inmueble. Esta variante no consulta anuncios individuales
+    en Idealista.
+    {% else %}
     Buscamos en tiempo real propiedades similares en venta en Idealista a partir de tu
     dirección, aplicando filtros progresivos de cercanía (misma calle → microzona →
     distrito → municipio) hasta reunir suficientes comparables.
+    {% endif %}
     <ul>
       {% if estimation_method == 'ols_lstsq' %}
       <li>Aplicamos una regresión lineal multivariable sobre m², habitaciones y baños
           de los comparables (R² in-sample {{ r_squared_pct }}%, n={{ regression_sample_size }}).</li>
+      {% elif estimation_method == 'market_series' %}
+      <li>Multiplicamos el €/m² zonal real por los m² del inmueble. No usa comparables
+          individuales — la cifra es una referencia de mercado, no un ajuste por inmueble.</li>
       {% else %}
       <li>Calculamos el precio medio por m² de los comparables y lo aplicamos a tu
           superficie.</li>

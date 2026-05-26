@@ -127,6 +127,24 @@ class LeadSubmission(BaseModel):
     valuation_request: ValuationRequest
 
 
+class ReportPdfRenderRequest(BaseModel):
+    """Payload for rendering a PDF from an already-computed valuation.
+
+    Used by the results page preview/download flow so opening the PDF does not
+    run the scraper a second time.
+
+    ``include_comparables`` toggles the per-listing comparables section in the
+    rendered report. Defaults to ``True`` so existing callers keep getting the
+    full report; the frontend selector flips it off when the user prefers a
+    cleaner deliverable without the Idealista cards.
+    """
+
+    valuation: "ValuationResponse"
+    valuation_request: ValuationRequest
+    lead: Optional[LeadInfo] = None
+    include_comparables: bool = True
+
+
 LeadValuationStatus = Literal["ready", "pending", "failed"]
 
 
@@ -614,3 +632,4 @@ class SimpleValuationResponse(BaseModel):
 # referer in source order.
 LeadResponse.model_rebuild()
 ValuationStatusResponse.model_rebuild()
+ReportPdfRenderRequest.model_rebuild()
