@@ -26,6 +26,7 @@ from models import LeadInfo, ValuationResponse
 logger = logging.getLogger(__name__)
 
 RESEND_API_URL = "https://api.resend.com/emails"
+DEFAULT_BOOKING_URL = "https://prophero.com"
 
 
 class EmailDeliveryError(Exception):
@@ -49,6 +50,8 @@ def _render_email_html(lead: LeadInfo, valuation: ValuationResponse) -> str:
     )
     municipio = valuation.municipio.name
     address = valuation.municipio.road or municipio
+    booking_url = os.environ.get("PROPHERO_BOOKING_URL", DEFAULT_BOOKING_URL)
+    first_name = lead.full_name.split(" ", 1)[0] if lead.full_name else ""
 
     return f"""
 <!DOCTYPE html>
@@ -66,16 +69,21 @@ def _render_email_html(lead: LeadInfo, valuation: ValuationResponse) -> str:
                     <span style="display:inline-block;width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#2050f6,#65c6eb);vertical-align:middle;"></span>
                     <span style="font-weight:700;font-size:16px;letter-spacing:-0.01em;margin-left:8px;vertical-align:middle;">PropHero</span>
                   </td>
+                  <td align="right" style="font-size:11px;color:#abb8c7;letter-spacing:0.04em;text-transform:uppercase;">
+                    Reporte preliminar
+                  </td>
                 </tr>
               </table>
             </td>
           </tr>
           <tr>
             <td style="padding:32px;">
-              <p style="margin:0 0 8px;font-size:14px;color:#596b7d;">Hola {lead.full_name},</p>
+              <p style="margin:0 0 8px;font-size:14px;color:#596b7d;">Hola {first_name or lead.full_name},</p>
               <p style="margin:0 0 24px;font-size:14px;line-height:1.6;">
-                Aquí tienes el resultado de tu valoración para
+                Adjuntamos tu valoración preliminar para
                 <strong>{address}</strong>{f", {municipio}" if address != municipio else ""}.
+                Es una primera lectura cuantitativa del mercado — útil como referencia,
+                pero todavía no es tu plan de salida.
               </p>
 
               <div style="background:#f3f5fe;border:1px solid rgba(32,80,246,0.18);border-radius:12px;padding:24px;text-align:center;">
@@ -85,23 +93,41 @@ def _render_email_html(lead: LeadInfo, valuation: ValuationResponse) -> str:
                 <div style="font-size:11px;color:#abb8c7;margin-top:8px;">Basado en {stats.total_comparables} comparables analizados en tiempo real</div>
               </div>
 
-              <p style="margin:24px 0 0;font-size:14px;line-height:1.6;">
-                Adjuntamos el reporte completo en PDF con el detalle de los comparables,
-                la metodología y el desglose por características.
+              <p style="margin:28px 0 8px;font-size:14px;line-height:1.6;">
+                En el PDF adjunto vas a encontrar los comparables uno por uno, la
+                metodología y el rango de mercado para tu microzona.
               </p>
 
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0 0;">
-                <tr>
-                  <td style="background:#f45504;border-radius:999px;">
-                    <a href="https://prophero.com" style="display:inline-block;padding:12px 28px;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;">Habla con un asesor</a>
-                  </td>
-                </tr>
-              </table>
+              <div style="margin:24px 0 8px;padding:20px 22px;background:#ffffff;border:1px solid rgba(32,80,246,0.18);border-left:3px solid #2050f6;border-radius:8px;">
+                <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#162eb7;">Próximo paso</div>
+                <p style="margin:6px 0 12px;font-size:15px;font-weight:600;color:#1e252d;line-height:1.4;">
+                  Diseñá tu plan de salida con un asesor de PropHero
+                </p>
+                <p style="margin:0 0 14px;font-size:13px;line-height:1.6;color:#596b7d;">
+                  30 minutos, sin compromiso. Revisamos juntos timing de mercado,
+                  fiscalidad, alternativas a la venta directa (alquiler, permuta,
+                  reinversión) y cuál es el precio de salida realista para tu caso —
+                  no el del algoritmo.
+                </p>
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td style="background:#f45504;border-radius:999px;">
+                      <a href="{booking_url}" style="display:inline-block;padding:12px 28px;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;">Agendar llamada</a>
+                    </td>
+                  </tr>
+                </table>
+              </div>
 
-              <p style="margin:32px 0 0;font-size:12px;color:#abb8c7;line-height:1.6;">
-                Esta valoración es una estimación automatizada. No sustituye a una tasación
-                oficial — los precios reales pueden variar según condición, documentación,
-                vistas y negociación.
+              <p style="margin:24px 0 0;font-size:13px;line-height:1.6;color:#596b7d;">
+                Si preferís, también podés responder este email con tus dudas y te
+                contesta directamente un asesor.
+              </p>
+
+              <p style="margin:28px 0 0;font-size:12px;color:#abb8c7;line-height:1.6;">
+                Esta valoración es una estimación automatizada basada en datos públicos.
+                No sustituye a una tasación oficial ni a asesoramiento fiscal o legal —
+                los precios reales pueden variar según condición, documentación, vistas
+                y negociación.
               </p>
             </td>
           </tr>
@@ -141,7 +167,7 @@ async def send_valuation_email(
 
     sender = os.environ.get("RESEND_FROM_EMAIL", "PropHero <noreply@prophero.com>")
     municipio = valuation.municipio.name
-    subject = f"Tu valoración PropHero — {municipio}"
+    subject = f"Tu valoración preliminar PropHero — {municipio}"
     attachment_name = f"prophero-valoracion-{date.today().isoformat()}.pdf"
 
     payload = {

@@ -1539,6 +1539,14 @@ function CoachInvestorReport({ transaction, valuationResult }: CoachInvestorRepo
   const recommendedRoiHigh = roiPercent(recommendedGainHigh, invested)
   const settlementDate = formatDate(transaction.real_settlement_date)
   const selectedAddress = valuationResult.valuation_request.selected_address
+  const selectedUnit = valuationResult.valuation_request.selected_cadastral_unit
+  const propertyAddress =
+    selectedAddress?.label ?? valuationResult.valuation_request.address ?? transaction.address ?? '—'
+  const propertyType = valuationResult.valuation_request.property_type ?? transaction.type ?? '—'
+  const propertyCondition = valuationResult.valuation_request.property_condition
+  const propertyTypeLabel = propertyCondition
+    ? `${propertyType} · ${propertyCondition.replace(/_/g, ' ')}`
+    : propertyType
   const mapLat = selectedAddress?.lat ?? valuation.municipio.lat
   const mapLon = selectedAddress?.lon ?? valuation.municipio.lon
   const mapPosition: [number, number] | null = mapLat != null && mapLon != null ? [mapLat, mapLon] : null
@@ -1624,6 +1632,28 @@ function CoachInvestorReport({ transaction, valuationResult }: CoachInvestorRepo
               Rangos conservadores · redondeados a €1.000
             </p>
           </div>
+        </div>
+      </div>
+
+      <div className="border-t border-line/70 px-lg py-md md:px-xl">
+        <p className="text-sm font-semibold text-ink">Datos de la propiedad</p>
+        <div className="mt-md grid gap-md md:grid-cols-[1.3fr_0.7fr]">
+          <div className="rounded-2xl border border-line bg-surface p-md">
+            <p className="text-xs uppercase tracking-wide text-ink-muted">Dirección</p>
+            <p className="mt-1 text-sm font-semibold leading-snug text-ink">{propertyAddress}</p>
+          </div>
+          <div className="rounded-2xl border border-line bg-surface p-md">
+            <p className="text-xs uppercase tracking-wide text-ink-muted">Referencia catastral</p>
+            <p className="mt-1 break-all font-mono text-sm font-semibold text-ink">
+              {selectedUnit?.cadastral_reference ?? transaction.cadastral_reference ?? '—'}
+            </p>
+          </div>
+        </div>
+        <div className="mt-md grid gap-md sm:grid-cols-2 md:grid-cols-4">
+          <Metric label="Tipo" value={propertyTypeLabel} />
+          <Metric label="Habitaciones" value={formatNumber(valuationResult.valuation_request.bedrooms)} />
+          <Metric label="Baños" value={formatNumber(valuationResult.valuation_request.bathrooms)} />
+          <Metric label="Superficie" value={formatNumber(valuationResult.valuation_request.m2, ' m²')} />
         </div>
       </div>
 
@@ -1920,6 +1950,7 @@ function CoachReportPdfPreview({ valuationResult, variant }: CoachReportPdfPrevi
   const payload: ReportPdfPayload = {
     request: valuationResult.valuation_request,
     valuation: valuationResult.valuation,
+    transaction: valuationResult.transaction,
   }
 
   async function ensurePdfUrl(): Promise<string | null> {

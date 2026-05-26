@@ -142,6 +142,7 @@ class ReportPdfRenderRequest(BaseModel):
     valuation: "ValuationResponse"
     valuation_request: ValuationRequest
     lead: Optional[LeadInfo] = None
+    transaction: Optional["TransactionDetail"] = None
     include_comparables: bool = True
 
 

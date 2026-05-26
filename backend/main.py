@@ -1458,6 +1458,7 @@ async def post_report_pdf_render(payload: ReportPdfRenderRequest) -> Response:
         valuation=payload.valuation,
         request_payload=payload.valuation_request.model_dump(mode="json"),
         lead=payload.lead,
+        transaction=payload.transaction,
         include_comparables=payload.include_comparables,
     )
     try:

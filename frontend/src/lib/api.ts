@@ -8,6 +8,7 @@ import type {
   ValuationResponse,
   ValuationStatusResponse,
 } from './types'
+import type { TransactionDetail } from './coach-api'
 
 // Dev: localhost API. Production VPS: empty → same-origin /api via Caddy.
 // Vercel/Railway: set VITE_API_URL at build time in the host dashboard.
@@ -183,6 +184,7 @@ export interface ReportPdfPayload {
   request: ValuationRequest
   valuation: ValuationResponse
   lead?: LeadInfo
+  transaction?: TransactionDetail
   /** When false, the backend drops the per-listing comparables section from
    *  the PDF (aggregate stats are kept). Defaults to true on the server side
    *  so omitting it preserves the current behavior. */
@@ -243,6 +245,7 @@ export async function fetchReportPdf({
   request,
   valuation,
   lead,
+  transaction,
   includeComparables = true,
 }: ReportPdfPayload): Promise<Blob> {
   const res = await fetch(`${API_BASE}/api/report/pdf/render`, {
@@ -252,6 +255,7 @@ export async function fetchReportPdf({
       valuation_request: request,
       valuation,
       lead,
+      transaction,
       include_comparables: includeComparables,
     }),
   })

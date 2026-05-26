@@ -2,6 +2,764 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
+  <title>Reporte PropHero — {{ full_address or address }}</title>
+  <style>
+    :root {
+      --ph-blue: #2050f6;
+      --ph-blue-dark: #162eb7;
+      --ph-cyan: #65c6eb;
+      --ph-orange: #f45504;
+      --ph-emerald: #0f8b5f;
+      --ph-emerald-bg: #eefbf6;
+      --ph-text: #1e252d;
+      --ph-text-secondary: #596b7d;
+      --ph-text-muted: #abb8c7;
+      --ph-bg: #ffffff;
+      --ph-bg-tint: #f3f5fe;
+      --ph-bg-muted: #f5f7f9;
+      --ph-line: rgba(32, 80, 246, 0.18);
+      --ph-line-soft: rgba(32, 80, 246, 0.09);
+    }
+
+    * { box-sizing: border-box; }
+
+    @page {
+      size: A4;
+      margin: 14mm 12mm;
+    }
+
+    body {
+      margin: 0;
+      background: var(--ph-bg);
+      color: var(--ph-text);
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 10pt;
+      line-height: 1.4;
+    }
+
+    h1, h2, h3, p { margin: 0; }
+
+    .header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12mm;
+      padding-bottom: 8mm;
+      border-bottom: 1px solid var(--ph-line);
+      break-inside: avoid;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      font-size: 14pt;
+    }
+
+    .brand-mark {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--ph-blue), var(--ph-cyan));
+    }
+
+    .meta {
+      text-align: right;
+      color: var(--ph-text-secondary);
+      font-size: 8.5pt;
+    }
+
+    .meta strong { color: var(--ph-text); }
+    .meta-date { color: var(--ph-text); font-weight: 600; }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1.35fr 0.65fr;
+      gap: 10mm;
+      align-items: end;
+      padding: 9mm 0 8mm;
+      break-inside: avoid;
+    }
+
+    .kicker {
+      color: var(--ph-blue-dark);
+      font-size: 8pt;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin-top: 5mm;
+      font-size: 22pt;
+      line-height: 1.08;
+      letter-spacing: -0.03em;
+    }
+
+    .hero-subtitle {
+      margin-top: 3mm;
+      max-width: 120mm;
+      color: var(--ph-text-secondary);
+      font-size: 10pt;
+      line-height: 1.5;
+    }
+
+    .sale-range-card {
+      padding: 5mm;
+      border: 1px solid var(--ph-line);
+      border-radius: 14px;
+      background: #fff;
+      box-shadow: 0 10px 24px rgba(32, 80, 246, 0.07);
+    }
+
+    .label {
+      color: var(--ph-text-muted);
+      font-size: 7.5pt;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+    }
+
+    .sale-range {
+      margin-top: 1mm;
+      color: var(--ph-blue);
+      font-size: 19pt;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+    }
+
+    .small-note {
+      margin-top: 1.5mm;
+      color: var(--ph-text-secondary);
+      font-size: 8pt;
+    }
+
+    .small-muted {
+      color: var(--ph-text-muted);
+      font-size: 7.5pt;
+    }
+
+    .section {
+      padding: 7mm 0;
+      border-top: 1px solid var(--ph-line-soft);
+    }
+
+    .section-title {
+      margin-bottom: 3mm;
+      font-size: 12pt;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .property-grid {
+      display: grid;
+      grid-template-columns: 1.35fr 0.65fr;
+      gap: 4mm;
+      margin-bottom: 4mm;
+    }
+
+    .property-grid.compact {
+      grid-template-columns: repeat(4, 1fr);
+      margin-bottom: 0;
+    }
+
+    .card {
+      padding: 4mm;
+      border: 1px solid var(--ph-line);
+      border-radius: 10px;
+      background: #fff;
+      break-inside: avoid;
+    }
+
+    .card-value {
+      margin-top: 1.5mm;
+      font-size: 12pt;
+      font-weight: 700;
+      line-height: 1.25;
+    }
+
+    .card-value.address {
+      font-size: 10.5pt;
+      word-break: break-word;
+    }
+
+    .card-value.mono {
+      font-family: 'SFMono-Regular', Menlo, Consolas, monospace;
+      font-size: 9pt;
+      letter-spacing: 0.01em;
+      word-break: break-word;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(32mm, 1fr));
+      gap: 4mm;
+      padding: 6mm 0;
+      border-top: 1px solid var(--ph-line-soft);
+      break-inside: avoid;
+    }
+
+    .metric-card {
+      padding: 3mm 0;
+      break-inside: avoid;
+    }
+
+    .metric-value {
+      margin-top: 1mm;
+      font-size: 12pt;
+      font-weight: 800;
+      line-height: 1.2;
+    }
+
+    .metric-value.primary { color: var(--ph-blue); }
+    .metric-value.positive { color: var(--ph-emerald); }
+
+    .appreciation {
+      margin-top: 1mm;
+      padding: 5mm;
+      border: 1px solid rgba(15, 139, 95, 0.22);
+      border-radius: 14px;
+      background: var(--ph-emerald-bg);
+      break-inside: avoid;
+    }
+
+    .appreciation-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 6mm;
+      align-items: flex-start;
+    }
+
+    .appreciation-title {
+      font-size: 10.5pt;
+      font-weight: 700;
+    }
+
+    .appreciation-pct {
+      color: var(--ph-emerald);
+      font-size: 20pt;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .appreciation-body {
+      display: grid;
+      grid-template-columns: 1fr 52mm;
+      gap: 5mm;
+      margin-top: 4mm;
+      align-items: start;
+    }
+
+    .mini-metrics {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 3mm;
+    }
+
+    .mini-value {
+      margin-top: 1mm;
+      font-size: 10pt;
+      font-weight: 700;
+    }
+
+    .map {
+      overflow: hidden;
+      border: 1px solid rgba(15, 139, 95, 0.2);
+      border-radius: 10px;
+      background: #fff;
+    }
+
+    .map img {
+      display: block;
+      width: 100%;
+      height: 34mm;
+      object-fit: cover;
+    }
+
+    .map-caption {
+      padding: 2mm 3mm;
+      color: var(--ph-text-muted);
+      font-size: 7.5pt;
+      text-transform: uppercase;
+    }
+
+    .scenario-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4mm;
+      break-inside: avoid;
+    }
+
+    .scenario-card {
+      padding: 4mm;
+      border: 1px solid var(--ph-line);
+      border-radius: 12px;
+      background: #fff;
+      break-inside: avoid;
+    }
+
+    .scenario-title {
+      font-size: 10.5pt;
+      font-weight: 700;
+    }
+
+    .scenario-desc {
+      min-height: 12mm;
+      margin-top: 1.5mm;
+      color: var(--ph-text-secondary);
+      font-size: 8.5pt;
+    }
+
+    .kv {
+      display: grid;
+      gap: 1.5mm;
+      margin-top: 4mm;
+      font-size: 8.5pt;
+    }
+
+    .kv-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 3mm;
+    }
+
+    .kv-row dt { color: var(--ph-text-muted); }
+    .kv-row dd {
+      margin: 0;
+      font-weight: 700;
+      text-align: right;
+    }
+
+    .market-reading {
+      padding: 4mm;
+      border-top: 1px solid var(--ph-line-soft);
+      border-bottom: 1px solid var(--ph-line-soft);
+      background: var(--ph-bg-muted);
+      break-inside: avoid;
+    }
+
+    .market-reading p {
+      margin-top: 1.5mm;
+      color: var(--ph-text-secondary);
+      font-size: 9.5pt;
+    }
+
+    .listing-grid {
+      display: grid;
+      gap: 4mm;
+    }
+
+    .listing-card {
+      display: grid;
+      grid-template-columns: 36mm 1fr;
+      gap: 4mm;
+      padding: 3mm;
+      border: 1px solid var(--ph-line);
+      border-radius: 10px;
+      background: #fff;
+      break-inside: avoid;
+    }
+
+    .listing-photo,
+    .listing-photo-placeholder {
+      width: 36mm;
+      height: 27mm;
+      border-radius: 8px;
+      background: var(--ph-bg-muted);
+    }
+
+    .listing-photo { object-fit: cover; }
+
+    .listing-photo-placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--ph-text-muted);
+      font-size: 8pt;
+      text-align: center;
+    }
+
+    .listing-title {
+      font-weight: 700;
+      line-height: 1.25;
+    }
+
+    .listing-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 2mm;
+      margin-top: 2mm;
+      color: var(--ph-text-secondary);
+      font-size: 8.5pt;
+    }
+
+    .listing-price-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 5mm;
+      align-items: flex-end;
+      margin-top: 2mm;
+    }
+
+    .listing-price {
+      font-size: 12pt;
+      font-weight: 800;
+    }
+
+    .listing-link {
+      color: var(--ph-blue);
+      font-size: 8.5pt;
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .methodology {
+      padding: 5mm;
+      border-left: 3px solid var(--ph-blue);
+      border-radius: 8px;
+      background: var(--ph-bg-muted);
+      color: var(--ph-text-secondary);
+      font-size: 9pt;
+      break-inside: avoid;
+    }
+
+    .methodology strong { color: var(--ph-text); }
+    .methodology ul { margin: 2mm 0 0; padding-left: 5mm; }
+    .methodology li { margin: 1mm 0; }
+
+    .next-step {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 6mm;
+      align-items: center;
+      margin-top: 7mm;
+      padding: 7mm;
+      border-radius: 12px;
+      background: var(--ph-text);
+      color: #fff;
+      break-inside: avoid;
+    }
+
+    .next-step h2 {
+      font-size: 16pt;
+      letter-spacing: -0.02em;
+    }
+
+    .next-step p {
+      margin-top: 2mm;
+      max-width: 130mm;
+      color: rgba(255,255,255,0.76);
+      font-size: 9.5pt;
+      line-height: 1.5;
+    }
+
+    .next-step-cta {
+      display: inline-block;
+      white-space: nowrap;
+      padding: 3.5mm 6mm;
+      border-radius: 999px;
+      background: #fff;
+      color: var(--ph-text);
+      font-size: 9.5pt;
+      font-weight: 800;
+      text-decoration: none;
+    }
+
+    .footer {
+      margin-top: 7mm;
+      padding-top: 4mm;
+      border-top: 1px solid var(--ph-line);
+      color: var(--ph-text-muted);
+      font-size: 8pt;
+      line-height: 1.5;
+    }
+
+    .footer strong { color: var(--ph-text-secondary); }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="brand">
+      <span class="brand-mark"></span>
+      <span>PropHero</span>
+    </div>
+    <div class="meta">
+      <div class="meta-date">{{ generated_at }}</div>
+      <div>{{ report.kicker }}</div>
+      {% if lead %}
+      <div style="margin-top: 2mm;">Para <strong>{{ lead.full_name }}</strong></div>
+      {% endif %}
+    </div>
+  </header>
+
+  <section class="hero">
+    <div>
+      <p class="kicker">{{ report.kicker }}</p>
+      <h1>{{ report.headline }}</h1>
+      <p class="hero-subtitle">{{ report.subtitle }}</p>
+    </div>
+    <aside class="sale-range-card">
+      <div class="label">Rango de venta hoy</div>
+      <div class="sale-range">{{ report.overall_range }}</div>
+      <p class="small-note">Recomendado: <strong>{{ report.recommended_range }}</strong></p>
+      <p class="small-muted">Rangos conservadores · redondeados a €1.000</p>
+    </aside>
+  </section>
+
+  <section class="section">
+    <h2 class="section-title">Datos de la propiedad</h2>
+    <div class="property-grid">
+      <div class="card">
+        <div class="label">Dirección</div>
+        <div class="card-value address">
+          {% if full_address %}{{ full_address }}{% if municipio and municipio not in full_address %}, {{ municipio }}{% endif %}{% else %}—{% endif %}
+        </div>
+      </div>
+      <div class="card">
+        <div class="label">Referencia catastral</div>
+        <div class="card-value mono">{{ cadastral_reference or '—' }}</div>
+      </div>
+    </div>
+    <div class="property-grid compact">
+      <div class="card">
+        <div class="label">Tipo</div>
+        <div class="card-value">{{ property_type or '—' }}</div>
+      </div>
+      <div class="card">
+        <div class="label">Habitaciones</div>
+        <div class="card-value">{{ request_bedrooms if request_bedrooms is not none else '—' }}</div>
+      </div>
+      <div class="card">
+        <div class="label">Baños</div>
+        <div class="card-value">{{ request_bathrooms if request_bathrooms is not none else '—' }}</div>
+      </div>
+      <div class="card">
+        <div class="label">Superficie</div>
+        <div class="card-value">{% if request_m2 %}{{ request_m2 }} m²{% else %}—{% endif %}</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="metric-grid">
+    {% if report.is_coach %}
+    <div class="metric-card">
+      <div class="label">Fecha de compra</div>
+      <div class="metric-value">{{ report.settlement_date }}</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">Total pagado</div>
+      <div class="metric-value primary">{{ report.invested }}</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">€/m² compra</div>
+      <div class="metric-value">{{ report.purchase_ppm2 }}</div>
+    </div>
+    {% endif %}
+    <div class="metric-card">
+      <div class="label">{{ report.current_ppm2_label }}</div>
+      <div class="metric-value">
+        {{ report.current_ppm2 }}{% if report.ppm2_delta %} <span class="small-note">({{ report.ppm2_delta }})</span>{% endif %}
+      </div>
+    </div>
+    <div class="metric-card">
+      <div class="label">{{ report.zone_metric_label }}</div>
+      <div class="metric-value positive">
+        {% if report.is_coach and report.zone_plusvalia != '—' %}
+          {{ report.zone_plusvalia }}{% if report.zone_plusvalia_pct %} <span>({{ report.zone_plusvalia_pct }})</span>{% endif %}
+        {% elif report.is_coach %}
+          {{ report.recommended_gain }}
+        {% elif report.zone_plusvalia_pct %}
+          {{ report.zone_plusvalia_pct }}
+        {% else %}
+          {{ report.recommended_range }}
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  {% if report.appreciation %}
+  <section class="appreciation">
+    <div class="appreciation-head">
+      <div>
+        <p class="appreciation-title">Apreciación de zona desde la compra · {{ report.appreciation.town_name }}</p>
+        <p class="small-note">
+          Mediana €/m² del municipio entre {{ report.appreciation.from_period }} y {{ report.appreciation.to_period }}.
+        </p>
+      </div>
+      <div class="appreciation-pct">{{ report.appreciation.pct }}</div>
+    </div>
+    <div class="appreciation-body">
+      <div>
+        <div class="mini-metrics">
+          <div>
+            <div class="label">€/m² al firmar</div>
+            <div class="mini-value">{{ report.appreciation.from_ppm2 }}</div>
+          </div>
+          <div>
+            <div class="label">€/m² más reciente</div>
+            <div class="mini-value">{{ report.appreciation.to_ppm2 }}</div>
+          </div>
+          <div>
+            <div class="label">Período</div>
+            <div class="mini-value">{{ report.appreciation.months_elapsed }} meses</div>
+          </div>
+          <div>
+            <div class="label">Anualizado</div>
+            <div class="mini-value">{{ report.appreciation.annualized }}</div>
+          </div>
+        </div>
+        {% if report.is_coach and report.zone_plusvalia != '—' %}
+        <p class="small-note" style="margin-top: 4mm;">
+          Aplicado a la inversión de <strong>{{ report.invested }}</strong>, la apreciación de la zona equivale a
+          <strong style="color: var(--ph-emerald);">{{ report.zone_plusvalia }}</strong> de plusvalía teórica
+          si la propiedad siguió la mediana del municipio.
+        </p>
+        {% endif %}
+      </div>
+      {% if report.map_url %}
+      <figure class="map">
+        <img src="{{ report.map_url }}" alt="Mapa de {{ report.appreciation.town_name }}">
+        <figcaption class="map-caption">{{ report.appreciation.town_name }}</figcaption>
+      </figure>
+      {% endif %}
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="section">
+    <div class="scenario-grid">
+      {% for scenario in report.scenarios %}
+      <article class="scenario-card">
+        <p class="scenario-title">{{ scenario.label }}</p>
+        <p class="scenario-desc">{{ scenario.description }}</p>
+        <dl class="kv">
+          <div class="kv-row">
+            <dt>Rango de salida</dt>
+            <dd>{{ scenario.range }}</dd>
+          </div>
+          {% if report.is_coach %}
+          <div class="kv-row">
+            <dt>Ganancia vs compra</dt>
+            <dd>{{ scenario.gain }}</dd>
+          </div>
+          <div class="kv-row">
+            <dt>ROI</dt>
+            <dd>{{ scenario.roi }}</dd>
+          </div>
+          {% endif %}
+          <div class="kv-row">
+            <dt>Timing</dt>
+            <dd>{{ scenario.timing }}</dd>
+          </div>
+        </dl>
+        <p class="small-muted" style="margin-top: 3mm;">{{ scenario.timing_hint }}</p>
+      </article>
+      {% endfor %}
+    </div>
+    <p class="small-muted" style="margin-top: 3mm;">
+      Los rangos están redondeados a €1.000 para evitar precisión falsa. El tiempo real de venta
+      depende de demanda, estacionalidad y producto.
+    </p>
+  </section>
+
+  <section class="market-reading">
+    <h2 class="section-title" style="margin-bottom: 0;">Lectura de mercado para el cliente</h2>
+    <p>{{ report.market_reading }}</p>
+    <p class="small-muted">Fuente del rango: {{ report.methodology_source }}.</p>
+  </section>
+
+  {% if include_comparables and listings %}
+  <section class="section">
+    <h2 class="section-title">Comparables activos</h2>
+    <p class="small-note" style="margin-bottom: 4mm;">
+      Radio de búsqueda usado: <strong>{{ search_radius_meters }}m</strong> · {{ final_stage_label }}
+    </p>
+    <div class="listing-grid">
+      {% for lst in listings[:5] %}
+      <article class="listing-card">
+        {% if lst.image_url %}
+          <img class="listing-photo" src="{{ lst.image_url }}" alt="{{ lst.title }}">
+        {% else %}
+          <div class="listing-photo-placeholder">Foto no disponible</div>
+        {% endif %}
+        <div>
+          <div class="listing-title">{{ lst.title }}</div>
+          {% if lst.address %}<div class="small-muted" style="margin-top: 1mm;">{{ lst.address }}</div>{% endif %}
+          <div class="listing-meta">
+            <span>{{ lst.m2 or '—' }} m²</span>
+            <span>{{ lst.bedrooms if lst.bedrooms is not none else '—' }} hab</span>
+            <span>{{ lst.bathrooms if lst.bathrooms is not none else '—' }} baños</span>
+            {% if lst.floor %}<span>{{ lst.floor }}</span>{% endif %}
+          </div>
+          <div class="listing-price-row">
+            <div>
+              <div class="listing-price">{{ lst.price | money or '—' }}</div>
+              <div class="small-muted">{{ lst.price_per_m2 | money or '—' }} / m²</div>
+            </div>
+            <a class="listing-link" href="{{ lst.url }}">Ver en Idealista</a>
+          </div>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="section">
+    <div class="methodology">
+      <strong>Cómo calculamos este valor.</strong>
+      {% if estimation_method == 'market_series' %}
+      Anclamos el valor en el €/m² medio del municipio publicado por TF Labs
+      (Sale Price SQM P50, observación más reciente) y lo aplicamos a la superficie del inmueble.
+      {% else %}
+      Buscamos en tiempo real propiedades similares en venta en Idealista a partir de tu dirección,
+      aplicando filtros progresivos de cercanía hasta reunir suficientes comparables.
+      {% endif %}
+      <ul>
+        {% if estimation_method == 'ols_lstsq' %}
+        <li>Aplicamos una regresión lineal multivariable sobre m², habitaciones y baños
+            de los comparables (R² in-sample {{ r_squared_pct }}%, n={{ regression_sample_size }}).</li>
+        {% elif estimation_method == 'market_series' %}
+        <li>Multiplicamos el €/m² zonal real por los m² del inmueble. No usa comparables individuales.</li>
+        {% else %}
+        <li>Calculamos el precio medio por m² de los comparables y lo aplicamos a tu superficie.</li>
+        {% endif %}
+        {% if confidence_method == 'sample_std' %}
+        <li>El rango refleja la dispersión real del mercado en tu zona (±1σ del €/m²).</li>
+        {% else %}
+        <li>El rango usa una heurística (±10%) cuando no hay dispersión suficiente para medir.</li>
+        {% endif %}
+        <li>No sustituye una tasación oficial ni una revisión fiscal/legal personalizada.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="next-step">
+    <div>
+      <h2>¿Quieres aterrizar estos números con un experto?</h2>
+      <p>
+        Agenda una llamada gratuita con el equipo de PropHero para gestionar la desinversión,
+        validar el precio de salida y construir un plan comercial concreto sobre esta propiedad.
+      </p>
+    </div>
+    <a class="next-step-cta" href="{{ booking_url }}">Llamada gratuita con PropHero</a>
+  </section>
+
+  <footer class="footer">
+    <strong>Descargo:</strong> esta valoración es una estimación automatizada basada en datos públicos,
+    referencias de mercado y, cuando aplica, comparables activos. No sustituye a una tasación oficial.
+    <br><br>
+    Generado por <strong>PropHero</strong> · {{ generated_at }}
+  </footer>
+</body>
+</html>
+{#
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
   <title>Valoración PropHero — {{ address }}</title>
   <style>
     /* PropHero brand tokens, inlined for headless PDF rendering. */
@@ -89,6 +847,25 @@
       margin-top: 2mm;
     }
     .lead-line strong { color: var(--ph-text); }
+    .report-kicker {
+      display: inline-block;
+      margin-top: 4mm;
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-size: 8.5pt;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      background: rgba(32, 80, 246, 0.1);
+      color: var(--ph-blue-dark);
+    }
+    .report-subtitle {
+      margin-top: 3mm;
+      font-size: 10.5pt;
+      line-height: 1.5;
+      color: var(--ph-text-secondary);
+      max-width: 130mm;
+    }
 
     /* Hero */
     .hero {
@@ -312,6 +1089,84 @@
     .methodology ul { margin: 2mm 0 0; padding-left: 5mm; }
     .methodology li { margin: 1mm 0; }
 
+    /* Next-step / CTA block */
+    .next-step {
+      margin-top: 8mm;
+      padding: 7mm;
+      border-radius: 12px;
+      background: linear-gradient(135deg, rgba(32, 80, 246, 0.06), rgba(101, 198, 235, 0.10));
+      border: 1px solid var(--ph-line);
+      break-inside: avoid;
+    }
+    .next-step .eyebrow {
+      font-size: 8.5pt;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--ph-blue-dark);
+    }
+    .next-step h2 {
+      margin: 2mm 0 3mm;
+      font-size: 16pt;
+      letter-spacing: -0.02em;
+      color: var(--ph-text);
+    }
+    .next-step p {
+      margin: 0;
+      font-size: 10.5pt;
+      line-height: 1.55;
+      color: var(--ph-text-secondary);
+      max-width: 140mm;
+    }
+    .next-step-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 3mm 6mm;
+      margin: 5mm 0 6mm;
+    }
+    .next-step-item {
+      display: flex;
+      gap: 3mm;
+      align-items: flex-start;
+      font-size: 9.5pt;
+      color: var(--ph-text);
+    }
+    .next-step-item .dot {
+      flex-shrink: 0;
+      width: 6px; height: 6px;
+      margin-top: 6px;
+      border-radius: 50%;
+      background: var(--ph-blue);
+    }
+    .next-step-item strong { display: block; margin-bottom: 1mm; }
+    .next-step-item span.detail {
+      display: block;
+      color: var(--ph-text-secondary);
+      font-size: 9pt;
+      line-height: 1.4;
+    }
+    .next-step-cta-row {
+      display: flex;
+      align-items: center;
+      gap: 5mm;
+      flex-wrap: wrap;
+    }
+    .next-step-cta {
+      display: inline-block;
+      padding: 3.5mm 8mm;
+      border-radius: 999px;
+      background: var(--ph-orange);
+      color: #ffffff;
+      font-weight: 600;
+      font-size: 11pt;
+      text-decoration: none;
+      letter-spacing: 0.01em;
+    }
+    .next-step-cta-note {
+      font-size: 9pt;
+      color: var(--ph-text-secondary);
+    }
+
     /* Footer */
     .footer {
       margin-top: 10mm;
@@ -345,9 +1200,16 @@
     </div>
   </header>
 
+  <span class="report-kicker">Reporte preliminar · Paso 1 de 3</span>
   <h1>Valoración de tu propiedad</h1>
   <p class="lead-line">
     <strong>{{ address }}</strong>{% if municipio %} · {{ municipio }}{% endif %}
+  </p>
+  <p class="report-subtitle">
+    Esta es una primera lectura cuantitativa del mercado para tu inmueble. Te da una
+    referencia honesta del precio, pero <strong style="color: var(--ph-text);">no es
+    todavía tu plan de salida</strong> — ese lo diseñamos juntos en una llamada con un
+    asesor de PropHero.
   </p>
 
   <section class="hero">
@@ -496,19 +1358,83 @@
       <li>El rango es una heurística (±10%) por falta de comparables suficientes para
           medir la dispersión real.</li>
       {% endif %}
-      <li>No incluye ajustes manuales por condición, vistas o piso — esta valoración
-          es un punto de partida cuantitativo, no una tasación profesional.</li>
+      <li>No ajustamos por estado real del inmueble, vistas, planta, reformas,
+          documentación, ni por el momento de mercado en el que decidas vender. Esos
+          factores pueden mover la cifra final un ±10–20% — y son justo los que
+          revisamos en la llamada de estrategia.</li>
     </ul>
+  </section>
+
+  <section class="next-step">
+    <span class="eyebrow">Próximo paso</span>
+    <h2>Diseñá tu plan de salida con un asesor de PropHero</h2>
+    <p>
+      El número que ves arriba es el punto de partida, no la conclusión. En una llamada
+      de 30 minutos con un asesor especializado convertimos esta estimación en una
+      <strong style="color: var(--ph-text);">estrategia de desinversión a medida</strong>:
+      cuándo salir, a qué precio, con qué estructura fiscal y a través de qué canal.
+    </p>
+
+    <div class="next-step-grid">
+      <div class="next-step-item">
+        <span class="dot"></span>
+        <span>
+          <strong>Timing de mercado</strong>
+          <span class="detail">Si tu zona está en ciclo alcista, lateral o de corrección — y qué te conviene esperar o adelantar.</span>
+        </span>
+      </div>
+      <div class="next-step-item">
+        <span class="dot"></span>
+        <span>
+          <strong>Precio de salida y rango de negociación</strong>
+          <span class="detail">Dónde anclar el listado, hasta dónde ceder, y qué descuentos suelen aplicar compradores en tu microzona.</span>
+        </span>
+      </div>
+      <div class="next-step-item">
+        <span class="dot"></span>
+        <span>
+          <strong>Fiscalidad y estructura</strong>
+          <span class="detail">Plusvalía municipal, IRPF, reinversión en vivienda habitual, sociedades patrimoniales — qué aplica a tu caso.</span>
+        </span>
+      </div>
+      <div class="next-step-item">
+        <span class="dot"></span>
+        <span>
+          <strong>Alternativas a la venta directa</strong>
+          <span class="detail">Alquiler, alquiler con opción a compra, permuta, refinanciación o venta entre privados según tu objetivo.</span>
+        </span>
+      </div>
+      <div class="next-step-item">
+        <span class="dot"></span>
+        <span>
+          <strong>Canal y presentación</strong>
+          <span class="detail">Idealista vs red de inversores vs subasta privada, fotografía, home staging y nivel de reforma previa.</span>
+        </span>
+      </div>
+      <div class="next-step-item">
+        <span class="dot"></span>
+        <span>
+          <strong>Plan operativo</strong>
+          <span class="detail">Secuencia de pasos, documentación a preparar y plazos realistas hasta el cierre en notaría.</span>
+        </span>
+      </div>
+    </div>
+
+    <div class="next-step-cta-row">
+      <a class="next-step-cta" href="{{ booking_url }}">Agendar llamada de estrategia</a>
+      <span class="next-step-cta-note">Sin compromiso · 30 min · Online</span>
+    </div>
   </section>
 
   <footer class="footer">
     <strong>Descargo:</strong> esta valoración es una estimación automatizada basada en
-    datos públicos de Idealista. No sustituye a una tasación oficial. Los precios reales
-    de venta pueden variar significativamente según el estado del inmueble, la
-    documentación, la negociación y las condiciones del mercado al momento de la venta.
+    datos públicos de Idealista y referencias de mercado. No sustituye a una tasación
+    oficial ni a asesoramiento fiscal o legal. Su propósito es servir como insumo
+    cuantitativo para la conversación de estrategia con tu asesor PropHero.
     <br><br>
     Generado por <strong>PropHero</strong> · {{ generated_at }}
   </footer>
 
 </body>
 </html>
+#}
