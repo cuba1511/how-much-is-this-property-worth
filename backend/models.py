@@ -584,6 +584,11 @@ class CoachEmailSendRequest(BaseModel):
     to: str = Field(..., min_length=3, max_length=200)
     subject: str = Field(..., min_length=1, max_length=200)
     body: str = Field(..., min_length=1, max_length=10000)
+    valuation_request: Optional[ValuationRequest] = None
+    valuation: Optional[ValuationResponse] = None
+    lead: Optional[LeadInfo] = None
+    transaction: Optional[TransactionDetail] = None
+    include_comparables: bool = True
 
 
 class CoachEmailSendResponse(BaseModel):

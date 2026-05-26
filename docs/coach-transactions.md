@@ -51,6 +51,17 @@ Fetch a single transaction by Airtable record id (`recXXXXXXXX`). Returns
 `TransactionDetail` which extends `TransactionSummary` with the verbatim
 `raw_fields` blob for any column not yet promoted to a typed field.
 
+### `POST /api/coach/transactions/{record_id}/email/send`
+
+Sends the coach-authored client email via Resend. The frontend submits the
+edited message plus the already-computed `ValuationResponse` snapshot; the
+backend re-fetches the Airtable record, renders the same client PDF used by
+the preview, attaches it as `prophero-valoracion-<record_id>.pdf`, then sends
+the email. If `RESEND_TEST_TO` is set, delivery is temporarily routed to that
+test inbox instead of the client address. If `RESEND_API_KEY` is unset, the
+route returns `sent=false` so the UI can exercise the flow locally without
+delivering mail.
+
 ## Airtable field mapping
 
 | Airtable column                                                                          | API field            |
@@ -112,6 +123,9 @@ AIRTABLE_BASE_ID=app...                      # Base id (appears in airtable.com/
 AIRTABLE_TRANSACTIONS_TABLE=Transactions     # Override if the table is renamed
 AIRTABLE_TRANSACTIONS_VIEW=SP - AUM          # Spain-only view; empty = formula fallback
 COACH_ACCESS_PASSWORD=<shared-secret>        # Empty = gate disabled (dev only)
+RESEND_API_KEY=re_...                        # Required for real coach email delivery
+RESEND_FROM_EMAIL=PropHero <noreply@...>     # Must match a verified Resend domain
+RESEND_TEST_TO=salchiwolf@gmail.com          # Optional test override; unset for real clients
 ```
 
 Generate a PAT at <https://airtable.com/create/tokens> with scope

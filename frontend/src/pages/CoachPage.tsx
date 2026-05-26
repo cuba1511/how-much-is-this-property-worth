@@ -1325,6 +1325,10 @@ function CoachClientReportComposer({
         to: to.trim(),
         subject: subject.trim(),
         body: emailBody.trim(),
+        valuation_request: valuationResult.valuation_request,
+        valuation: valuationResult.valuation,
+        transaction,
+        include_comparables: true,
       })
       setMessage(response.message)
     } catch (err) {

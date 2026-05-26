@@ -70,6 +70,8 @@ All knobs live in environment variables (see `.env.example`):
 # Resend — required for actual email delivery
 RESEND_API_KEY=re_xxxxxxxxxxxxxxxxx
 RESEND_FROM_EMAIL="PropHero <noreply@prophero.com>"
+# Optional smoke-test override; remove before sending to real clients
+RESEND_TEST_TO=salchiwolf@gmail.com
 
 # SQLite location (defaults to backend/data/leads.db)
 HV_DB_PATH=/absolute/path/to/leads.db
@@ -82,6 +84,11 @@ HV_API_KEY=...
 returns without sending. The lead and valuation are still persisted and the
 HTTP response is still 200 — useful in dev where we don't want to spam test
 inboxes. The `email_scheduled` field in `LeadResponse` reflects this.
+
+**If `RESEND_TEST_TO` is set**, all emails are delivered to that address while
+the original lead/client recipient is left untouched in the app payloads. Use
+this for smoke tests, then unset it in production so reports go to each
+client's actual email.
 
 ## Resend setup (one-time)
 

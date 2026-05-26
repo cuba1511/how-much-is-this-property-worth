@@ -1078,11 +1078,28 @@ async def send_coach_transaction_email(
     """
     config = _airtable_config()
     try:
-        await get_transaction(config=config, record_id=record_id)
+        transaction = await get_transaction(config=config, record_id=record_id)
+        attachment_bytes: bytes | None = None
+        if payload.valuation and payload.valuation_request:
+            html = render_report_html(
+                valuation=payload.valuation,
+                request_payload=payload.valuation_request.model_dump(mode="json"),
+                lead=payload.lead,
+                transaction=payload.transaction or transaction,
+                include_comparables=payload.include_comparables,
+            )
+            attachment_bytes = await generate_pdf_bytes(html)
+
         sent = await send_custom_email(
             to=payload.to,
             subject=payload.subject,
             body=payload.body,
+            attachment_filename=(
+                f"prophero-valoracion-{record_id}.pdf"
+                if attachment_bytes is not None
+                else None
+            ),
+            attachment_bytes=attachment_bytes,
         )
     except AirtableAPIError as exc:
         if exc.status_code == 404:

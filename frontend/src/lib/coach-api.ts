@@ -57,6 +57,16 @@ export interface CoachEmailSendResponse {
   message: string
 }
 
+export interface CoachEmailSendPayload {
+  to: string
+  subject: string
+  body: string
+  valuation_request?: ValuationRequest
+  valuation?: ValuationResponse
+  transaction?: TransactionDetail
+  include_comparables?: boolean
+}
+
 export type CoachApiErrorCode = 'unauthorized' | 'not_found' | 'network' | 'server'
 
 export class CoachApiError extends Error {
@@ -253,7 +263,7 @@ export async function generateTransactionValuation(
 
 export async function sendTransactionEmail(
   recordId: string,
-  payload: { to: string; subject: string; body: string },
+  payload: CoachEmailSendPayload,
 ): Promise<CoachEmailSendResponse> {
   let res: Response
   try {

@@ -29,6 +29,15 @@ RESEND_API_URL = "https://api.resend.com/emails"
 DEFAULT_BOOKING_URL = "https://prophero.com"
 
 
+def _recipient_for_delivery(actual_to: str) -> str:
+    """Route all mail to a test inbox when RESEND_TEST_TO is set."""
+    test_to = os.environ.get("RESEND_TEST_TO", "").strip()
+    if test_to:
+        logger.info("RESEND_TEST_TO set — routing email for %s to %s", actual_to, test_to)
+        return test_to
+    return actual_to
+
+
 class EmailDeliveryError(Exception):
     """Raised when Resend returns a non-2xx response."""
 
@@ -172,7 +181,7 @@ async def send_valuation_email(
 
     payload = {
         "from": sender,
-        "to": [lead.email],
+        "to": [_recipient_for_delivery(lead.email)],
         "subject": subject,
         "html": _render_email_html(lead, valuation),
         "attachments": [
@@ -207,6 +216,8 @@ async def send_custom_email(
     to: str,
     subject: str,
     body: str,
+    attachment_filename: Optional[str] = None,
+    attachment_bytes: Optional[bytes] = None,
 ) -> bool:
     """Send an editable plain-text/HTML email from the coach interface.
 
@@ -223,11 +234,18 @@ async def send_custom_email(
     html = "<br>".join(html.splitlines())
     payload = {
         "from": sender,
-        "to": [to],
+        "to": [_recipient_for_delivery(to)],
         "subject": subject,
         "text": body,
         "html": f"<div style=\"font-family:Inter,system-ui,sans-serif;line-height:1.6;color:#1e252d;\">{html}</div>",
     }
+    if attachment_filename and attachment_bytes is not None:
+        payload["attachments"] = [
+            {
+                "filename": attachment_filename,
+                "content": base64.b64encode(attachment_bytes).decode("ascii"),
+            }
+        ]
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.post(

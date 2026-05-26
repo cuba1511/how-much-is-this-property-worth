@@ -12,6 +12,7 @@ services:
       BRIGHT_DATA_API_KEY: ${BRIGHT_DATA_API_KEY:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-}
+      RESEND_TEST_TO: ${RESEND_TEST_TO:-}
       HV_API_KEY: ${HV_API_KEY:-}
     volumes:
       - prophero_data:/data
