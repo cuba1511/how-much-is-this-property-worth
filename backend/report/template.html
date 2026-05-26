@@ -282,14 +282,7 @@
       text-transform: uppercase;
     }
 
-    .scenario-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 4mm;
-      break-inside: avoid;
-    }
-
-    .scenario-card {
+    .recommendation-card {
       padding: 4mm;
       border: 1px solid var(--ph-line);
       border-radius: 12px;
@@ -297,13 +290,12 @@
       break-inside: avoid;
     }
 
-    .scenario-title {
+    .recommendation-title {
       font-size: 10.5pt;
       font-weight: 700;
     }
 
-    .scenario-desc {
-      min-height: 12mm;
+    .recommendation-desc {
       margin-top: 1.5mm;
       color: var(--ph-text-secondary);
       font-size: 8.5pt;
@@ -629,38 +621,29 @@
   {% endif %}
 
   <section class="section">
-    <div class="scenario-grid">
-      {% for scenario in report.scenarios %}
-      <article class="scenario-card">
-        <p class="scenario-title">{{ scenario.label }}</p>
-        <p class="scenario-desc">{{ scenario.description }}</p>
-        <dl class="kv">
-          <div class="kv-row">
-            <dt>Rango de salida</dt>
-            <dd>{{ scenario.range }}</dd>
-          </div>
-          {% if report.is_coach %}
-          <div class="kv-row">
-            <dt>Ganancia vs compra</dt>
-            <dd>{{ scenario.gain }}</dd>
-          </div>
-          <div class="kv-row">
-            <dt>ROI</dt>
-            <dd>{{ scenario.roi }}</dd>
-          </div>
-          {% endif %}
-          <div class="kv-row">
-            <dt>Timing</dt>
-            <dd>{{ scenario.timing }}</dd>
-          </div>
-        </dl>
-        <p class="small-muted" style="margin-top: 3mm;">{{ scenario.timing_hint }}</p>
-      </article>
-      {% endfor %}
-    </div>
+    <article class="recommendation-card">
+      <p class="recommendation-title">{{ report.recommendation.label }}</p>
+      <p class="recommendation-desc">{{ report.recommendation.description }}</p>
+      <dl class="kv">
+        <div class="kv-row">
+          <dt>Rango de salida</dt>
+          <dd>{{ report.recommendation.range }}</dd>
+        </div>
+        {% if report.is_coach %}
+        <div class="kv-row">
+          <dt>Ganancia vs compra</dt>
+          <dd>{{ report.recommendation.gain }}</dd>
+        </div>
+        <div class="kv-row">
+          <dt>ROI estimado</dt>
+          <dd>{{ report.recommendation.roi }}</dd>
+        </div>
+        {% endif %}
+      </dl>
+    </article>
     <p class="small-muted" style="margin-top: 3mm;">
-      Los rangos están redondeados a €1.000 para evitar precisión falsa. El tiempo real de venta
-      depende de demanda, estacionalidad y producto.
+      El rango está redondeado a €1.000 para evitar precisión falsa. No estimamos tiempo de venta:
+      dependerá de demanda real, estado del activo, documentación, fiscalidad y negociación.
     </p>
   </section>
 

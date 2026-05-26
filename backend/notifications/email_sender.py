@@ -17,6 +17,7 @@ import base64
 import logging
 import os
 from datetime import date
+from html import escape
 from typing import Optional
 
 import httpx
@@ -89,10 +90,11 @@ def _render_email_html(lead: LeadInfo, valuation: ValuationResponse) -> str:
             <td style="padding:32px;">
               <p style="margin:0 0 8px;font-size:14px;color:#596b7d;">Hola {first_name or lead.full_name},</p>
               <p style="margin:0 0 24px;font-size:14px;line-height:1.6;">
-                Adjuntamos tu valoración preliminar para
+                Soy del equipo de PropHero. Te escribo porque hemos preparado una
+                primera estimación para
                 <strong>{address}</strong>{f", {municipio}" if address != municipio else ""}.
-                Es una primera lectura cuantitativa del mercado — útil como referencia,
-                pero todavía no es tu plan de salida.
+                El informe adjunto resume si tu propiedad podría haber ganado valor
+                y qué rango de salida tendría sentido revisar.
               </p>
 
               <div style="background:#f3f5fe;border:1px solid rgba(32,80,246,0.18);border-radius:12px;padding:24px;text-align:center;">
@@ -103,20 +105,20 @@ def _render_email_html(lead: LeadInfo, valuation: ValuationResponse) -> str:
               </div>
 
               <p style="margin:28px 0 8px;font-size:14px;line-height:1.6;">
-                En el PDF adjunto vas a encontrar los comparables uno por uno, la
-                metodología y el rango de mercado para tu microzona.
+                Todos los datos están en el PDF: criterios usados, comparables,
+                metodología y rango de mercado. Este email es sólo el contexto para
+                que sepas qué mirar primero y por qué puede ser relevante.
               </p>
 
               <div style="margin:24px 0 8px;padding:20px 22px;background:#ffffff;border:1px solid rgba(32,80,246,0.18);border-left:3px solid #2050f6;border-radius:8px;">
                 <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#162eb7;">Próximo paso</div>
                 <p style="margin:6px 0 12px;font-size:15px;font-weight:600;color:#1e252d;line-height:1.4;">
-                  Diseñá tu plan de salida con un asesor de PropHero
+                  Revisá tu posible revalorización con un asesor
                 </p>
                 <p style="margin:0 0 14px;font-size:13px;line-height:1.6;color:#596b7d;">
-                  30 minutos, sin compromiso. Revisamos juntos timing de mercado,
-                  fiscalidad, alternativas a la venta directa (alquiler, permuta,
-                  reinversión) y cuál es el precio de salida realista para tu caso —
-                  no el del algoritmo.
+                  En 30 minutos podemos aterrizar una lectura más precisa: precio
+                  inicial, margen de negociación, timing, fiscalidad y si tiene
+                  sentido capturar plusvalía ahora. Sin compromiso.
                 </p>
                 <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                   <tr>
@@ -129,7 +131,7 @@ def _render_email_html(lead: LeadInfo, valuation: ValuationResponse) -> str:
 
               <p style="margin:24px 0 0;font-size:13px;line-height:1.6;color:#596b7d;">
                 Si preferís, también podés responder este email con tus dudas y te
-                contesta directamente un asesor.
+                contesta directamente el equipo.
               </p>
 
               <p style="margin:28px 0 0;font-size:12px;color:#abb8c7;line-height:1.6;">
@@ -143,6 +145,93 @@ def _render_email_html(lead: LeadInfo, valuation: ValuationResponse) -> str:
           <tr>
             <td style="background:#f5f7f9;padding:16px 32px;text-align:center;font-size:11px;color:#abb8c7;">
               PropHero · Valoración automatizada con datos en tiempo real
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+""".strip()
+
+
+def _split_text_blocks(body: str) -> list[list[str]]:
+    """Split plain text into non-empty blocks separated by blank lines."""
+    blocks: list[list[str]] = []
+    current: list[str] = []
+    for raw_line in body.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        line = raw_line.strip()
+        if not line:
+            if current:
+                blocks.append(current)
+                current = []
+            continue
+        current.append(line)
+    if current:
+        blocks.append(current)
+    return blocks
+
+
+def _looks_like_section_heading(line: str) -> bool:
+    """Coach emails use short, punctuation-free first lines as section titles."""
+    stripped = line.strip()
+    return (
+        len(stripped) <= 80
+        and stripped[-1:] not in {".", ",", ";", ":", "!", "?", ")"}
+        and not stripped.lower().startswith(("hola ", "un saludo", "saludos"))
+    )
+
+
+def _render_lines(lines: list[str]) -> str:
+    return "<br>".join(escape(line) for line in lines)
+
+
+def _render_custom_email_html(body: str) -> str:
+    """Render coach-authored plain text as a readable branded HTML email."""
+    blocks = _split_text_blocks(body)
+    rendered_blocks: list[str] = []
+
+    for index, lines in enumerate(blocks):
+        if len(lines) > 1 and _looks_like_section_heading(lines[0]):
+            rendered_blocks.append(
+                f"""
+                <div style="padding:18px 0;border-top:1px solid #e7edf5;">
+                  <div style="margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#2050f6;">{escape(lines[0])}</div>
+                  <p style="margin:0;font-size:15px;line-height:1.7;color:#344454;">{_render_lines(lines[1:])}</p>
+                </div>
+                """.strip()
+            )
+            continue
+
+        margin_top = "0" if index == 0 else "16px"
+        rendered_blocks.append(
+            f'<p style="margin:{margin_top} 0 0;font-size:15px;line-height:1.7;color:#344454;">{_render_lines(lines)}</p>'
+        )
+
+    content = "\n".join(rendered_blocks)
+    return f"""
+<!DOCTYPE html>
+<html lang="es">
+<body style="margin:0;padding:0;background:#f5f7f9;font-family:Inter,Arial,sans-serif;color:#1e252d;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f5f7f9;padding:28px 14px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="640" style="max-width:640px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e7edf5;">
+          <tr>
+            <td style="padding:22px 28px;border-bottom:1px solid #e7edf5;">
+              <span style="display:inline-block;width:28px;height:28px;border-radius:8px;background:#2050f6;vertical-align:middle;"></span>
+              <span style="font-weight:700;font-size:17px;letter-spacing:-0.01em;margin-left:9px;vertical-align:middle;color:#1e252d;">PropHero</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:28px;">
+              {content}
+            </td>
+          </tr>
+          <tr>
+            <td style="background:#f5f7f9;padding:16px 28px;text-align:center;font-size:12px;color:#8493a5;">
+              PropHero · Informe adjunto en PDF
             </td>
           </tr>
         </table>
@@ -176,7 +265,7 @@ async def send_valuation_email(
 
     sender = os.environ.get("RESEND_FROM_EMAIL", "PropHero <noreply@prophero.com>")
     municipio = valuation.municipio.name
-    subject = f"Tu valoración preliminar PropHero — {municipio}"
+    subject = f"Tu propiedad podría haber ganado valor — {municipio}"
     attachment_name = f"prophero-valoracion-{date.today().isoformat()}.pdf"
 
     payload = {
@@ -230,14 +319,12 @@ async def send_custom_email(
         return False
 
     sender = os.environ.get("RESEND_FROM_EMAIL", "PropHero <noreply@prophero.com>")
-    html = body.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    html = "<br>".join(html.splitlines())
     payload = {
         "from": sender,
         "to": [_recipient_for_delivery(to)],
         "subject": subject,
         "text": body,
-        "html": f"<div style=\"font-family:Inter,system-ui,sans-serif;line-height:1.6;color:#1e252d;\">{html}</div>",
+        "html": _render_custom_email_html(body),
     }
     if attachment_filename and attachment_bytes is not None:
         payload["attachments"] = [

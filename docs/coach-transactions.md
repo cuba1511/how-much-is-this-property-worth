@@ -163,12 +163,14 @@ Generate a PAT at <https://airtable.com/create/tokens> with scope
   TF Labs. This is the variant surfaced as the "Sin comparables" toggle on
   the CoachPage **Generar reporte** card.
 - The coach result view intentionally does **not** render the public valuation
-  dashboard. It renders an investor-facing report: sale range, **plusvalía de
-  zona** (real TF Labs €/m² appreciation since the `Real settlement date`),
-  ganancia al precio recomendado, quick/recommended/aspirational exit
-  scenarios, active comparables, purchase €/m² vs today's zone €/m², and a
-  call-to-action for the coach follow-up. The mocked "real closings" panel was
-  removed in favour of the appreciation block — see
+  dashboard. It renders an investor-facing report: a single conservative
+  recommended sale range, **plusvalía de zona** (real TF Labs €/m² appreciation
+  since the `Real settlement date`), gain/ROI versus purchase at that
+  recommended range, active comparables when enabled, purchase €/m² vs today's
+  zone €/m², and a call-to-action for the coach follow-up. It does not estimate
+  time-to-sale, because that depends on demand, asset condition, documentation,
+  tax position, and negotiation. The mocked "real closings" panel was removed in
+  favour of the appreciation block — see
   [`market-price-series.md`](market-price-series.md).
 
 ## Local dev

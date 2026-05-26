@@ -158,7 +158,7 @@ def test_send_valuation_email_posts_resend_payload(monkeypatch: pytest.MonkeyPat
     payload = call["json"]
     assert payload["from"] == "PropHero <noreply@example.com>"
     assert payload["to"] == ["test@example.com"]
-    assert payload["subject"] == "Tu valoración preliminar PropHero — Madrid"
+    assert payload["subject"] == "Tu propiedad podría haber ganado valor — Madrid"
     assert "Hola Test" in payload["html"]
     assert "350.000 €" in payload["html"]
     assert payload["attachments"][0]["filename"].startswith("prophero-valoracion-")
@@ -207,6 +207,43 @@ def test_send_custom_email_posts_text_and_escaped_html(monkeypatch: pytest.Monke
     assert payload["text"] == "Hola <script>alert(1)</script> & gracias"
     assert "&lt;script&gt;alert(1)&lt;/script&gt; &amp; gracias" in payload["html"]
     assert "<script>" not in payload["html"]
+
+
+def test_send_custom_email_formats_coach_sections_for_gmail(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("RESEND_API_KEY", "re_test")
+    monkeypatch.delenv("RESEND_TEST_TO", raising=False)
+    client = FakeAsyncClient(FakeResponse())
+    monkeypatch.setattr(email_sender.httpx, "AsyncClient", lambda timeout: client)
+
+    body = "\n".join(
+        [
+            "Hola Paola,",
+            "",
+            "El PDF adjunto contiene todos los datos.",
+            "",
+            "Posible revalorización",
+            "Hemos preparado una estimación inicial.",
+            "La ganancia potencial estimada estaría entre 65.770 € y 74.770 €.",
+            "",
+            "Un saludo,",
+            "PropHero",
+        ]
+    )
+
+    asyncio.run(
+        send_custom_email(
+            to="test@example.com",
+            subject="Coach note",
+            body=body,
+        )
+    )
+
+    payload = client.calls[0]["json"]
+    assert payload["text"] == body
+    assert "text-transform:uppercase" in payload["html"]
+    assert "Posible revalorización" in payload["html"]
+    assert "Hemos preparado una estimación inicial.<br>La ganancia potencial" in payload["html"]
+    assert "PropHero · Informe adjunto en PDF" in payload["html"]
 
 
 def test_send_custom_email_can_attach_pdf(monkeypatch: pytest.MonkeyPatch):

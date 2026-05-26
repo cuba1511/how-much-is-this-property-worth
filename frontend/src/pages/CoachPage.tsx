@@ -109,7 +109,7 @@ const REPORT_LOADING_PHASES: ReportLoadingPhase[] = [
     from: 55,
     icon: Calculator,
     label: 'Armando reporte inversor',
-    detail: 'Añadimos escenarios, plusvalía de zona y lectura de mercado para el coach.',
+    detail: 'Añadimos rango conservador, plusvalía de zona y lectura de mercado para el coach.',
   },
 ]
 
@@ -973,7 +973,7 @@ function ReportGenerationFlow({
     },
     {
       label: 'Generar reporte',
-      description: valuationLoading ? 'Calculando mercado y escenarios…' : 'Listo para lanzar la valoración.',
+      description: valuationLoading ? 'Calculando mercado y rango conservador…' : 'Listo para lanzar la valoración.',
       icon: Loader2,
       status: valuationLoading ? 'active' : valuationReady ? 'done' : 'active',
     },
@@ -1170,25 +1170,12 @@ function CoachClientReportComposer({
   const stats = valuationResult.valuation.stats
   const appreciation = valuationResult.valuation.market_appreciation ?? null
   const invested = totalSpent(transaction)
-  const hasComparables = valuationResult.valuation.listings.length > 0
   const isNoScrape = valuationResult.valuation.search_metadata.strategy === 'no_scrape'
 
-  // Mirror the investor-report anchors and ±3% bands so the email reads with
-  // the same ranges the coach just validated on screen.
+  // Mirror the investor-report recommended band so the email matches the
+  // range the coach just validated on screen.
   const recommendedAnchor = stats.estimated_value ?? null
-  const quickAnchor =
-    stats.price_range_low ?? (recommendedAnchor ? Math.round(recommendedAnchor * 0.94) : null)
-  const aspirationalAnchor =
-    stats.price_range_high ?? (recommendedAnchor ? Math.round(recommendedAnchor * 1.04) : null)
-  const quickBand = priceBand(quickAnchor, 0.025)
   const recommendedBand = priceBand(recommendedAnchor, 0.03)
-  const aspirationalBand = priceBand(aspirationalAnchor, 0.025)
-
-  const purchasePpm2 = pricePerM2(invested, valuationResult.valuation_request.m2)
-  const currentPpm2 = appreciation
-    ? Math.round(appreciation.to_eur_per_m2)
-    : pricePerM2(recommendedAnchor, valuationResult.valuation_request.m2) ?? stats.avg_price_per_m2 ?? null
-  const zonePlusvalia = appreciation && invested ? Math.round(invested * appreciation.pct_change) : null
   const recommendedGainLow = capitalGain(recommendedBand.low, invested)
   const recommendedGainHigh = capitalGain(recommendedBand.high, invested)
   const recommendedRoiLow = roiPercent(recommendedGainLow, invested)
@@ -1201,91 +1188,59 @@ function CoachClientReportComposer({
       : null
   const settlementDate = formatDate(transaction.real_settlement_date)
   const defaultTo = transaction.client_email ?? ''
-  const defaultSubject = `Informe de performance PropHero — ${valuationResult.valuation_request.address}`
+  const defaultSubject = `Tu propiedad podría haberse revalorizado — ${valuationResult.valuation_request.address}`
   const dataSourceLine = isNoScrape
     ? 'Fuente del rango: mediana €/m² del municipio (serie pública TF Labs), aplicada a la superficie del inmueble. Sin comparables individuales en este reporte.'
     : 'Fuente del rango: comparables activos en Idealista al momento de la valoración (precio, m², habitaciones y baños).'
   const initialSections: EditableReportSection[] = [
     {
       id: 'summary',
-      title: '1. Resumen ejecutivo',
+      title: 'Posible revalorización',
       body: [
-        `Hemos actualizado la lectura de mercado de ${valuationResult.valuation_request.address}.`,
-        `Estimamos un rango de venta hoy entre ${formatCurrencyRange(quickBand.low, aspirationalBand.high)}, con un rango recomendado de salida de ${formatCurrencyRange(recommendedBand.low, recommendedBand.high)}.`,
-        purchasePpm2 && currentPpm2
-          ? `Compró a ${formatPricePerM2(purchasePpm2)} y la zona hoy se mueve cerca de ${formatPricePerM2(currentPpm2)}.`
-          : null,
-        'Trabajamos en rangos conservadores (redondeados a €1.000) para equilibrar liquidez, negociación esperada y captura de plusvalía.',
+        `Hemos preparado una estimación inicial para ${valuationResult.valuation_request.address}. El dato principal es sencillo: el €/m² de la zona donde compraste ha subido respecto al momento de la compra, y eso apunta a una posible revalorización de tu propiedad.`,
+        recommendedGainLow !== null && recommendedGainHigh !== null
+          ? `Según nuestro rango recomendado de salida, la ganancia potencial estimada estaría entre ${formatCurrencyRange(recommendedGainLow, recommendedGainHigh)}${recommendedRoiText ? ` (ROI ${recommendedRoiText})` : ''}.`
+          : `El informe adjunto estima un rango recomendado de salida de ${formatCurrencyRange(recommendedBand.low, recommendedBand.high)}.`,
       ].filter(Boolean).join('\n'),
     },
     {
       id: 'gain',
-      title: '2. Plusvalía y ganancia estimada',
+      title: 'Cómo lo hemos estimado',
       body: appreciation
         ? [
-            `Apreciación de zona desde la compra · ${appreciation.town_name}: ${formatPercent(appreciation.pct_change * 100)}`,
-            `Mediana €/m² del municipio entre el mes de la firma (${formatPeriod(appreciation.from_period)}) y el último dato disponible (${formatPeriod(appreciation.to_period)}).`,
-            '',
-            `€/m² al firmar: ${formatPricePerM2(Math.round(appreciation.from_eur_per_m2))}`,
-            `€/m² más reciente: ${formatPricePerM2(Math.round(appreciation.to_eur_per_m2))}`,
-            `Período: ${appreciation.months_elapsed} meses`,
-            appreciation.annualized_pct_change !== null
-              ? `Anualizado: ${formatPercent(appreciation.annualized_pct_change * 100)}`
-              : null,
-            '',
-            invested && zonePlusvalia !== null
-              ? `Aplicado a la inversión de ${formatCurrency(invested)}, la apreciación de la zona equivale a ${formatCurrency(zonePlusvalia)} de plusvalía teórica si la propiedad siguió la mediana del municipio.`
-              : null,
-            recommendedGainLow !== null && recommendedGainHigh !== null
-              ? `Ganancia estimada en el rango recomendado: ${formatCurrencyRange(recommendedGainLow, recommendedGainHigh)}${recommendedRoiText ? ` (ROI ${recommendedRoiText})` : ''}.`
-              : null,
+            `La lectura combina la evolución del precio por m² de ${appreciation.town_name} desde la compra (${formatPeriod(appreciation.from_period)} → ${formatPeriod(appreciation.to_period)}), los datos de la operación y el rango de salida que vemos hoy.`,
+            `En el PDF tienes el detalle de criterios, rango recomendado y metodología para revisar la oportunidad con calma.`,
           ]
             .filter((value) => value !== null)
             .join('\n')
         : [
-            transaction.real_settlement_date ? `Fecha de compra: ${settlementDate}.` : null,
-            invested
-              ? `Total pagado: ${formatCurrency(invested)}.`
-              : 'Total pagado: pendiente de confirmar.',
-            purchasePpm2 ? `€/m² de compra: ${formatPricePerM2(purchasePpm2)}.` : null,
-            currentPpm2 ? `€/m² de mercado hoy: ${formatPricePerM2(currentPpm2)}.` : null,
-            recommendedGainLow !== null && recommendedGainHigh !== null
-              ? `Ganancia estimada en el rango recomendado: ${formatCurrencyRange(recommendedGainLow, recommendedGainHigh)}${recommendedRoiText ? ` (ROI ${recommendedRoiText})` : ''}.`
-              : 'Ganancia al rango recomendado: pendiente de confirmar.',
+            transaction.real_settlement_date ? `Tomamos como referencia la fecha de compra (${settlementDate}) y los datos disponibles de la operación.` : null,
+            invested ? `También contrastamos el total pagado (${formatCurrency(invested)}) con el rango de mercado estimado hoy.` : null,
+            `En el PDF tienes el detalle de criterios, rango recomendado y metodología para revisar la oportunidad con calma.`,
           ]
             .filter(Boolean)
             .join('\n'),
     },
     {
-      id: 'scenarios',
-      title: '3. Escenarios de salida',
+      id: 'meaning',
+      title: 'Qué podría significar',
       body: [
-        `Venta rápida: salir entre ${formatCurrencyRange(quickBand.low, quickBand.high)} para generar tracción y acortar el tiempo en mercado.`,
-        `Escenario recomendado: salir entre ${formatCurrencyRange(recommendedBand.low, recommendedBand.high)} para capturar plusvalía manteniendo una salida realista.`,
-        `Escenario aspiracional: testar entre ${formatCurrencyRange(aspirationalBand.low, aspirationalBand.high)} si no hay urgencia por vender.`,
-        '',
-        'Los tiempos exactos de venta dependen de demanda, estacionalidad y producto; los acordamos contigo según la estrategia elegida.',
+        'No es una tasación oficial ni una promesa de venta; es una primera estimación automatizada que indica que puede ser un buen momento para valorar una desinversión.',
+        `Si los números encajan, podrías capturar parte de esa plusvalía y estudiar la compra de otra propiedad con una estrategia más clara.`,
+        `La decisión final dependerá de demanda real, estado del activo, documentación, fiscalidad y margen de negociación.`,
       ].join('\n'),
     },
     {
       id: 'market',
-      title: '4. Lectura de mercado',
+      title: 'Fuente',
       body: [
-        appreciation
-          ? `La zona de ${appreciation.town_name} ha apreciado un ${formatPercent(appreciation.pct_change * 100)} desde la firma (${formatPeriod(appreciation.from_period)} → ${formatPeriod(appreciation.to_period)}).`
-          : null,
-        hasComparables
-          ? 'Los comparables activos en el municipio sostienen el rango propuesto.'
-          : 'Sin comparables individuales, el rango se ancla en la mediana €/m² del municipio publicada por TF Labs.',
-        'La recomendación es definir el precio de salida según prioridad: velocidad de venta o maximización de retorno.',
-        '',
         dataSourceLine,
       ].filter(Boolean).join('\n'),
     },
     {
       id: 'next-step',
-      title: '5. Siguiente paso',
-      body: 'Si quieres, podemos revisar juntos los escenarios y definir una estrategia de salida concreta para decidir precio inicial, margen de negociación y timing.',
+      title: 'Siguiente paso',
+      body: 'Puedes leer el informe adjunto y, si tiene sentido explorarlo, agendar una llamada gratuita con nuestros especialistas. Te ayudaremos a aterrizar una estrategia concreta de desinversión: precio inicial, margen de negociación, timing, fiscalidad, costes y posibles alternativas para reinvertir.',
     },
   ]
 
@@ -1300,7 +1255,9 @@ function CoachClientReportComposer({
   const emailBody = [
     `Hola ${clientName(transaction.transaction_name)},`,
     '',
-    'Te comparto el informe actualizado de performance de tu propiedad:',
+    'Soy del equipo de PropHero. Hemos preparado una estimación inicial con nuestra herramienta y vemos una posible revalorización de tu propiedad.',
+    '',
+    'El punto principal es que el €/m² de la zona donde compraste ha subido desde el momento de la compra. El PDF adjunto incluye el informe completo; te dejo aquí el contexto principal:',
     '',
     ...sections.flatMap((section) => [section.title, section.body, '']),
     'Un saludo,',
@@ -1509,17 +1466,9 @@ function CoachInvestorReport({ transaction, valuationResult }: CoachInvestorRepo
   // requested ranges so the client doesn't read a calculator-precise figure
   // and treat it as a guaranteed asking price.
   const recommendedAnchor = stats.estimated_value ?? null
-  const quickAnchor =
-    stats.price_range_low ?? (recommendedAnchor ? Math.round(recommendedAnchor * 0.94) : null)
-  const aspirationalAnchor =
-    stats.price_range_high ?? (recommendedAnchor ? Math.round(recommendedAnchor * 1.04) : null)
-
-  // ~3% spread around each anchor → tight enough that the three scenario
-  // bands stay distinct, wide enough that the client reads it as a range.
-  // Rounded to €1k so the numbers look coach-curated, not formula-emitted.
-  const quickBand = priceBand(quickAnchor, 0.025)
+  // Keep the client-facing recommendation conservative: one source-backed
+  // range around the valuation anchor, rounded to avoid false precision.
   const recommendedBand = priceBand(recommendedAnchor, 0.03)
-  const aspirationalBand = priceBand(aspirationalAnchor, 0.025)
 
   const purchasePpm2 = pricePerM2(invested, valuationResult.valuation_request.m2)
 
@@ -1572,41 +1521,12 @@ function CoachInvestorReport({ transaction, valuationResult }: CoachInvestorRepo
       ? 'Mock test'
       : 'Live'
 
-  const scenarios = [
-    {
-      label: 'Venta rápida',
-      description: 'Precio agresivo para acelerar interés y reducir tiempo en mercado.',
-      band: quickBand,
-      gainLow: capitalGain(quickBand.low, invested),
-      gainHigh: capitalGain(quickBand.high, invested),
-      roiLow: roiPercent(capitalGain(quickBand.low, invested), invested),
-      roiHigh: roiPercent(capitalGain(quickBand.high, invested), invested),
-      timing: 'Rotación rápida',
-      timingHint: 'Estrategia para minimizar días en mercado.',
-    },
-    {
-      label: 'Recomendado',
-      description: 'Balance entre capturar plusvalía y mantener una salida realista.',
-      band: recommendedBand,
-      gainLow: recommendedGainLow,
-      gainHigh: recommendedGainHigh,
-      roiLow: recommendedRoiLow,
-      roiHigh: recommendedRoiHigh,
-      timing: 'Timing equilibrado',
-      timingHint: 'Punto de partida sugerido al cliente.',
-    },
-    {
-      label: 'Aspiracional',
-      description: 'Para maximizar precio si el cliente puede esperar más.',
-      band: aspirationalBand,
-      gainLow: capitalGain(aspirationalBand.low, invested),
-      gainHigh: capitalGain(aspirationalBand.high, invested),
-      roiLow: roiPercent(capitalGain(aspirationalBand.low, invested), invested),
-      roiHigh: roiPercent(capitalGain(aspirationalBand.high, invested), invested),
-      timing: 'Más tiempo en mercado',
-      timingHint: 'Requiere paciencia y revisión de precio si no hay tracción.',
-    },
-  ]
+  const recommendedRoiDisplay =
+    recommendedRoiLow === null || recommendedRoiHigh === null
+      ? '—'
+      : recommendedRoiLow === recommendedRoiHigh
+        ? formatPercent(recommendedRoiLow)
+        : `${formatPercent(recommendedRoiLow)} – ${formatPercent(recommendedRoiHigh)}`
 
   return (
     <Card className="overflow-hidden border-primary/20">
@@ -1617,23 +1537,23 @@ function CoachInvestorReport({ transaction, valuationResult }: CoachInvestorRepo
         <div className="mt-2 grid gap-lg md:grid-cols-[1.3fr_0.7fr] md:items-end">
           <div>
             <h3 className="text-2xl font-semibold tracking-tight text-ink">
-              Cuánto ha ganado y cómo salir al mercado
+              Estimación conservadora de salida
             </h3>
             <p className="mt-2 max-w-2xl text-sm text-ink-secondary">
-              Este resumen traduce la valoración en plusvalía, rango de salida y
-              escenarios comerciales para que el cliente entienda el retorno de su inversión.
+              Este resumen muestra un único rango recomendado, la fuente del cálculo y
+              la ganancia potencial frente a la compra. No estima tiempos de venta.
             </p>
           </div>
           <div className="rounded-2xl border border-primary/20 bg-white/80 p-md shadow-sm">
-            <p className="text-xs uppercase tracking-wide text-ink-muted">Rango de venta hoy</p>
+            <p className="text-xs uppercase tracking-wide text-ink-muted">Rango recomendado</p>
             <p className="mt-1 text-2xl font-semibold text-primary">
-              {formatCurrencyRange(quickBand.low, aspirationalBand.high)}
+              {formatCurrencyRange(recommendedBand.low, recommendedBand.high)}
             </p>
             <p className="mt-1 text-xs text-ink-secondary">
-              Recomendado: {formatCurrencyRange(recommendedBand.low, recommendedBand.high)}
+              Estimación orientativa, no tasación oficial ni precio garantizado.
             </p>
             <p className="mt-1 text-[11px] text-ink-muted">
-              Rangos conservadores · redondeados a €1.000
+              Redondeado a €1.000 para evitar precisión falsa.
             </p>
           </div>
         </div>
@@ -1765,49 +1685,30 @@ function CoachInvestorReport({ transaction, valuationResult }: CoachInvestorRepo
       )}
 
       <div className="border-t border-line/70 px-lg py-md md:px-xl">
-        <div className="grid gap-md md:grid-cols-3">
-          {scenarios.map((scenario) => {
-            const roiDisplay =
-              scenario.roiLow === null || scenario.roiHigh === null
-                ? '—'
-                : scenario.roiLow === scenario.roiHigh
-                  ? formatPercent(scenario.roiLow)
-                  : `${formatPercent(scenario.roiLow)} – ${formatPercent(scenario.roiHigh)}`
-            return (
-              <div key={scenario.label} className="rounded-2xl border border-line bg-surface p-md">
-                <p className="text-sm font-semibold text-ink">{scenario.label}</p>
-                <p className="mt-1 text-xs text-ink-secondary">{scenario.description}</p>
-                <dl className="mt-md grid gap-2 text-sm">
-                  <div className="flex justify-between gap-3">
-                    <dt className="text-ink-muted">Rango de salida</dt>
-                    <dd className="font-semibold text-ink">
-                      {formatCurrencyRange(scenario.band.low, scenario.band.high)}
-                    </dd>
-                  </div>
-                  <div className="flex justify-between gap-3">
-                    <dt className="text-ink-muted">Ganancia vs compra</dt>
-                    <dd className="font-semibold text-ink">
-                      {formatCurrencyRange(scenario.gainLow, scenario.gainHigh)}
-                    </dd>
-                  </div>
-                  <div className="flex justify-between gap-3">
-                    <dt className="text-ink-muted">ROI</dt>
-                    <dd className="font-semibold text-ink">{roiDisplay}</dd>
-                  </div>
-                  <div className="flex justify-between gap-3">
-                    <dt className="text-ink-muted">Timing</dt>
-                    <dd className="font-semibold text-ink">{scenario.timing}</dd>
-                  </div>
-                </dl>
-                <p className="mt-3 text-[11px] leading-snug text-ink-muted">{scenario.timingHint}</p>
-              </div>
-            )
-          })}
+        <div className="rounded-2xl border border-line bg-surface p-md">
+          <p className="text-sm font-semibold text-ink">Rango recomendado conservador</p>
+          <p className="mt-1 text-xs text-ink-secondary">
+            Usamos una banda estrecha alrededor de la valoración base para no presentar alternativas
+            comerciales que no estén respaldados por datos de mercado.
+          </p>
+          <dl className="mt-md grid gap-3 text-sm md:grid-cols-3">
+            <div>
+              <dt className="text-ink-muted">Rango de salida</dt>
+              <dd className="mt-1 font-semibold text-ink">{formatCurrencyRange(recommendedBand.low, recommendedBand.high)}</dd>
+            </div>
+            <div>
+              <dt className="text-ink-muted">Ganancia vs compra</dt>
+              <dd className="mt-1 font-semibold text-ink">{formatCurrencyRange(recommendedGainLow, recommendedGainHigh)}</dd>
+            </div>
+            <div>
+              <dt className="text-ink-muted">ROI estimado</dt>
+              <dd className="mt-1 font-semibold text-ink">{recommendedRoiDisplay}</dd>
+            </div>
+          </dl>
         </div>
         <p className="mt-md text-[11px] leading-relaxed text-ink-muted">
-          Los rangos están redondeados a €1.000 para evitar precisión falsa. El{' '}
-          <strong className="text-ink">tiempo real de venta</strong> depende de demanda, estacionalidad y
-          producto — lo acordamos con el coach según la estrategia elegida, no proviene del modelo.
+          El rango está redondeado a €1.000 para evitar precisión falsa. No estimamos tiempo de venta:
+          dependerá de demanda real, estado del activo, documentación, fiscalidad y negociación.
         </p>
       </div>
 
@@ -1815,11 +1716,11 @@ function CoachInvestorReport({ transaction, valuationResult }: CoachInvestorRepo
         <p className="text-sm font-semibold text-ink">Lectura de mercado para el cliente</p>
         <p className="mt-1 text-sm text-ink-secondary">
           {appreciation && hasComparables
-            ? `La zona de ${appreciation.town_name} ha apreciado un ${formatPercent(appreciation.pct_change * 100)} desde la firma. El rango recomendado (${formatCurrencyRange(recommendedBand.low, recommendedBand.high)}) se construye sobre comparables activos hoy y captura plusvalía sin alejarse del mercado.`
+            ? `La zona de ${appreciation.town_name} ha apreciado un ${formatPercent(appreciation.pct_change * 100)} desde la firma. El rango recomendado (${formatCurrencyRange(recommendedBand.low, recommendedBand.high)}) se construye sobre comparables activos hoy y se presenta como una estimación conservadora.`
             : appreciation
               ? `La zona de ${appreciation.town_name} ha apreciado un ${formatPercent(appreciation.pct_change * 100)} desde la firma. Sin comparables individuales, anclamos el rango recomendado (${formatCurrencyRange(recommendedBand.low, recommendedBand.high)}) en la mediana €/m² del municipio publicada por TF Labs.`
               : hasComparables
-                ? 'El rango recomendado se construye sobre los comparables activos en el municipio. Los tres escenarios cubren liquidez vs maximización de retorno.'
+                ? 'El rango recomendado se construye sobre los comparables activos en el municipio y se presenta como una estimación conservadora, no como precio garantizado.'
                 : 'Sin comparables individuales, anclamos el rango recomendado en la mediana €/m² del municipio (serie TF Labs). Útil como termómetro de zona; menos preciso que con comparables activos.'}
         </p>
         <p className="mt-2 text-[11px] leading-relaxed text-ink-muted">

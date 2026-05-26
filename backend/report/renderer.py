@@ -379,13 +379,11 @@ def _listing_dicts(valuation: ValuationResponse) -> list[dict[str, Any]]:
     return listings
 
 
-def _build_scenario(
+def _build_recommendation(
     *,
     label: str,
     description: str,
     band: dict[str, Optional[int]],
-    timing: str,
-    timing_hint: str,
     invested: Optional[int],
 ) -> dict[str, Any]:
     gain_low = _capital_gain(band["low"], invested)
@@ -404,8 +402,6 @@ def _build_scenario(
             if roi_low == roi_high
             else f"{_format_percent(roi_low)} – {_format_percent(roi_high)}"
         ),
-        "timing": timing,
-        "timing_hint": timing_hint,
     }
 
 
@@ -431,7 +427,7 @@ def _market_reading(
     if has_comparables:
         return (
             "El rango recomendado se construye sobre los comparables activos en el municipio. "
-            "Los tres escenarios cubren liquidez vs maximización de retorno."
+            "Se presenta como estimación conservadora, no como precio garantizado."
         )
     return (
         "Sin comparables individuales, anclamos el rango recomendado en la mediana €/m² "
@@ -459,13 +455,7 @@ def _build_report_context(
     request_m2 = request_payload.get("m2")
     invested = _total_spent(transaction)
     recommended_anchor = stats.estimated_value
-    quick_anchor = stats.price_range_low or (round(recommended_anchor * 0.94) if recommended_anchor else None)
-    aspirational_anchor = stats.price_range_high or (
-        round(recommended_anchor * 1.04) if recommended_anchor else None
-    )
-    quick_band = _price_band(quick_anchor, 0.025)
     recommended_band = _price_band(recommended_anchor, 0.03)
-    aspirational_band = _price_band(aspirational_anchor, 0.025)
 
     purchase_ppm2 = _price_per_m2(invested, request_m2)
     current_ppm2 = (
@@ -499,18 +489,18 @@ def _build_report_context(
         "is_coach": transaction is not None,
         "kicker": "Reporte inversor" if transaction else "Reporte de valoración",
         "headline": (
-            "Cuánto ha ganado y cómo salir al mercado"
+            "Estimación conservadora de salida"
             if transaction
             else "Cuánto vale tu propiedad hoy"
         ),
         "subtitle": (
-            "Este resumen traduce la valoración en plusvalía, rango de salida y escenarios "
-            "comerciales para que el cliente entienda el retorno de su inversión."
+            "Este resumen muestra un único rango recomendado, la fuente del cálculo y "
+            "la ganancia potencial frente a la compra. No estima tiempos de venta."
             if transaction
             else "Esta es una lectura cuantitativa del mercado para tu inmueble: rango de venta, "
-            "evolución de zona y escenarios posibles para salir al mercado."
+            "evolución de zona y una recomendación conservadora para salir al mercado."
         ),
-        "overall_range": _format_currency_range(quick_band["low"], aspirational_band["high"]),
+        "overall_range": recommended_range,
         "recommended_range": recommended_range,
         "settlement_date": _format_date_es(transaction.real_settlement_date if transaction else None),
         "invested": _format_eur_or_dash(invested),
@@ -554,32 +544,15 @@ def _build_report_context(
         if appreciation
         else None,
         "map_html": map_html,
-        "scenarios": [
-            _build_scenario(
-                label="Venta rápida",
-                description="Precio agresivo para acelerar interés y reducir tiempo en mercado.",
-                band=quick_band,
-                invested=invested,
-                timing="Rotación rápida",
-                timing_hint="Estrategia para minimizar días en mercado.",
+        "recommendation": _build_recommendation(
+            label="Rango recomendado conservador",
+            description=(
+                "Usamos una banda estrecha alrededor de la valoración base para no presentar "
+                "alternativas comerciales que no estén respaldadas por datos de mercado."
             ),
-            _build_scenario(
-                label="Recomendado",
-                description="Balance entre capturar plusvalía y mantener una salida realista.",
-                band=recommended_band,
-                invested=invested,
-                timing="Timing equilibrado",
-                timing_hint="Punto de partida sugerido al cliente.",
-            ),
-            _build_scenario(
-                label="Aspiracional",
-                description="Para maximizar precio si el cliente puede esperar más.",
-                band=aspirational_band,
-                invested=invested,
-                timing="Más tiempo en mercado",
-                timing_hint="Requiere paciencia y revisión de precio si no hay tracción.",
-            ),
-        ],
+            band=recommended_band,
+            invested=invested,
+        ),
         "market_reading": _market_reading(
             appreciation_town=appreciation.town_name if appreciation else None,
             appreciation_pct=appreciation_pct,
