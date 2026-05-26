@@ -1240,7 +1240,11 @@ function CoachClientReportComposer({
     {
       id: 'next-step',
       title: 'Siguiente paso',
-      body: 'Puedes leer el informe adjunto y, si tiene sentido explorarlo, agendar una llamada gratuita con nuestros especialistas. Te ayudaremos a aterrizar una estrategia concreta de desinversión: precio inicial, margen de negociación, timing, fiscalidad, costes y posibles alternativas para reinvertir.',
+      body: [
+        'Puedes leer el informe adjunto y, si tiene sentido explorarlo, agendar una llamada gratuita con nuestros especialistas aquí:',
+        'https://prophero.com/contacto',
+        'En esa llamada te ayudaremos a aterrizar una estrategia concreta de desinversión: precio inicial, margen de negociación, timing, fiscalidad, costes y posibles alternativas para reinvertir.',
+      ].join('\n'),
     },
   ]
 
