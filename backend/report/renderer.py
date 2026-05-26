@@ -91,12 +91,23 @@ def render_report_html(
     regression = valuation.regression
     template = _ENV.get_template(TEMPLATE_NAME)
 
+    selected_unit = request_payload.get("selected_cadastral_unit") or {}
+    selected_address = request_payload.get("selected_address") or {}
+    full_address = (
+        selected_address.get("label")
+        or request_payload.get("address")
+        or valuation.municipio.road
+        or ""
+    )
+
     return template.render(
         # Header
         generated_at=(generated_at or datetime.now()).strftime("%d/%m/%Y · %H:%M"),
         lead=lead,
         # Property
         address=valuation.municipio.road or request_payload.get("address") or "",
+        full_address=full_address,
+        cadastral_reference=selected_unit.get("cadastral_reference"),
         municipio=valuation.municipio.name,
         request_m2=request_payload.get("m2"),
         request_bedrooms=request_payload.get("bedrooms"),
