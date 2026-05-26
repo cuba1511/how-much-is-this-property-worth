@@ -7,6 +7,9 @@ loading the Jinja2 template from disk once at import time.
 
 from __future__ import annotations
 
+import base64
+import logging
+import math
 import os
 from datetime import datetime
 from html import escape
@@ -14,9 +17,12 @@ from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import quote
 
+import httpx
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from models import LeadInfo, TransactionDetail, ValuationResponse
+
+logger = logging.getLogger(__name__)
 
 TEMPLATE_DIR = Path(__file__).parent
 TEMPLATE_NAME = "template.html"
@@ -162,54 +168,175 @@ def _total_spent(transaction: Optional[TransactionDetail]) -> Optional[int]:
     return transaction.final_total_price
 
 
-def _static_map_url(lat: Optional[float], lon: Optional[float], label: Optional[str]) -> Optional[str]:
-    if lat is None or lon is None:
-        return None
-    mapbox_token = os.environ.get("MAPBOX_TOKEN")
-    if mapbox_token:
-        return (
-            "https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/"
-            f"pin-s+2050f6({lon},{lat})/{lon},{lat},14/300x180@2x"
-            f"?access_token={quote(mapbox_token)}"
-        )
+MAP_TILE_SIZE = 256
+MAP_DEFAULT_ZOOM = 15
+MAP_HTTP_TIMEOUT_S = 4.0
+MAP_USER_AGENT = "PropHero-Report/1.0 (https://prophero.com; reports@prophero.com)"
+MAP_VIEWPORT_WIDTH = 320
+MAP_VIEWPORT_HEIGHT = 180
 
-    # Self-contained fallback for PDFs. External static-map services often
-    # block headless Chromium or server-side networks, which leaves a broken
-    # image in the generated PDF. This keeps the visual map slot stable.
+
+def _deg_to_global_pixels(lat: float, lon: float, zoom: int) -> tuple[float, float]:
+    """Web Mercator lat/lon → global pixel coords at the given zoom level."""
+    lat_rad = math.radians(lat)
+    n = 2.0 ** zoom
+    x = (lon + 180.0) / 360.0 * n * MAP_TILE_SIZE
+    y = (1.0 - math.asinh(math.tan(lat_rad)) / math.pi) / 2.0 * n * MAP_TILE_SIZE
+    return x, y
+
+
+def _fetch_image_bytes(client: httpx.Client, url: str) -> Optional[bytes]:
+    try:
+        response = client.get(url)
+    except httpx.HTTPError as exc:
+        logger.warning("Map asset fetch failed (%s): %s", url, exc)
+        return None
+    if response.status_code != 200:
+        logger.warning("Map asset non-200 (%s): %s", url, response.status_code)
+        return None
+    content_type = response.headers.get("content-type", "")
+    if not content_type.startswith("image/"):
+        logger.warning("Map asset wrong content-type (%s): %s", url, content_type)
+        return None
+    return response.content
+
+
+def _mapbox_static_image(client: httpx.Client, lat: float, lon: float) -> Optional[bytes]:
+    token = os.environ.get("MAPBOX_TOKEN")
+    if not token:
+        return None
+    url = (
+        "https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/"
+        f"pin-l+2050f6({lon},{lat})/{lon},{lat},{MAP_DEFAULT_ZOOM},0/"
+        f"{MAP_VIEWPORT_WIDTH * 2}x{MAP_VIEWPORT_HEIGHT * 2}@2x"
+        f"?access_token={quote(token)}"
+    )
+    return _fetch_image_bytes(client, url)
+
+
+def _osm_tile_html(
+    client: httpx.Client,
+    lat: float,
+    lon: float,
+    zoom: int = MAP_DEFAULT_ZOOM,
+) -> Optional[str]:
+    """Build a self-contained HTML block: 2×2 OSM tiles with a pin overlay.
+
+    Tiles are downloaded once and inlined as base64 so Chromium never has to
+    reach out to the network when rendering the PDF — that's been the failure
+    mode in every prod attempt so far.
+    """
+    px, py = _deg_to_global_pixels(lat, lon, zoom)
+    cx_tile = int(px // MAP_TILE_SIZE)
+    cy_tile = int(py // MAP_TILE_SIZE)
+    fx = px - cx_tile * MAP_TILE_SIZE  # 0..256, pin within its tile
+    fy = py - cy_tile * MAP_TILE_SIZE
+
+    if fx < MAP_TILE_SIZE / 2:
+        tx_start = cx_tile - 1
+        pin_x_in_grid = MAP_TILE_SIZE + fx
+    else:
+        tx_start = cx_tile
+        pin_x_in_grid = fx
+    if fy < MAP_TILE_SIZE / 2:
+        ty_start = cy_tile - 1
+        pin_y_in_grid = MAP_TILE_SIZE + fy
+    else:
+        ty_start = cy_tile
+        pin_y_in_grid = fy
+
+    tile_imgs: list[str] = []
+    for dy in range(2):
+        for dx in range(2):
+            tx = tx_start + dx
+            ty = ty_start + dy
+            url = f"https://tile.openstreetmap.org/{zoom}/{tx}/{ty}.png"
+            payload = _fetch_image_bytes(client, url)
+            if not payload:
+                return None
+            b64 = base64.b64encode(payload).decode("ascii")
+            tile_imgs.append(
+                f'<img src="data:image/png;base64,{b64}" '
+                f'style="position:absolute;left:{dx * MAP_TILE_SIZE}px;'
+                f'top:{dy * MAP_TILE_SIZE}px;width:{MAP_TILE_SIZE}px;'
+                f'height:{MAP_TILE_SIZE}px;display:block;">'
+            )
+
+    grid_side = MAP_TILE_SIZE * 2
+    offset_x = MAP_VIEWPORT_WIDTH / 2 - pin_x_in_grid
+    offset_y = MAP_VIEWPORT_HEIGHT / 2 - pin_y_in_grid
+
+    pin_svg = (
+        '<svg width="28" height="40" viewBox="0 0 28 40" '
+        'xmlns="http://www.w3.org/2000/svg" '
+        f'style="position:absolute;left:{MAP_VIEWPORT_WIDTH / 2 - 14:.1f}px;'
+        f'top:{MAP_VIEWPORT_HEIGHT / 2 - 38:.1f}px;pointer-events:none;">'
+        '<path d="M14 0C6.3 0 0 6.1 0 13.7 0 24 14 40 14 40s14-16 14-26.3'
+        'C28 6.1 21.7 0 14 0z" fill="#2050f6"/>'
+        '<circle cx="14" cy="14" r="5.5" fill="#ffffff"/>'
+        "</svg>"
+    )
+
+    return (
+        f'<div style="position:relative;width:{MAP_VIEWPORT_WIDTH}px;'
+        f'height:{MAP_VIEWPORT_HEIGHT}px;overflow:hidden;border-radius:10px;'
+        'background:#dee5ea;">'
+        f'<div style="position:absolute;left:{offset_x:.1f}px;'
+        f'top:{offset_y:.1f}px;width:{grid_side}px;height:{grid_side}px;">'
+        f'{"".join(tile_imgs)}</div>{pin_svg}</div>'
+    )
+
+
+def _placeholder_map_html(label: Optional[str], lat: float, lon: float) -> str:
+    """Static SVG used only when every real-map fetch fails."""
     safe_label = escape(label or "Propiedad")
-    svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="600" height="360" viewBox="0 0 600 360">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#eefbf6"/>
-      <stop offset="1" stop-color="#f3f5fe"/>
-    </linearGradient>
-    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#2050f6" flood-opacity="0.18"/>
-    </filter>
-  </defs>
-  <rect width="600" height="360" fill="url(#bg)"/>
-  <g stroke="#c8d7e8" stroke-width="12" stroke-linecap="round" opacity="0.95">
-    <path d="M-40 78 C130 36 206 138 356 92 S590 82 650 42"/>
-    <path d="M-20 292 C95 230 206 250 328 202 S524 188 630 228"/>
-    <path d="M84 -30 C112 64 100 144 154 238 S218 338 210 408"/>
-    <path d="M392 -30 C360 72 382 142 336 222 S292 316 318 404"/>
+    svg = f"""<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 320 180' width='320' height='180'>
+  <rect width='320' height='180' fill='#e7eef5'/>
+  <g stroke='#c4d2e0' stroke-width='6' fill='none'>
+    <path d='M-10 60 C 80 30, 160 100, 260 80 S 330 50, 340 40'/>
+    <path d='M-10 130 C 90 110, 170 140, 260 130 S 330 110, 340 100'/>
   </g>
-  <g stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity="0.9">
-    <path d="M-40 78 C130 36 206 138 356 92 S590 82 650 42"/>
-    <path d="M-20 292 C95 230 206 250 328 202 S524 188 630 228"/>
-    <path d="M84 -30 C112 64 100 144 154 238 S218 338 210 408"/>
-    <path d="M392 -30 C360 72 382 142 336 222 S292 316 318 404"/>
-  </g>
-  <circle cx="310" cy="166" r="68" fill="#ffffff" opacity="0.72"/>
-  <path filter="url(#shadow)" d="M300 92c-42 0-76 34-76 76 0 57 76 132 76 132s76-75 76-132c0-42-34-76-76-76z" fill="#2050f6"/>
-  <circle cx="300" cy="166" r="27" fill="#ffffff"/>
-  <text x="300" y="326" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="700" fill="#1e252d">{safe_label}</text>
-  <text x="300" y="350" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="18" fill="#596b7d">{lat:.5f}, {lon:.5f}</text>
+  <path d='M160 60c-12 0-22 9-22 21 0 16 22 39 22 39s22-23 22-39c0-12-10-21-22-21z' fill='#2050f6'/>
+  <circle cx='160' cy='80' r='8' fill='#ffffff'/>
+  <text x='160' y='162' text-anchor='middle' font-family='Inter,Arial,sans-serif' font-size='12' font-weight='700' fill='#1e252d'>{safe_label}</text>
+  <text x='160' y='176' text-anchor='middle' font-family='Inter,Arial,sans-serif' font-size='9' fill='#596b7d'>{lat:.4f}, {lon:.4f}</text>
 </svg>"""
     return (
-        "data:image/svg+xml;charset=utf-8,"
-        + quote(svg, safe="/:=;,%?&+()'\"")
+        f'<div style="width:{MAP_VIEWPORT_WIDTH}px;height:{MAP_VIEWPORT_HEIGHT}px;'
+        'overflow:hidden;border-radius:10px;">'
+        f"{svg}</div>"
     )
+
+
+def _build_map_html(
+    lat: Optional[float], lon: Optional[float], label: Optional[str]
+) -> Optional[str]:
+    """Return a self-contained HTML map block, or ``None`` if no coords."""
+    if lat is None or lon is None:
+        return None
+    try:
+        with httpx.Client(
+            timeout=MAP_HTTP_TIMEOUT_S,
+            headers={"User-Agent": MAP_USER_AGENT, "Referer": "https://prophero.com"},
+            follow_redirects=True,
+        ) as client:
+            mapbox_png = _mapbox_static_image(client, lat, lon)
+            if mapbox_png:
+                b64 = base64.b64encode(mapbox_png).decode("ascii")
+                return (
+                    f'<img src="data:image/png;base64,{b64}" alt="Mapa de {escape(label or "")}"'
+                    f' style="display:block;width:{MAP_VIEWPORT_WIDTH}px;'
+                    f'height:{MAP_VIEWPORT_HEIGHT}px;object-fit:cover;'
+                    'border-radius:10px;">'
+                )
+
+            tile_html = _osm_tile_html(client, lat, lon)
+            if tile_html:
+                return tile_html
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Map composition failed: %s", exc, exc_info=True)
+
+    return _placeholder_map_html(label, lat, lon)
 
 
 def _listing_dicts(valuation: ValuationResponse) -> list[dict[str, Any]]:
@@ -330,7 +457,8 @@ def _build_report_context(
     selected_address = request_payload.get("selected_address") or {}
     lat = selected_address.get("lat") or valuation.municipio.lat
     lon = selected_address.get("lon") or valuation.municipio.lon
-    map_url = _static_map_url(lat, lon, appreciation.town_name if appreciation else valuation.municipio.name)
+    map_label = appreciation.town_name if appreciation else valuation.municipio.name
+    map_html = _build_map_html(lat, lon, map_label)
     has_comparables = len(valuation.listings) > 0
     no_scrape = valuation.search_metadata.strategy == "no_scrape"
     recommended_range = _format_currency_range(recommended_band["low"], recommended_band["high"])
@@ -394,7 +522,7 @@ def _build_report_context(
         }
         if appreciation
         else None,
-        "map_url": map_url,
+        "map_html": map_html,
         "scenarios": [
             _build_scenario(
                 label="Venta rápida",

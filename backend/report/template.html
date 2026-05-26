@@ -618,9 +618,9 @@
         </p>
         {% endif %}
       </div>
-      {% if report.map_url %}
+      {% if report.map_html %}
       <figure class="map">
-        <img src="{{ report.map_url }}" alt="Mapa de {{ report.appreciation.town_name }}">
+        {{ report.map_html | safe }}
         <figcaption class="map-caption">{{ report.appreciation.town_name }}</figcaption>
       </figure>
       {% endif %}
