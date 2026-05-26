@@ -1793,7 +1793,7 @@ function CoachInvestorReport({ transaction, valuationResult }: CoachInvestorRepo
         </p>
       </div>
 
-      {hasComparables ? (
+      {hasComparables && (
         <div className="border-t border-line/70 px-lg py-lg md:px-xl">
           <div className="flex items-baseline justify-between gap-md">
             <div>
@@ -1838,23 +1838,6 @@ function CoachInvestorReport({ transaction, valuationResult }: CoachInvestorRepo
                 </div>
               </a>
             ))}
-          </div>
-        </div>
-      ) : (
-        <div className="border-t border-line/70 px-lg py-lg md:px-xl">
-          <div className="rounded-2xl border border-line bg-surface-muted p-md">
-            <div className="flex items-baseline justify-between gap-md">
-              <p className="text-sm font-semibold text-ink">Sin comparables individuales</p>
-              <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-                {comparablesBadge}
-              </span>
-            </div>
-            <p className="mt-2 text-sm text-ink-secondary">
-              Este reporte no incluye anuncios activos. El rango proviene de la mediana €/m² del
-              municipio publicada por TF Labs aplicada a los {valuationResult.valuation_request.m2} m²
-              del inmueble. Para incluir comparables individuales, vuelve atrás y selecciona
-              <strong className="text-ink"> Con comparables</strong>.
-            </p>
           </div>
         </div>
       )}
