@@ -26,7 +26,22 @@ logger = logging.getLogger(__name__)
 
 TEMPLATE_DIR = Path(__file__).parent
 TEMPLATE_NAME = "template.html"
+ASSETS_DIR = TEMPLATE_DIR / "assets"
 DEFAULT_BOOKING_URL = "https://prophero.com"
+
+
+def _load_logo_svg() -> str:
+    """Inline the real PropHero wordmark so the PDF doesn't depend on
+    `<img>` fetches resolving inside headless Chromium."""
+    candidate = ASSETS_DIR / "prophero-horizontal-dark.svg"
+    try:
+        return candidate.read_text(encoding="utf-8")
+    except OSError as exc:
+        logger.warning("PropHero logo not found at %s: %s", candidate, exc)
+        return ""
+
+
+PROPHERO_LOGO_SVG = _load_logo_svg()
 SPANISH_MONTHS_SHORT = {
     1: "ene",
     2: "feb",
@@ -172,8 +187,10 @@ MAP_TILE_SIZE = 256
 MAP_DEFAULT_ZOOM = 15
 MAP_HTTP_TIMEOUT_S = 4.0
 MAP_USER_AGENT = "PropHero-Report/1.0 (https://prophero.com; reports@prophero.com)"
-MAP_VIEWPORT_WIDTH = 320
-MAP_VIEWPORT_HEIGHT = 180
+# Slot in the appreciation card is ~52mm × 34mm. Keeping the same aspect ratio
+# so the map fills it without distortion.
+MAP_VIEWPORT_WIDTH = 200
+MAP_VIEWPORT_HEIGHT = 130
 
 
 def _deg_to_global_pixels(lat: float, lon: float, zoom: int) -> tuple[float, float]:
@@ -266,14 +283,26 @@ def _osm_tile_html(
     offset_x = MAP_VIEWPORT_WIDTH / 2 - pin_x_in_grid
     offset_y = MAP_VIEWPORT_HEIGHT / 2 - pin_y_in_grid
 
+    pin_width = 36
+    pin_height = 50
     pin_svg = (
-        '<svg width="28" height="40" viewBox="0 0 28 40" '
+        f'<svg width="{pin_width}" height="{pin_height}" '
+        f'viewBox="0 0 {pin_width} {pin_height}" '
         'xmlns="http://www.w3.org/2000/svg" '
-        f'style="position:absolute;left:{MAP_VIEWPORT_WIDTH / 2 - 14:.1f}px;'
-        f'top:{MAP_VIEWPORT_HEIGHT / 2 - 38:.1f}px;pointer-events:none;">'
-        '<path d="M14 0C6.3 0 0 6.1 0 13.7 0 24 14 40 14 40s14-16 14-26.3'
-        'C28 6.1 21.7 0 14 0z" fill="#2050f6"/>'
-        '<circle cx="14" cy="14" r="5.5" fill="#ffffff"/>'
+        f'style="position:absolute;'
+        f'left:{MAP_VIEWPORT_WIDTH / 2 - pin_width / 2:.1f}px;'
+        f'top:{MAP_VIEWPORT_HEIGHT / 2 - pin_height + 2:.1f}px;'
+        'pointer-events:none;z-index:5;'
+        'filter:drop-shadow(0 3px 4px rgba(15, 23, 42, 0.45));">'
+        # White halo so the pin pops against any tile color.
+        f'<path d="M{pin_width / 2} 1 C 6 1 1 8 1 17 c 0 14 {pin_width / 2 - 1} {pin_height - 3} {pin_width / 2 - 1} {pin_height - 3}'
+        f' s {pin_width / 2 - 1} -{pin_height - 17} {pin_width / 2 - 1} -{pin_height - 17}'
+        f' c 0 -9 -5 -16 -{pin_width / 2 - 1} -16 z" fill="#ffffff" stroke="#ffffff" stroke-width="3"/>'
+        # PropHero blue pin body.
+        f'<path d="M{pin_width / 2} 3 c -7.5 0 -13.5 6 -13.5 13.5 0 12 13.5 {pin_height - 5} 13.5 {pin_height - 5}'
+        f' s 13.5 -{pin_height - 17} 13.5 -{pin_height - 17}'
+        f' c 0 -7.5 -6 -13.5 -13.5 -13.5 z" fill="#2050f6"/>'
+        f'<circle cx="{pin_width / 2}" cy="17" r="5.5" fill="#ffffff"/>'
         "</svg>"
     )
 
@@ -282,7 +311,8 @@ def _osm_tile_html(
         f'height:{MAP_VIEWPORT_HEIGHT}px;overflow:hidden;border-radius:10px;'
         'background:#dee5ea;">'
         f'<div style="position:absolute;left:{offset_x:.1f}px;'
-        f'top:{offset_y:.1f}px;width:{grid_side}px;height:{grid_side}px;">'
+        f'top:{offset_y:.1f}px;width:{grid_side}px;height:{grid_side}px;'
+        'z-index:1;">'
         f'{"".join(tile_imgs)}</div>{pin_svg}</div>'
     )
 
@@ -290,16 +320,17 @@ def _osm_tile_html(
 def _placeholder_map_html(label: Optional[str], lat: float, lon: float) -> str:
     """Static SVG used only when every real-map fetch fails."""
     safe_label = escape(label or "Propiedad")
-    svg = f"""<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 320 180' width='320' height='180'>
-  <rect width='320' height='180' fill='#e7eef5'/>
-  <g stroke='#c4d2e0' stroke-width='6' fill='none'>
-    <path d='M-10 60 C 80 30, 160 100, 260 80 S 330 50, 340 40'/>
-    <path d='M-10 130 C 90 110, 170 140, 260 130 S 330 110, 340 100'/>
+    w, h = MAP_VIEWPORT_WIDTH, MAP_VIEWPORT_HEIGHT
+    svg = f"""<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 {w} {h}' width='{w}' height='{h}'>
+  <rect width='{w}' height='{h}' fill='#e7eef5'/>
+  <g stroke='#c4d2e0' stroke-width='5' fill='none'>
+    <path d='M-10 {h * 0.35:.0f} C 80 {h * 0.2:.0f}, 160 {h * 0.6:.0f}, 260 {h * 0.5:.0f}'/>
+    <path d='M-10 {h * 0.75:.0f} C 90 {h * 0.65:.0f}, 170 {h * 0.85:.0f}, 260 {h * 0.75:.0f}'/>
   </g>
-  <path d='M160 60c-12 0-22 9-22 21 0 16 22 39 22 39s22-23 22-39c0-12-10-21-22-21z' fill='#2050f6'/>
-  <circle cx='160' cy='80' r='8' fill='#ffffff'/>
-  <text x='160' y='162' text-anchor='middle' font-family='Inter,Arial,sans-serif' font-size='12' font-weight='700' fill='#1e252d'>{safe_label}</text>
-  <text x='160' y='176' text-anchor='middle' font-family='Inter,Arial,sans-serif' font-size='9' fill='#596b7d'>{lat:.4f}, {lon:.4f}</text>
+  <path d='M{w / 2:.0f} {h * 0.32:.0f}c-9 0-16 7-16 16 0 12 16 27 16 27s16-15 16-27c0-9-7-16-16-16z' fill='#2050f6' stroke='#ffffff' stroke-width='2.5'/>
+  <circle cx='{w / 2:.0f}' cy='{h * 0.43:.0f}' r='5' fill='#ffffff'/>
+  <text x='{w / 2:.0f}' y='{h - 16:.0f}' text-anchor='middle' font-family='Inter,Arial,sans-serif' font-size='11' font-weight='700' fill='#1e252d'>{safe_label}</text>
+  <text x='{w / 2:.0f}' y='{h - 4:.0f}' text-anchor='middle' font-family='Inter,Arial,sans-serif' font-size='8' fill='#596b7d'>{lat:.4f}, {lon:.4f}</text>
 </svg>"""
     return (
         f'<div style="width:{MAP_VIEWPORT_WIDTH}px;height:{MAP_VIEWPORT_HEIGHT}px;'
@@ -616,6 +647,7 @@ def render_report_html(
         generated_at=(generated_at or datetime.now()).strftime("%d/%m/%Y · %H:%M"),
         lead=lead,
         booking_url=booking_url,
+        prophero_logo_svg=PROPHERO_LOGO_SVG,
         report=report,
         # Property
         address=valuation.municipio.road or request_payload.get("address") or "",
