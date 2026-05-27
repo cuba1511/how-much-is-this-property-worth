@@ -10,17 +10,31 @@ from airtable.client import (
     AirtableConfig,
     AirtableConfigError,
 )
+from airtable.team_profiles import (
+    TeamProfile,
+    get_team_profiles,
+    resolve_profile,
+    resolve_profiles,
+)
 from airtable.transactions import (
+    enrich_with_coach_owners,
     get_transaction,
     get_transaction_for_valuation,
     search_transactions,
+    search_transactions_page,
 )
 
 __all__ = [
     "AirtableAPIError",
     "AirtableConfig",
     "AirtableConfigError",
+    "TeamProfile",
+    "enrich_with_coach_owners",
+    "get_team_profiles",
     "get_transaction",
     "get_transaction_for_valuation",
+    "resolve_profile",
+    "resolve_profiles",
     "search_transactions",
+    "search_transactions_page",
 ]

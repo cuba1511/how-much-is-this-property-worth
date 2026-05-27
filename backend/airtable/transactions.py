@@ -51,7 +51,9 @@ from airtable.client import (
     AirtableConfig,
     get_record,
     list_records,
+    list_records_page,
 )
+from airtable.team_profiles import resolve_profiles
 from models import TransactionDetail, TransactionSummary
 
 logger = logging.getLogger(__name__)
@@ -109,6 +111,11 @@ FIELDS_TOWN_RECORD_ID = [
     "Town (from Properties)",
     "Towns (from Properties)",
 ]
+# Coach ownership. Both columns are `multipleLookupValues` that return record
+# IDs from the `Team Profiles` table; the human-readable name is resolved by
+# `airtable/team_profiles.py` against a cached Team Profiles snapshot.
+FIELDS_COACH = ["Coach"]
+FIELDS_ACCOUNT_MANAGER = ["Account Manager"]
 
 LIST_FIELDS: Optional[list[str]] = None
 VALUATION_FIELDS: list[str] = [
@@ -137,6 +144,8 @@ VALUATION_FIELDS: list[str] = [
     *FIELDS_FINAL_TOTAL_PRICE,
     *FIELDS_REAL_SETTLEMENT_DATE,
     *FIELDS_TOWN_RECORD_ID,
+    *FIELDS_COACH,
+    *FIELDS_ACCOUNT_MANAGER,
 ]
 
 
@@ -195,6 +204,12 @@ def _get_str_any(fields: dict[str, Any], keys: list[str]) -> Optional[str]:
         if value is not None:
             return value
     return None
+
+
+def _price_per_m2(total: Optional[int], m2: Optional[int]) -> Optional[int]:
+    if not total or not m2:
+        return None
+    return round(total / m2)
 
 
 def _dedupe(values: list[str]) -> list[str]:
@@ -262,6 +277,8 @@ def _build_search_formula(query: str) -> str:
 
 def _summary_from_record(record: dict[str, Any]) -> TransactionSummary:
     fields = record.get("fields", {}) or {}
+    landsize_m2 = _get_int(fields, FIELD_LANDSIZE)
+    final_total_price = _get_int_any(fields, FIELDS_FINAL_TOTAL_PRICE)
     return TransactionSummary(
         id=record["id"],
         transaction_name=_get_str(fields, FIELD_TRANSACTION_NAME) or record["id"],
@@ -271,7 +288,7 @@ def _summary_from_record(record: dict[str, Any]) -> TransactionSummary:
         type=_get_str(fields, FIELD_TYPE),
         bedrooms=_get_int(fields, FIELD_BEDS),
         bathrooms=_get_int(fields, FIELD_BATHS),
-        landsize_m2=_get_int(fields, FIELD_LANDSIZE),
+        landsize_m2=landsize_m2,
         created_at=_get_str(fields, FIELD_CREATED_AT),
         price=_get_int(fields, FIELD_PRICE),
         final_reno_cost=_get_int(fields, FIELD_FINAL_RENO_COST),
@@ -286,9 +303,12 @@ def _summary_from_record(record: dict[str, Any]) -> TransactionSummary:
         insurance=_get_int(fields, FIELD_INSURANCE),
         council_rate=_get_int(fields, FIELD_COUNCIL_RATE),
         service_charges=_get_int(fields, FIELD_SERVICE_CHARGES),
-        final_total_price=_get_int_any(fields, FIELDS_FINAL_TOTAL_PRICE),
+        final_total_price=final_total_price,
+        purchase_eur_per_m2=_price_per_m2(final_total_price, landsize_m2),
         real_settlement_date=_get_str_any(fields, FIELDS_REAL_SETTLEMENT_DATE),
         town_record_id=_get_str_any(fields, FIELDS_TOWN_RECORD_ID),
+        coach_id=_get_str_any(fields, FIELDS_COACH),
+        account_manager_id=_get_str_any(fields, FIELDS_ACCOUNT_MANAGER),
     )
 
 
@@ -299,6 +319,41 @@ def _detail_from_record(record: dict[str, Any]) -> TransactionDetail:
         **summary.model_dump(),
         raw_fields=fields,
     )
+
+
+async def enrich_with_coach_owners(
+    *,
+    config: AirtableConfig,
+    transactions: list[TransactionSummary],
+) -> list[TransactionSummary]:
+    """Resolve `coach_id` / `account_manager_id` to readable names on each row.
+
+    The Team Profiles cache is fetched once (and only once per TTL) so this
+    is essentially free even for the full coach worklist.
+    """
+    if not transactions:
+        return transactions
+    ids = [tx.coach_id for tx in transactions] + [tx.account_manager_id for tx in transactions]
+    profiles = await resolve_profiles(config=config, record_ids=ids)
+    if not profiles:
+        return transactions
+    enriched: list[TransactionSummary] = []
+    for tx in transactions:
+        coach = profiles.get(tx.coach_id) if tx.coach_id else None
+        manager = profiles.get(tx.account_manager_id) if tx.account_manager_id else None
+        if coach is None and manager is None:
+            enriched.append(tx)
+            continue
+        enriched.append(
+            tx.model_copy(
+                update={
+                    "coach_name": coach.name if coach else tx.coach_name,
+                    "coach_email": coach.email if coach else tx.coach_email,
+                    "account_manager_name": manager.name if manager else tx.account_manager_name,
+                }
+            )
+        )
+    return enriched
 
 
 async def search_transactions(
@@ -328,6 +383,30 @@ async def search_transactions(
     )
 
     return [_summary_from_record(r) for r in records]
+
+
+async def search_transactions_page(
+    *,
+    config: AirtableConfig,
+    query: str,
+    page_size: int = 100,
+    offset: Optional[str] = None,
+) -> tuple[list[TransactionSummary], Optional[str]]:
+    """Server-side search returning one Airtable page plus next offset."""
+    sort_clause = [{"field": FIELD_CREATED_AT, "direction": "asc"}]
+    view = _view_name()
+    formula = _build_search_formula(query.strip()) if query.strip() else _base_filter_formula()
+    records, next_offset = await list_records_page(
+        config=config,
+        table=_table_name(),
+        view=view,
+        filter_formula=formula,
+        fields=LIST_FIELDS,
+        page_size=page_size,
+        offset=offset,
+        sort=sort_clause,
+    )
+    return [_summary_from_record(r) for r in records], next_offset
 
 
 async def get_transaction(
@@ -390,7 +469,9 @@ async def get_transaction_for_valuation(
 
 __all__ = [
     "AirtableAPIError",
+    "enrich_with_coach_owners",
     "search_transactions",
+    "search_transactions_page",
     "get_transaction",
     "get_transaction_for_valuation",
 ]

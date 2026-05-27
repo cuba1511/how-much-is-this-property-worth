@@ -183,6 +183,14 @@ def _total_spent(transaction: Optional[TransactionDetail]) -> Optional[int]:
     return transaction.final_total_price
 
 
+def _purchase_eur_per_m2(
+    transaction: Optional[TransactionDetail], request_m2: Optional[int]
+) -> Optional[int]:
+    if transaction is not None and transaction.purchase_eur_per_m2 is not None:
+        return transaction.purchase_eur_per_m2
+    return _price_per_m2(_total_spent(transaction), request_m2)
+
+
 MAP_TILE_SIZE = 256
 MAP_DEFAULT_ZOOM = 15
 MAP_HTTP_TIMEOUT_S = 4.0
@@ -422,7 +430,9 @@ def _market_reading(
         return (
             f"La zona de {appreciation_town} ha apreciado un {_format_percent(appreciation_pct)} "
             f"desde la firma. Sin comparables individuales, anclamos el rango recomendado "
-            f"({recommended_range}) en la mediana €/m² del municipio publicada por TF Labs."
+            f"({recommended_range}) en TF Labs: datos municipales basados en cierres "
+            "trimestrales de registradores. Al ser una referencia de municipio, la propiedad "
+            "individual puede variar; por eso recomendamos revisarlo en una reunión con un tasador."
         )
     if has_comparables:
         return (
@@ -430,15 +440,19 @@ def _market_reading(
             "Se presenta como estimación conservadora, no como precio garantizado."
         )
     return (
-        "Sin comparables individuales, anclamos el rango recomendado en la mediana €/m² "
-        "del municipio (serie TF Labs). Útil como termómetro de zona; menos preciso que "
-        "con comparables activos."
+        "Sin comparables individuales, anclamos el rango recomendado en TF Labs: datos "
+        "municipales basados en cierres trimestrales de registradores. Al ser una referencia "
+        "de municipio, la propiedad individual puede variar; por eso recomendamos revisarlo "
+        "en una reunión con un tasador."
     )
 
 
 def _methodology_source(stats_method: Optional[str], no_scrape: bool) -> str:
     if no_scrape:
-        return "mediana €/m² del municipio (serie pública TF Labs) aplicada a la superficie del inmueble"
+        return (
+            "TF Labs, serie municipal basada en cierres trimestrales de registradores, "
+            "aplicada a la superficie del inmueble"
+        )
     if stats_method == "ols_lstsq":
         return "regresión sobre comparables activos en Idealista (precio, m², habitaciones, baños)"
     return "mediana €/m² de comparables activos en Idealista aplicada a la superficie del inmueble"
@@ -457,16 +471,14 @@ def _build_report_context(
     recommended_anchor = stats.estimated_value
     recommended_band = _price_band(recommended_anchor, 0.03)
 
-    purchase_ppm2 = _price_per_m2(invested, request_m2)
+    purchase_ppm2 = _purchase_eur_per_m2(transaction, request_m2)
     current_ppm2 = (
         round(appreciation.to_eur_per_m2)
         if appreciation
         else _price_per_m2(recommended_anchor, request_m2) or stats.avg_price_per_m2
     )
     ppm2_delta_pct = (
-        appreciation.pct_change * 100
-        if appreciation
-        else ((current_ppm2 - purchase_ppm2) / purchase_ppm2) * 100
+        ((current_ppm2 - purchase_ppm2) / purchase_ppm2) * 100
         if current_ppm2 and purchase_ppm2
         else None
     )
@@ -532,6 +544,7 @@ def _build_report_context(
             "pct": _format_percent(appreciation_pct),
             "from_period": _format_period(appreciation.from_period),
             "to_period": _format_period(appreciation.to_period),
+            "purchase_ppm2": _format_price_per_m2(purchase_ppm2),
             "from_ppm2": _format_price_per_m2(round(appreciation.from_eur_per_m2)),
             "to_ppm2": _format_price_per_m2(round(appreciation.to_eur_per_m2)),
             "months_elapsed": appreciation.months_elapsed,

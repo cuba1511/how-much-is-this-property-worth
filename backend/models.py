@@ -538,6 +538,13 @@ class TransactionSummary(BaseModel):
             "used as the amount the client paid."
         ),
     )
+    purchase_eur_per_m2: Optional[int] = Field(
+        None,
+        description=(
+            "Initial acquisition €/m², computed as `final_total_price / landsize_m2`. "
+            "This is the client's actual paid basis, not the municipal TF Labs median."
+        ),
+    )
     real_settlement_date: Optional[str] = Field(
         None,
         description=(
@@ -551,6 +558,59 @@ class TransactionSummary(BaseModel):
             "Airtable record id for the linked Town (from Properties). When "
             "present, the price-series layer resolves the municipality "
             "directly instead of falling back to the geocoder's name match."
+        ),
+    )
+    coach_id: Optional[str] = Field(
+        None,
+        description=(
+            "Airtable record id of the coach assigned to this transaction "
+            "(resolved via the `Coach` lookup → `Team Profiles` table)."
+        ),
+    )
+    coach_name: Optional[str] = Field(
+        None,
+        description="Human-readable name of the coach owner.",
+    )
+    coach_email: Optional[str] = Field(None, description="Coach owner's email.")
+    account_manager_id: Optional[str] = Field(
+        None,
+        description="Airtable record id of the Account Manager linked to this transaction.",
+    )
+    account_manager_name: Optional[str] = Field(
+        None, description="Human-readable name of the account manager."
+    )
+    appreciation_pct: Optional[float] = Field(
+        None,
+        description=(
+            "Pre-computed zone appreciation between the settlement date and the "
+            "latest TF Labs observation, as a decimal (e.g. 0.124 = +12.4%). "
+            "Shown as market context alongside the valuation anchor."
+        ),
+    )
+    appreciation_from_period: Optional[str] = Field(
+        None, description="YYYY-MM of the baseline used for `appreciation_pct`."
+    )
+    appreciation_to_period: Optional[str] = Field(
+        None, description="YYYY-MM of the most recent observation."
+    )
+    appreciation_town_name: Optional[str] = Field(
+        None,
+        description="Resolved municipality name from the TF Labs series. "
+        "Useful for tooltips when `town_record_id` was filled but the name was not.",
+    )
+    estimated_current_value: Optional[int] = Field(
+        None,
+        description=(
+            "Pre-computed estimate of today's value, in EUR: "
+            "latest TF Labs municipal €/m2 multiplied by `landsize_m2`. "
+            "Rounded to the nearest €1.000 to match the no-scrape PDF."
+        ),
+    )
+    capital_gain: Optional[int] = Field(
+        None,
+        description=(
+            "Pre-computed capital gain in EUR (estimated_current_value − final_total_price). "
+            "Drives the 'capital gain ↑' sort in the coach list."
         ),
     )
 
@@ -568,6 +628,20 @@ class TransactionDetail(TransactionSummary):
             "are kept as arrays here — only the typed shortcuts above are flattened."
         ),
     )
+
+
+class TransactionSearchResponse(BaseModel):
+    """One paginated page of coach transactions.
+
+    Airtable pagination is cursor-based. `next_offset` is an opaque token that
+    callers pass back to `/api/coach/transactions?offset=...` to load the next
+    page. When `next_offset` is null, all matching transactions have been read.
+    """
+
+    records: list[TransactionSummary]
+    next_offset: Optional[str] = None
+    page_size: int
+    has_more: bool = False
 
 
 class CoachTransactionValuationResponse(BaseModel):
@@ -594,6 +668,85 @@ class CoachEmailSendRequest(BaseModel):
 class CoachEmailSendResponse(BaseModel):
     sent: bool
     message: str
+
+
+class CoachAutoEmailPreviewResponse(BaseModel):
+    """Generated draft for the bulk-review flow before any email is sent."""
+
+    transaction_id: str
+    transaction: TransactionDetail
+    valuation_request: ValuationRequest
+    valuation: ValuationResponse
+    client_email: Optional[str] = Field(
+        None, description="Client email taken from the Airtable transaction."
+    )
+    delivered_to: Optional[str] = Field(
+        None,
+        description=(
+            "Email address that would receive the message. When RESEND_TEST_TO "
+            "is set this is the test inbox, not the client's."
+        ),
+    )
+    subject: str
+    body: str
+    appreciation_pct: Optional[float] = Field(
+        None,
+        description="Zone appreciation used in the auto-email, decimal (e.g. 0.124).",
+    )
+    capital_gain: Optional[int] = Field(
+        None,
+        description="Capital gain at the mid-point of the recommended sale band, in EUR.",
+    )
+    estimated_value: Optional[int] = Field(
+        None,
+        description="Headline estimated value used in the email, in EUR (rounded).",
+    )
+    review_warning: Optional[str] = Field(
+        None,
+        description="Human-readable warning for drafts that need manual review.",
+    )
+
+
+class CoachAutoEmailResponse(BaseModel):
+    """Outcome of a single auto-send call in the bulk flow.
+
+    The frontend fans this endpoint out N times in parallel from the coach
+    list, so each response is scoped to one transaction and includes enough
+    context to render per-item progress (recipient, subject, headline figures).
+    """
+
+    transaction_id: str
+    sent: bool
+    skipped_reason: Optional[str] = Field(
+        None,
+        description=(
+            "When ``sent=false`` and the call did not raise, this explains why "
+            "(e.g. RESEND_API_KEY not configured, missing settlement date)."
+        ),
+    )
+    delivered_to: Optional[str] = Field(
+        None,
+        description=(
+            "Email address the message was actually delivered to. When "
+            "RESEND_TEST_TO is set this is the test inbox, not the client's."
+        ),
+    )
+    client_email: Optional[str] = Field(
+        None, description="Client email taken from the Airtable transaction."
+    )
+    subject: str
+    appreciation_pct: Optional[float] = Field(
+        None,
+        description="Zone appreciation used in the auto-email, decimal (e.g. 0.124).",
+    )
+    capital_gain: Optional[int] = Field(
+        None,
+        description="Capital gain at the mid-point of the recommended sale band, in EUR.",
+    )
+    estimated_value: Optional[int] = Field(
+        None,
+        description="Headline estimated value used in the email, in EUR (rounded).",
+    )
 
 
 class SimpleValuationResponse(BaseModel):

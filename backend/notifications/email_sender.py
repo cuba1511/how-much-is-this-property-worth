@@ -62,89 +62,77 @@ def _render_email_html(lead: LeadInfo, valuation: ValuationResponse) -> str:
     address = valuation.municipio.road or municipio
     booking_url = os.environ.get("PROPHERO_BOOKING_URL", DEFAULT_BOOKING_URL)
     first_name = lead.full_name.split(" ", 1)[0] if lead.full_name else ""
+    greeting_name = escape(first_name or lead.full_name or "ahí")
+    safe_address = escape(address)
+    safe_municipio = escape(municipio)
+    safe_booking_url = escape(booking_url, quote=True)
+    location = (
+        f"<strong>{safe_address}</strong>{f', {safe_municipio}' if address != municipio else ''}"
+    )
 
     return f"""
 <!DOCTYPE html>
 <html lang="es">
-<body style="margin:0;padding:0;background:#f5f7f9;font-family:Inter,system-ui,sans-serif;color:#1e252d;">
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f5f7f9;padding:32px 16px;">
+<body style="margin:0;padding:0;background:#f7f4ef;font-family:Inter,Arial,sans-serif;color:#1e252d;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f7f4ef;padding:28px 14px;">
     <tr>
       <td align="center">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="560" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(32,80,246,0.06);">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="560" style="max-width:560px;background:#ffffff;border-radius:18px;overflow:hidden;border:1px solid #eadfd2;box-shadow:0 12px 36px rgba(30,37,45,0.08);">
           <tr>
-            <td style="padding:24px 32px;border-bottom:1px solid rgba(32,80,246,0.18);">
+            <td style="padding:22px 28px 0;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
                 <tr>
                   <td>
-                    <span style="display:inline-block;width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#2050f6,#65c6eb);vertical-align:middle;"></span>
+                    <span style="display:inline-block;width:26px;height:26px;border-radius:8px;background:#2050f6;vertical-align:middle;"></span>
                     <span style="font-weight:700;font-size:16px;letter-spacing:-0.01em;margin-left:8px;vertical-align:middle;">PropHero</span>
-                  </td>
-                  <td align="right" style="font-size:11px;color:#abb8c7;letter-spacing:0.04em;text-transform:uppercase;">
-                    Reporte preliminar
                   </td>
                 </tr>
               </table>
             </td>
           </tr>
           <tr>
-            <td style="padding:32px;">
-              <p style="margin:0 0 8px;font-size:14px;color:#596b7d;">Hola {first_name or lead.full_name},</p>
-              <p style="margin:0 0 24px;font-size:14px;line-height:1.6;">
-                Soy del equipo de PropHero. Te escribo porque hemos preparado una
-                primera estimación para
-                <strong>{address}</strong>{f", {municipio}" if address != municipio else ""}.
-                El informe adjunto resume si tu propiedad podría haber ganado valor
-                y qué rango de salida tendría sentido revisar.
+            <td style="padding:26px 28px 30px;">
+              <p style="margin:0 0 14px;font-size:16px;line-height:1.55;color:#1e252d;">Hola {greeting_name},</p>
+              <p style="margin:0 0 18px;font-size:16px;line-height:1.65;color:#344454;">
+                Te dejo una primera lectura de {location}. Hemos preparado el PDF
+                adjunto con los comparables y la metodología por si querés mirarlo con calma.
               </p>
 
-              <div style="background:#f3f5fe;border:1px solid rgba(32,80,246,0.18);border-radius:12px;padding:24px;text-align:center;">
-                <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:#596b7d;font-weight:600;">Valor estimado</div>
-                <div style="font-size:32px;font-weight:700;color:#1e252d;letter-spacing:-0.02em;margin:8px 0 4px;">{estimated}</div>
-                <div style="font-size:13px;color:#596b7d;">Rango: {range_str}</div>
-                <div style="font-size:11px;color:#abb8c7;margin-top:8px;">Basado en {stats.total_comparables} comparables analizados en tiempo real</div>
+              <div style="background:#fff7ed;border:1px solid #ffd3b8;border-radius:14px;padding:22px 20px;margin:0 0 22px;">
+                <div style="font-size:12px;text-transform:uppercase;letter-spacing:0.08em;color:#a14300;font-weight:700;">Estimación inicial</div>
+                <div style="font-size:34px;font-weight:800;color:#1e252d;letter-spacing:-0.03em;margin:8px 0 4px;">{estimated}</div>
+                <div style="font-size:14px;line-height:1.5;color:#596b7d;">Rango orientativo: {range_str}</div>
+                <div style="font-size:12px;color:#8493a5;margin-top:8px;">Basado en {stats.total_comparables} comparables recientes.</div>
               </div>
 
-              <p style="margin:28px 0 8px;font-size:14px;line-height:1.6;">
-                Todos los datos están en el PDF: criterios usados, comparables,
-                metodología y rango de mercado. Este email es sólo el contexto para
-                que sepas qué mirar primero y por qué puede ser relevante.
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 22px;">
+                <tr>
+                  <td align="center" style="background:#f45504;border-radius:14px;box-shadow:0 8px 20px rgba(244,85,4,0.25);">
+                    <a href="{safe_booking_url}" style="display:block;padding:16px 22px;color:#ffffff;text-decoration:none;font-weight:800;font-size:16px;letter-spacing:-0.01em;">Agendar una llamada de 30 min</a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin:0 0 18px;font-size:15px;line-height:1.65;color:#344454;">
+                Si te encaja, en esa llamada vemos si el precio tiene sentido,
+                qué margen de negociación habría y qué pasos conviene dar.
+                Sin compromiso.
               </p>
 
-              <div style="margin:24px 0 8px;padding:20px 22px;background:#ffffff;border:1px solid rgba(32,80,246,0.18);border-left:3px solid #2050f6;border-radius:8px;">
-                <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#162eb7;">Próximo paso</div>
-                <p style="margin:6px 0 12px;font-size:15px;font-weight:600;color:#1e252d;line-height:1.4;">
-                  Revisá tu posible revalorización con un asesor
-                </p>
-                <p style="margin:0 0 14px;font-size:13px;line-height:1.6;color:#596b7d;">
-                  En 30 minutos podemos aterrizar una lectura más precisa: precio
-                  inicial, margen de negociación, timing, fiscalidad y si tiene
-                  sentido capturar plusvalía ahora. Sin compromiso.
-                </p>
-                <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                  <tr>
-                    <td style="background:#f45504;border-radius:999px;">
-                      <a href="{booking_url}" style="display:inline-block;padding:12px 28px;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;">Agendar llamada</a>
-                    </td>
-                  </tr>
-                </table>
-              </div>
-
-              <p style="margin:24px 0 0;font-size:13px;line-height:1.6;color:#596b7d;">
-                Si preferís, también podés responder este email con tus dudas y te
-                contesta directamente el equipo.
+              <p style="margin:0 0 22px;font-size:15px;line-height:1.65;color:#344454;">
+                Y si preferís, respondé a este correo con cualquier duda y te
+                contestamos por aquí.
               </p>
 
-              <p style="margin:28px 0 0;font-size:12px;color:#abb8c7;line-height:1.6;">
+              <p style="margin:0;font-size:12px;color:#9aa8b7;line-height:1.55;">
                 Esta valoración es una estimación automatizada basada en datos públicos.
-                No sustituye a una tasación oficial ni a asesoramiento fiscal o legal —
-                los precios reales pueden variar según condición, documentación, vistas
-                y negociación.
+                No sustituye a una tasación oficial ni a asesoramiento fiscal o legal.
               </p>
             </td>
           </tr>
           <tr>
-            <td style="background:#f5f7f9;padding:16px 32px;text-align:center;font-size:11px;color:#abb8c7;">
-              PropHero · Valoración automatizada con datos en tiempo real
+            <td style="background:#fbfaf8;padding:14px 28px;text-align:center;font-size:12px;color:#9aa8b7;">
+              PropHero · PDF adjunto con tu valoración
             </td>
           </tr>
         </table>

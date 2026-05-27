@@ -2,14 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
+  AlertCircle,
   ArrowLeft,
   BarChart3,
   Building2,
   Calculator,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle2,
   Download,
   Eye,
   FileText,
+  Filter,
   Loader2,
   LogOut,
   MailCheck,
@@ -19,6 +23,8 @@ import {
   Search,
   Send,
   Sparkles,
+  TrendingUp,
+  UserCircle2,
   X,
   type LucideIcon,
 } from 'lucide-react'
@@ -41,6 +47,7 @@ import {
 } from '@/lib/api'
 import { stageRadiusMeters } from '@/lib/results'
 import {
+  CoachAutoEmailPreviewResponse,
   CoachTransactionValuationResponse,
   CoachApiError,
   TransactionDetail,
@@ -49,6 +56,7 @@ import {
   generateTransactionValuation,
   getStoredCoachPassword,
   getTransaction,
+  previewTransactionAutoEmail,
   probeCoachPassword,
   sendTransactionEmail,
   searchTransactions,
@@ -207,6 +215,10 @@ function totalSpent(row: TransactionSummary): number | null {
 function pricePerM2(total: number | null | undefined, m2: number | null | undefined): number | null {
   if (!total || !m2) return null
   return Math.round(total / m2)
+}
+
+function purchasePricePerM2(row: TransactionSummary): number | null {
+  return row.purchase_eur_per_m2 ?? pricePerM2(totalSpent(row), row.landsize_m2)
 }
 
 function acquisitionCosts(row: TransactionSummary): Array<{ label: string; value: number | null }> {
@@ -416,25 +428,133 @@ interface TransactionSearchPanelProps {
   onUnauthorized: () => void
 }
 
+// Sort modes for the coach worklist. Capital-gain / appreciation sorts surface
+// the highest-leverage transactions first; the "oldest" default mirrors the
+// historical worklist behavior so old habits keep working.
+type SortMode =
+  | 'created_asc'
+  | 'created_desc'
+  | 'gain_desc'
+  | 'appreciation_desc'
+  | 'value_desc'
+
+const SORT_OPTIONS: Array<{ value: SortMode; label: string }> = [
+  { value: 'gain_desc', label: 'Capital gain ↓' },
+  { value: 'appreciation_desc', label: 'Revalorización ↓' },
+  { value: 'value_desc', label: 'Valor estimado ↓' },
+  { value: 'created_desc', label: 'Más recientes primero' },
+  { value: 'created_asc', label: 'Más antiguas primero' },
+]
+
+const BULK_CONCURRENCY = 3
+const BULK_MAX_SELECTION = 25
+// How many records we ask Airtable for in one round-trip. The full set is
+// streamed into memory on the first paint of the coach worklist; we then
+// paginate that buffer locally so the navigator stays predictable
+// ("Página X de Y") even while later pages are still in flight.
+const AIRTABLE_FETCH_BATCH_SIZE = 100
+const PAGE_SIZE_OPTIONS = [25, 50, 100] as const
+const DEFAULT_LOCAL_PAGE_SIZE: (typeof PAGE_SIZE_OPTIONS)[number] = 25
+
+function nullableAsNegInfinity(value: number | null | undefined): number {
+  return value === null || value === undefined || Number.isNaN(value)
+    ? Number.NEGATIVE_INFINITY
+    : value
+}
+
+function transactionCreatedTimestamp(row: TransactionSummary): number {
+  if (!row.created_at) return 0
+  const parsed = Date.parse(row.created_at)
+  return Number.isNaN(parsed) ? 0 : parsed
+}
+
+function compareRows(a: TransactionSummary, b: TransactionSummary, mode: SortMode): number {
+  switch (mode) {
+    case 'gain_desc':
+      return nullableAsNegInfinity(b.capital_gain) - nullableAsNegInfinity(a.capital_gain)
+    case 'appreciation_desc':
+      return nullableAsNegInfinity(b.appreciation_pct) - nullableAsNegInfinity(a.appreciation_pct)
+    case 'value_desc':
+      return nullableAsNegInfinity(b.estimated_current_value) - nullableAsNegInfinity(a.estimated_current_value)
+    case 'created_desc':
+      return transactionCreatedTimestamp(b) - transactionCreatedTimestamp(a)
+    case 'created_asc':
+    default:
+      return transactionCreatedTimestamp(a) - transactionCreatedTimestamp(b)
+  }
+}
+
+function average(values: Array<number | null | undefined>): number | null {
+  const finite = values.filter(
+    (value): value is number => value !== null && value !== undefined && Number.isFinite(value),
+  )
+  if (finite.length === 0) return null
+  return finite.reduce((sum, value) => sum + value, 0) / finite.length
+}
+
 function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchPanelProps) {
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
-  const [results, setResults] = useState<TransactionSummary[]>([])
+  // We stream every Airtable batch into a single flat buffer instead of
+  // tracking "pages". Local pagination lives entirely in the UI so the
+  // navigator can show "Página X de Y" the moment the first page lands and
+  // grow Y as the rest of the dataset arrives.
+  const [allRows, setAllRows] = useState<TransactionSummary[]>([])
   const [loading, setLoading] = useState(true)
+  const [streaming, setStreaming] = useState(false)
+  const [allLoaded, setAllLoaded] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Client-side filter + sort state. The whole worklist lives in memory, so
+  // doing this in the browser keeps the UX snappy and lets the coach iterate
+  // filters without re-querying Airtable.
+  const [sortMode, setSortMode] = useState<SortMode>('gain_desc')
+  const [minGain, setMinGain] = useState<string>('')
+  const [coachFilter, setCoachFilter] = useState<string>('all')
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(DEFAULT_LOCAL_PAGE_SIZE)
+  const [currentPageIndex, setCurrentPageIndex] = useState(0)
 
   // Debounce + abort: cancel the previous in-flight request whenever the
   // query changes within SEARCH_DEBOUNCE_MS, so rapid typing never produces
   // a stale "first response wins" race.
   useEffect(() => {
     const controller = new AbortController()
+    let cancelled = false
     const handle = window.setTimeout(async () => {
       setLoading(true)
+      setStreaming(false)
+      setAllLoaded(false)
       setError(null)
+      setAllRows([])
+      setCurrentPageIndex(0)
+      setSelected(new Set())
+      let offset: string | null = null
+      let isFirst = true
       try {
-        const rows = await searchTransactions(query, { signal: controller.signal })
-        setResults(rows)
+        do {
+          const page = await searchTransactions(query, {
+            limit: AIRTABLE_FETCH_BATCH_SIZE,
+            offset,
+            signal: controller.signal,
+          })
+          if (cancelled || controller.signal.aborted) return
+          setAllRows((current) => [...current, ...page.records])
+          if (isFirst) {
+            setLoading(false)
+            isFirst = false
+          }
+          offset = page.next_offset
+          setStreaming(Boolean(offset))
+        } while (offset && !cancelled && !controller.signal.aborted)
+        if (!cancelled) {
+          setAllLoaded(true)
+          setStreaming(false)
+        }
       } catch (err) {
+        if (cancelled) return
         if ((err as Error).name === 'AbortError') return
         if (err instanceof CoachApiError && err.code === 'unauthorized') {
           onUnauthorized()
@@ -444,31 +564,298 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
           err instanceof CoachApiError ? err.message : (err as Error).message
         setError(message || t('coach.search.unknownError'))
       } finally {
-        setLoading(false)
+        if (!cancelled) {
+          setLoading(false)
+          setStreaming(false)
+        }
       }
     }, SEARCH_DEBOUNCE_MS)
     return () => {
+      cancelled = true
       controller.abort()
       window.clearTimeout(handle)
     }
   }, [query, onUnauthorized, t])
 
+  // Distinct coaches discovered in the loaded set. Used both for the filter
+  // dropdown and to drive the "coach owner" badges on each row.
+  const coachOptions = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const row of allRows) {
+      if (row.coach_id && row.coach_name && !map.has(row.coach_id)) {
+        map.set(row.coach_id, row.coach_name)
+      }
+    }
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+  }, [allRows])
+
+  const minGainNumber = useMemo(() => {
+    const parsed = Number(minGain)
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+  }, [minGain])
+
+  const filteredAll = useMemo(() => {
+    return allRows
+      .filter((row) => {
+        if (coachFilter !== 'all' && row.coach_id !== coachFilter) return false
+        if (minGainNumber !== null) {
+          const gain = row.capital_gain ?? Number.NEGATIVE_INFINITY
+          if (gain < minGainNumber) return false
+        }
+        return true
+      })
+      .slice()
+      .sort((a, b) => compareRows(a, b, sortMode))
+  }, [allRows, coachFilter, minGainNumber, sortMode])
+
+  const totalPages = Math.max(1, Math.ceil(filteredAll.length / pageSize))
+  const clampedPageIndex = Math.min(currentPageIndex, totalPages - 1)
+  const filtered = useMemo(
+    () => filteredAll.slice(clampedPageIndex * pageSize, (clampedPageIndex + 1) * pageSize),
+    [filteredAll, clampedPageIndex, pageSize],
+  )
+
+  // Clamp current page when filters/sort shrink the result set.
+  useEffect(() => {
+    if (currentPageIndex !== clampedPageIndex) setCurrentPageIndex(clampedPageIndex)
+  }, [currentPageIndex, clampedPageIndex])
+
+  // Auto-prune the selection whenever the visible set changes — we don't want
+  // a stale id hanging around from a previous filter or a server refresh.
+  useEffect(() => {
+    setSelected((current) => {
+      if (current.size === 0) return current
+      const valid = new Set(filtered.map((row) => row.id))
+      const next = new Set<string>()
+      current.forEach((id) => {
+        if (valid.has(id)) next.add(id)
+      })
+      return next.size === current.size ? current : next
+    })
+  }, [filtered])
+
+  // Headline stats are computed against the full filtered set so they don't
+  // jump around as the coach paginates locally.
+  const summary = useMemo(() => {
+    let positives = 0
+    let totalGain = 0
+    const totalCount = filteredAll.length
+    for (const row of filteredAll) {
+      if (row.capital_gain !== null && row.capital_gain !== undefined) {
+        if (row.capital_gain > 0) positives += 1
+        totalGain += row.capital_gain
+      }
+    }
+    const avgGain = average(filteredAll.map((row) => row.capital_gain))
+    const avgAppreciation = average(filteredAll.map((row) => row.appreciation_pct))
+    const avgEstimatedValue = average(filteredAll.map((row) => row.estimated_current_value))
+    return { totalCount, positives, totalGain, avgGain, avgAppreciation, avgEstimatedValue }
+  }, [filteredAll])
+
+  function handleGoToPage(index: number) {
+    const target = Math.max(0, Math.min(totalPages - 1, index))
+    if (target === currentPageIndex) return
+    setCurrentPageIndex(target)
+    setSelected(new Set())
+  }
+
+  function toggleSelected(id: string) {
+    setSelected((current) => {
+      const next = new Set(current)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        if (next.size >= BULK_MAX_SELECTION) return current
+        next.add(id)
+      }
+      return next
+    })
+  }
+
+  function toggleSelectAllVisible() {
+    setSelected((current) => {
+      const allVisibleSelected = filtered.every((row) => current.has(row.id))
+      if (allVisibleSelected) {
+        const next = new Set(current)
+        for (const row of filtered) next.delete(row.id)
+        return next
+      }
+      const next = new Set(current)
+      for (const row of filtered) {
+        if (next.size >= BULK_MAX_SELECTION) break
+        next.add(row.id)
+      }
+      return next
+    })
+  }
+
+  const selectedRows = useMemo(
+    () => filtered.filter((row) => selected.has(row.id)),
+    [filtered, selected],
+  )
+
+  const allVisibleSelected =
+    filtered.length > 0 && filtered.every((row) => selected.has(row.id))
+
+  const filtersActive = coachFilter !== 'all' || minGainNumber !== null
+
   return (
     <div className="flex flex-col gap-md">
       <Card className="p-md">
-        <div className="flex items-center gap-2 rounded-md border border-line bg-surface px-3 py-2">
-          <Search className="h-4 w-4 text-ink-muted" aria-hidden />
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t('coach.search.placeholder')}
-            aria-label={t('coach.search.placeholder')}
-            className="w-full bg-transparent text-sm text-ink placeholder:text-ink-muted focus:outline-none"
-          />
-          {loading && <Loader2 className="h-4 w-4 animate-spin text-ink-muted" aria-hidden />}
+        <div className="flex flex-col gap-md md:flex-row md:items-center">
+          <div className="flex flex-1 items-center gap-2 rounded-md border border-line bg-surface px-3 py-2">
+            <Search className="h-4 w-4 text-ink-muted" aria-hidden />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t('coach.search.placeholder')}
+              aria-label={t('coach.search.placeholder')}
+              className="w-full bg-transparent text-sm text-ink placeholder:text-ink-muted focus:outline-none"
+            />
+            {loading && <Loader2 className="h-4 w-4 animate-spin text-ink-muted" aria-hidden />}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <label className="sr-only" htmlFor="coach-sort">
+              Ordenar
+            </label>
+            <select
+              id="coach-sort"
+              value={sortMode}
+              onChange={(e) => setSortMode(e.target.value as SortMode)}
+              className="h-10 rounded-md border border-line bg-surface px-3 text-sm text-ink shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+            >
+              {SORT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <Button
+              type="button"
+              variant={filtersOpen || filtersActive ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setFiltersOpen((open) => !open)}
+              aria-expanded={filtersOpen}
+              aria-controls="coach-filters-panel"
+            >
+              <Filter className="h-4 w-4" />
+              Filtros
+              {filtersActive && (
+                <span className="ml-1 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                  {(coachFilter !== 'all' ? 1 : 0) + (minGainNumber !== null ? 1 : 0)}
+                </span>
+              )}
+            </Button>
+          </div>
         </div>
+
+        {filtersOpen && (
+          <div
+            id="coach-filters-panel"
+            className="mt-md grid gap-md rounded-2xl border border-line/60 bg-surface-muted p-md md:grid-cols-3"
+          >
+            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+              Capital gain mínimo (€)
+              <input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                step={1000}
+                value={minGain}
+                onChange={(e) => setMinGain(e.target.value)}
+                placeholder="ej. 10000"
+                className="h-10 rounded-md border border-line bg-surface px-3 text-sm font-normal text-ink shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+              Coach owner
+              <select
+                value={coachFilter}
+                onChange={(e) => setCoachFilter(e.target.value)}
+                className="h-10 rounded-md border border-line bg-surface px-3 text-sm font-normal text-ink shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+              >
+                <option value="all">Todos los coaches</option>
+                {coachOptions.map((coach) => (
+                  <option key={coach.id} value={coach.id}>
+                    {coach.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="flex items-end">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setMinGain('')
+                  setCoachFilter('all')
+                }}
+                disabled={!filtersActive}
+                className="text-ink-secondary"
+              >
+                <X className="h-4 w-4" />
+                Limpiar filtros
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
+
+      <div className="grid gap-md md:grid-cols-4">
+        <SummaryStat
+          icon={Building2}
+          label="Transacciones"
+          value={summary.totalCount.toString()}
+          hint={
+            filtersActive
+              ? `${allRows.length} en total · filtros aplicados`
+              : streaming
+                ? `${allRows.length} cargadas · sigue trayendo desde Airtable…`
+                : allLoaded
+                  ? 'Set completo de Airtable cargado.'
+                  : `${allRows.length} cargadas`
+          }
+        />
+        <SummaryStat
+          icon={TrendingUp}
+          label="Con plusvalía positiva"
+          value={`${summary.positives}/${summary.totalCount || 0}`}
+          hint="Capital gain estimado mayor que cero según TF Labs."
+        />
+        <SummaryStat
+          icon={BarChart3}
+          label="Capital gain agregado"
+          value={formatCurrency(summary.totalGain)}
+          hint="Suma sobre todas las transacciones filtradas."
+          emphasis
+        />
+        <SummaryStat
+          icon={Calculator}
+          label="Promedio capital gain"
+          value={formatCurrency(summary.avgGain)}
+          hint={
+            summary.avgAppreciation !== null
+              ? `Revalorización media ${formatPercent(summary.avgAppreciation * 100)}`
+              : `Valor medio estimado ${formatCurrency(summary.avgEstimatedValue)}`
+          }
+        />
+      </div>
+
+      {streaming && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-md py-2 text-xs text-primary"
+        >
+          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+          Cargando más transacciones desde Airtable… {allRows.length} listas hasta ahora.
+        </div>
+      )}
 
       {error && (
         <div
@@ -479,63 +866,876 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
         </div>
       )}
 
+      {selected.size > 0 && (
+        <Card className="flex flex-col gap-sm border-primary/30 bg-primary/5 p-md md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-sm">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-semibold text-white">
+              {selected.size}
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-ink">
+                {selected.size === 1
+                  ? '1 transacción seleccionada'
+                  : `${selected.size} transacciones seleccionadas`}
+              </p>
+              <p className="text-xs text-ink-secondary">
+                Se enviará el reporte automático (modo «sin comparables», instantáneo) al inbox de pruebas.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelected(new Set())}
+              className="text-ink-secondary"
+            >
+              <X className="h-4 w-4" />
+              Limpiar
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => setBulkOpen(true)}
+              className="rounded-xl shadow-card"
+            >
+              <Send className="h-4 w-4" />
+              Enviar a {selected.size}
+            </Button>
+          </div>
+        </Card>
+      )}
+
       <Card>
+        <div className="flex items-center justify-between gap-md border-b border-line/70 px-lg py-sm text-xs uppercase tracking-wide text-ink-muted">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={allVisibleSelected}
+              onChange={toggleSelectAllVisible}
+              className="h-4 w-4 rounded border-line text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+              aria-label="Seleccionar todas las visibles"
+            />
+            <span>
+              {filtered.length > 0
+                ? `Seleccionar ${filtered.length} visibles`
+                : 'Sin transacciones'}
+            </span>
+          </label>
+          <span>{selected.size > 0 && `${selected.size}/${BULK_MAX_SELECTION} máx.`}</span>
+        </div>
         <ul className="divide-y divide-line/60">
-          {!loading && results.length === 0 && (
+          {!loading && filtered.length === 0 && (
             <li className="px-lg py-2xl text-center text-sm text-ink-secondary">
               {query
                 ? t('coach.search.noResults', { query })
-                : t('coach.search.emptyState')}
+                : filtersActive
+                  ? 'No hay transacciones que cumplan los filtros actuales.'
+                  : t('coach.search.emptyState')}
             </li>
           )}
-          {results.map((row) => (
-            <li key={row.id}>
-              <button
-                type="button"
-                onClick={() => onSelect(row.id)}
-                className="flex w-full items-center justify-between gap-md px-lg py-md text-left transition hover:bg-surface-muted focus:bg-surface-muted focus:outline-none"
-              >
-                <div className="flex flex-col gap-0.5 min-w-0">
-                  <span className="truncate text-sm font-semibold text-ink">
-                    {row.transaction_name}
-                  </span>
-                  <span className="text-xs text-ink-secondary">
-                    {[row.type, formatDate(row.created_at)].filter(Boolean).join(' · ') ||
-                      '—'}
-                  </span>
-                </div>
-                <div className="flex shrink-0 items-baseline gap-md text-right">
-                  <div className="flex flex-col">
-                    <span className="text-xs uppercase tracking-wide text-ink-muted">
-                      {t('coach.detail.totalSpent')}
-                    </span>
-                    <span className="text-sm font-semibold text-primary">
-                      {formatCurrency(totalSpent(row))}
-                    </span>
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-xs uppercase tracking-wide text-ink-muted">
-                      €/m² compra
-                    </span>
-                    <span className="text-sm font-semibold text-ink">
-                      {formatPricePerM2(pricePerM2(totalSpent(row), row.landsize_m2))}
-                    </span>
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-xs uppercase tracking-wide text-ink-muted">
-                      {t('coach.fields.price')}
-                    </span>
-                    <span className="text-sm font-semibold text-ink">
-                      {formatCurrency(row.price)}
-                    </span>
-                  </div>
-                </div>
-              </button>
-            </li>
+          {filtered.map((row) => (
+            <TransactionRow
+              key={row.id}
+              row={row}
+              selected={selected.has(row.id)}
+              onToggle={() => toggleSelected(row.id)}
+              onSelect={() => onSelect(row.id)}
+            />
           ))}
         </ul>
+
+        {filteredAll.length > 0 && (
+          <TransactionPaginator
+            currentPage={clampedPageIndex + 1}
+            totalPages={totalPages}
+            pageSize={pageSize}
+            totalRows={filteredAll.length}
+            rowStart={clampedPageIndex * pageSize + 1}
+            rowEnd={Math.min((clampedPageIndex + 1) * pageSize, filteredAll.length)}
+            streaming={streaming}
+            onPageChange={handleGoToPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              setCurrentPageIndex(0)
+            }}
+          />
+        )}
       </Card>
+
+      <BulkSendDialog
+        open={bulkOpen}
+        onOpenChange={(open) => setBulkOpen(open)}
+        rows={selectedRows}
+        onClearSelection={() => setSelected(new Set())}
+      />
     </div>
+  )
+}
+
+interface TransactionRowProps {
+  row: TransactionSummary
+  selected: boolean
+  onToggle: () => void
+  onSelect: () => void
+}
+
+function TransactionRow({ row, selected, onToggle, onSelect }: TransactionRowProps) {
+  const gain = row.capital_gain
+  const appreciation = row.appreciation_pct
+  const gainPositive = gain !== null && gain !== undefined && gain > 0
+  const ppm2 = purchasePricePerM2(row)
+
+  return (
+    <li
+      className={`group transition ${
+        selected ? 'bg-primary/5' : 'hover:bg-surface-muted'
+      }`}
+    >
+      <div className="flex items-stretch gap-md px-lg py-md">
+        <label
+          className="flex items-center"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggle}
+            className="h-4 w-4 rounded border-line text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+            aria-label={`Seleccionar ${row.transaction_name}`}
+          />
+        </label>
+        <button
+          type="button"
+          onClick={onSelect}
+          className="flex flex-1 items-center justify-between gap-md text-left focus:outline-none"
+        >
+          <div className="flex min-w-0 flex-col gap-1">
+            <span className="truncate text-sm font-semibold text-ink">
+              {row.transaction_name}
+            </span>
+            <span className="text-xs text-ink-secondary">
+              {[row.type, formatDate(row.created_at)].filter(Boolean).join(' · ') || '—'}
+            </span>
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              {row.coach_name && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-medium text-ink-secondary">
+                  <UserCircle2 className="h-3 w-3" aria-hidden />
+                  {row.coach_name}
+                </span>
+              )}
+              {row.appreciation_town_name && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                  <MapPin className="h-3 w-3" aria-hidden />
+                  {row.appreciation_town_name}
+                </span>
+              )}
+              {row.real_settlement_date && (
+                <span className="text-[11px] text-ink-muted">
+                  Firma: {formatDate(row.real_settlement_date)}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="hidden shrink-0 items-baseline gap-md text-right md:flex">
+            <div className="flex flex-col">
+              <span className="text-xs uppercase tracking-wide text-ink-muted">Total pagado</span>
+              <span className="text-sm font-semibold text-ink">
+                {formatCurrency(totalSpent(row))}
+              </span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-xs uppercase tracking-wide text-ink-muted">€/m² compra</span>
+              <span className="text-sm font-semibold text-ink">
+                {formatPricePerM2(ppm2)}
+              </span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-xs uppercase tracking-wide text-ink-muted">Revalor.</span>
+              <span
+                className={`text-sm font-semibold ${
+                  appreciation !== null && appreciation !== undefined && appreciation > 0
+                    ? 'text-emerald-700'
+                    : 'text-ink-muted'
+                }`}
+              >
+                {appreciation !== null && appreciation !== undefined
+                  ? formatPercent(appreciation * 100)
+                  : '—'}
+              </span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-xs uppercase tracking-wide text-ink-muted">Capital gain</span>
+              <span
+                className={`text-sm font-semibold ${
+                  gainPositive ? 'text-emerald-700' : 'text-ink'
+                }`}
+              >
+                {gain !== null && gain !== undefined ? formatCurrency(gain) : '—'}
+              </span>
+            </div>
+          </div>
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-2 px-lg pb-md text-right md:hidden">
+        <div>
+          <span className="block text-[11px] uppercase tracking-wide text-ink-muted">Pagado</span>
+          <span className="text-sm font-semibold text-ink">
+            {formatCurrency(totalSpent(row))}
+          </span>
+        </div>
+        <div>
+          <span className="block text-[11px] uppercase tracking-wide text-ink-muted">Capital gain</span>
+          <span className={`text-sm font-semibold ${gainPositive ? 'text-emerald-700' : 'text-ink'}`}>
+            {gain !== null && gain !== undefined ? formatCurrency(gain) : '—'}
+          </span>
+        </div>
+      </div>
+    </li>
+  )
+}
+
+interface SummaryStatProps {
+  icon: LucideIcon
+  label: string
+  value: string
+  hint?: string
+  emphasis?: boolean
+}
+
+function SummaryStat({ icon: Icon, label, value, hint, emphasis }: SummaryStatProps) {
+  return (
+    <Card className="flex items-start gap-3 p-md">
+      <span
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+          emphasis ? 'bg-primary/10 text-primary' : 'bg-surface-muted text-ink-secondary'
+        }`}
+      >
+        <Icon className="h-4 w-4" aria-hidden />
+      </span>
+      <div className="min-w-0">
+        <p className="text-xs uppercase tracking-wide text-ink-muted">{label}</p>
+        <p className={`mt-1 text-lg font-semibold ${emphasis ? 'text-primary' : 'text-ink'}`}>
+          {value}
+        </p>
+        {hint && <p className="mt-1 text-[11px] leading-snug text-ink-muted">{hint}</p>}
+      </div>
+    </Card>
+  )
+}
+
+interface TransactionPaginatorProps {
+  currentPage: number
+  totalPages: number
+  pageSize: number
+  totalRows: number
+  rowStart: number
+  rowEnd: number
+  streaming: boolean
+  onPageChange: (index: number) => void
+  onPageSizeChange: (size: (typeof PAGE_SIZE_OPTIONS)[number]) => void
+}
+
+// Footer-style paginator that lives inside the list Card. Designed to look
+// and behave like the shadcn DataTable example: row-count copy on the left,
+// page-size selector + Anterior / Página X de Y / Siguiente on the right.
+// The page chip set is windowed (max 7 visible) with ellipsis so even very
+// large coaches (50+ pages) don't blow up the layout.
+function TransactionPaginator({
+  currentPage,
+  totalPages,
+  pageSize,
+  totalRows,
+  rowStart,
+  rowEnd,
+  streaming,
+  onPageChange,
+  onPageSizeChange,
+}: TransactionPaginatorProps) {
+  const pageNumbers = buildPaginationWindow(currentPage, totalPages)
+  return (
+    <div className="flex flex-col gap-md border-t border-line/70 bg-surface-muted/40 px-lg py-md md:flex-row md:items-center md:justify-between">
+      <div className="text-xs text-ink-secondary">
+        Mostrando <span className="font-semibold text-ink">{rowStart.toLocaleString('es-ES')}</span>
+        {' – '}
+        <span className="font-semibold text-ink">{rowEnd.toLocaleString('es-ES')}</span>
+        {' de '}
+        <span className="font-semibold text-ink">{totalRows.toLocaleString('es-ES')}</span>
+        {' transacciones'}
+        {streaming && (
+          <span className="ml-2 inline-flex items-center gap-1 text-primary">
+            <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+            actualizándose…
+          </span>
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-md">
+        <label className="flex items-center gap-2 text-xs uppercase tracking-wide text-ink-muted">
+          Filas por página
+          <select
+            value={pageSize}
+            onChange={(e) => onPageSizeChange(Number(e.target.value) as (typeof PAGE_SIZE_OPTIONS)[number])}
+            className="h-8 rounded-md border border-line bg-surface px-2 text-xs font-medium text-ink shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+          >
+            {PAGE_SIZE_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="flex items-center gap-1">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => onPageChange(currentPage - 2)}
+            disabled={currentPage === 1}
+            aria-label="Página anterior"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+
+          {pageNumbers.map((item, idx) =>
+            item === 'ellipsis' ? (
+              <span
+                key={`gap-${idx}`}
+                className="px-1 text-xs text-ink-muted"
+                aria-hidden
+              >
+                …
+              </span>
+            ) : (
+              <Button
+                key={item}
+                type="button"
+                variant={item === currentPage ? 'default' : 'outline'}
+                size="sm"
+                className="h-8 min-w-8 px-2 text-xs"
+                onClick={() => onPageChange(item - 1)}
+                aria-current={item === currentPage ? 'page' : undefined}
+                aria-label={`Ir a la página ${item}`}
+              >
+                {item}
+              </Button>
+            ),
+          )}
+
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => onPageChange(currentPage)}
+            disabled={currentPage >= totalPages}
+            aria-label="Página siguiente"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Build a compact paginator window: always show first, last, current and its
+// two neighbours, with "ellipsis" sentinels filling the gaps. Keeps the
+// control to ≤7 buttons regardless of total page count.
+function buildPaginationWindow(
+  currentPage: number,
+  totalPages: number,
+): Array<number | 'ellipsis'> {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, idx) => idx + 1)
+  }
+  const window: Array<number | 'ellipsis'> = [1]
+  const start = Math.max(2, currentPage - 1)
+  const end = Math.min(totalPages - 1, currentPage + 1)
+  if (start > 2) window.push('ellipsis')
+  for (let page = start; page <= end; page += 1) window.push(page)
+  if (end < totalPages - 1) window.push('ellipsis')
+  window.push(totalPages)
+  return window
+}
+
+type BulkItemStatus = 'drafting' | 'ready' | 'sending' | 'sent' | 'skipped' | 'failed'
+
+interface BulkEmailDraft {
+  preview: CoachAutoEmailPreviewResponse
+  subject: string
+  body: string
+}
+
+interface BulkItemState {
+  status: BulkItemStatus
+  message?: string
+}
+
+interface BulkSendDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  rows: TransactionSummary[]
+  onClearSelection: () => void
+}
+
+// Bulk-send modal. The important guardrail: selected transactions are first
+// converted into editable email/PDF drafts, and only then can the coach send.
+// This keeps weird no-scrape valuations visible before they reach a client.
+function BulkSendDialog({ open, onOpenChange, rows, onClearSelection }: BulkSendDialogProps) {
+  const [running, setRunning] = useState(false)
+  const [drafting, setDrafting] = useState(false)
+  const [done, setDone] = useState(false)
+  const [progress, setProgress] = useState<Record<string, BulkItemState>>({})
+  const [drafts, setDrafts] = useState<Record<string, BulkEmailDraft>>({})
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const [pdfPreviewing, setPdfPreviewing] = useState(false)
+  const [pdfPreviewError, setPdfPreviewError] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+  const pdfUrlRef = useRef<string | null>(null)
+
+  // Reset progress whenever the dialog is reopened with a fresh selection.
+  useEffect(() => {
+    if (open) {
+      setRunning(false)
+      setDrafting(false)
+      setDone(false)
+      setDrafts({})
+      setActiveId(rows[0]?.id ?? null)
+      setPdfPreviewError(null)
+      const initial: Record<string, BulkItemState> = {}
+      for (const row of rows) initial[row.id] = { status: 'drafting' }
+      setProgress(initial)
+      void prepareDrafts()
+    } else {
+      abortRef.current?.abort()
+      abortRef.current = null
+      if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current)
+      pdfUrlRef.current = null
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, rows])
+
+  async function prepareDrafts() {
+    if (rows.length === 0) return
+    setDrafting(true)
+    const controller = new AbortController()
+    abortRef.current = controller
+    let index = 0
+    const queue = rows.slice()
+
+    function updateStatus(id: string, patch: Partial<BulkItemState>) {
+      setProgress((current) => ({
+        ...current,
+        [id]: { ...current[id], ...patch },
+      }))
+    }
+
+    async function worker() {
+      while (true) {
+        const row = queue[index]
+        index += 1
+        if (!row || controller.signal.aborted) return
+        updateStatus(row.id, { status: 'drafting', message: 'Generando email y reporte…' })
+        try {
+          const preview = await previewTransactionAutoEmail(row.id, { signal: controller.signal })
+          setDrafts((current) => ({
+            ...current,
+            [row.id]: {
+              preview,
+              subject: preview.subject,
+              body: preview.body,
+            },
+          }))
+          updateStatus(row.id, {
+            status: preview.client_email ? 'ready' : 'skipped',
+            message: preview.review_warning ?? 'Listo para revisar',
+          })
+        } catch (err) {
+          if ((err as Error).name === 'AbortError') return
+          const message =
+            err instanceof CoachApiError ? err.detail ?? err.message : (err as Error).message
+          updateStatus(row.id, { status: 'failed', message: message || 'Error preparando draft' })
+        }
+      }
+    }
+
+    const workers = Array.from({ length: Math.min(BULK_CONCURRENCY, rows.length) }, () => worker())
+    await Promise.all(workers)
+    setDrafting(false)
+    abortRef.current = null
+  }
+
+  function updateDraft(id: string, patch: Partial<Pick<BulkEmailDraft, 'subject' | 'body'>>) {
+    setDrafts((current) => {
+      const draft = current[id]
+      if (!draft) return current
+      return { ...current, [id]: { ...draft, ...patch } }
+    })
+  }
+
+  async function previewPdf(draft: BulkEmailDraft) {
+    setPdfPreviewing(true)
+    setPdfPreviewError(null)
+    try {
+      const payload: ReportPdfPayload = {
+        request: draft.preview.valuation_request,
+        valuation: draft.preview.valuation,
+        transaction: draft.preview.transaction,
+        includeComparables: false,
+      }
+      const url = await createReportPdfObjectUrl(payload)
+      if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current)
+      pdfUrlRef.current = url
+      window.open(url, '_blank', 'noopener,noreferrer')
+    } catch (err) {
+      setPdfPreviewError(err instanceof Error ? err.message : 'No se pudo abrir el PDF')
+    } finally {
+      setPdfPreviewing(false)
+    }
+  }
+
+  async function runBulk() {
+    if (running || drafting || rows.length === 0) return
+    setRunning(true)
+    setDone(false)
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    let index = 0
+    const queue = rows.slice()
+
+    function updateStatus(id: string, patch: Partial<BulkItemState>) {
+      setProgress((current) => ({
+        ...current,
+        [id]: { ...current[id], ...patch },
+      }))
+    }
+
+    async function worker() {
+      while (true) {
+        const row = queue[index]
+        index += 1
+        if (!row || controller.signal.aborted) return
+        const draft = drafts[row.id]
+        if (!draft?.preview.client_email) {
+          updateStatus(row.id, { status: 'skipped', message: 'Sin email cliente' })
+          continue
+        }
+        updateStatus(row.id, { status: 'sending' })
+        try {
+          const response = await sendTransactionEmail(row.id, {
+            to: draft.preview.client_email,
+            subject: draft.subject,
+            body: draft.body,
+            valuation_request: draft.preview.valuation_request,
+            valuation: draft.preview.valuation,
+            transaction: draft.preview.transaction,
+            include_comparables: false,
+          })
+          updateStatus(row.id, {
+            status: response.sent ? 'sent' : 'skipped',
+            message: response.sent
+              ? `Enviado → ${draft.preview.delivered_to ?? draft.preview.client_email}`
+              : response.message,
+          })
+        } catch (err) {
+          if ((err as Error).name === 'AbortError') return
+          const message =
+            err instanceof CoachApiError ? err.detail ?? err.message : (err as Error).message
+          updateStatus(row.id, { status: 'failed', message: message || 'Error desconocido' })
+        }
+      }
+    }
+
+    const workers = Array.from({ length: Math.min(BULK_CONCURRENCY, rows.length) }, () => worker())
+    await Promise.all(workers)
+    setRunning(false)
+    setDone(true)
+    abortRef.current = null
+  }
+
+  const counts = useMemo(() => {
+    let pending = 0
+    let ready = 0
+    let sending = 0
+    let sent = 0
+    let skipped = 0
+    let failed = 0
+    for (const row of rows) {
+      const state = progress[row.id]?.status ?? 'drafting'
+      if (state === 'drafting') pending += 1
+      if (state === 'ready') ready += 1
+      if (state === 'sending') sending += 1
+      if (state === 'sent') sent += 1
+      if (state === 'skipped') skipped += 1
+      if (state === 'failed') failed += 1
+    }
+    return { pending, ready, sending, sent, skipped, failed }
+  }, [rows, progress])
+
+  const activeRow = rows.find((row) => row.id === activeId) ?? rows[0] ?? null
+  const activeDraft = activeRow ? drafts[activeRow.id] : null
+  const readyCount = rows.filter((row) => progress[row.id]?.status === 'ready').length
+  const canSend = readyCount > 0 && !running && !drafting && !done
+
+  function handleClose() {
+    abortRef.current?.abort()
+    onOpenChange(false)
+    if (done) onClearSelection()
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (running || drafting || nextOpen) return
+        handleClose()
+      }}
+    >
+      <DialogContent
+        className="sm:max-w-5xl"
+        onInteractOutside={(event) => {
+          if (running || drafting) event.preventDefault()
+        }}
+        onEscapeKeyDown={(event) => {
+          if (running || drafting) event.preventDefault()
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle>Revisar antes de enviar</DialogTitle>
+          <DialogDescription>
+            Primero generamos el email y el PDF en modo «sin comparables». Revisa el
+            contenido y los avisos; solo después se habilita el envío. En local se
+            enruta al inbox de pruebas configurado en{' '}
+            <code className="rounded bg-surface-muted px-1 text-xs">RESEND_TEST_TO</code>.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid grid-cols-2 gap-2 rounded-2xl border border-line bg-surface-muted p-md md:grid-cols-6">
+          <BulkCounter label="Preparando" value={counts.pending} tone="active" />
+          <BulkCounter label="Listos" value={counts.ready} tone="success" />
+          <BulkCounter label="Enviando" value={counts.sending} tone="active" />
+          <BulkCounter label="Enviados" value={counts.sent} tone="success" />
+          <BulkCounter label="Omitidos" value={counts.skipped} tone="warn" />
+          <BulkCounter label="Fallidos" value={counts.failed} tone="error" />
+        </div>
+
+        <div className="grid gap-md lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.3fr)]">
+          <div className="max-h-[520px] overflow-y-auto rounded-2xl border border-line">
+            <ul className="divide-y divide-line/70">
+              {rows.map((row) => {
+                const state = progress[row.id] ?? { status: 'drafting' as BulkItemStatus }
+                const draft = drafts[row.id]
+                const active = activeRow?.id === row.id
+                return (
+                  <li key={row.id}>
+                    <button
+                      type="button"
+                      onClick={() => setActiveId(row.id)}
+                      className={`flex w-full items-center gap-md px-md py-sm text-left transition ${
+                        active ? 'bg-primary/5' : 'hover:bg-surface-muted'
+                      }`}
+                    >
+                      <BulkStatusBadge status={state.status} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-ink">
+                          {row.transaction_name}
+                        </p>
+                        <p className="truncate text-xs text-ink-secondary">
+                          {draft?.preview.delivered_to ?? row.client_email ?? 'Sin email cliente'}
+                          {state.message ? ` · ${state.message}` : ''}
+                        </p>
+                      </div>
+                      <span
+                        className={`hidden text-xs font-medium sm:inline ${
+                          (draft?.preview.capital_gain ?? row.capital_gain ?? 0) < 0
+                            ? 'text-destructive'
+                            : 'text-ink-muted'
+                        }`}
+                      >
+                        {formatCurrency(draft?.preview.capital_gain ?? row.capital_gain)}
+                      </span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+
+          <div className="min-h-[520px] rounded-2xl border border-line bg-surface p-md">
+            {!activeDraft ? (
+              <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-sm text-ink-secondary">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" aria-hidden />
+                Preparando el borrador para revisar…
+              </div>
+            ) : (
+              <div className="flex h-full flex-col gap-md">
+                {activeDraft.preview.review_warning && (
+                  <div className="rounded-xl border border-amber-300 bg-amber-50 px-md py-sm text-sm text-amber-800">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                      <p>{activeDraft.preview.review_warning}</p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid gap-2 rounded-xl border border-line/70 bg-surface-muted p-sm text-xs md:grid-cols-3">
+                  <div>
+                    <p className="font-semibold uppercase tracking-wide text-ink-muted">Destino</p>
+                    <p className="truncate text-ink">{activeDraft.preview.delivered_to ?? '—'}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold uppercase tracking-wide text-ink-muted">Estimado</p>
+                    <p className="text-ink">{formatCurrency(activeDraft.preview.estimated_value)}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold uppercase tracking-wide text-ink-muted">Capital gain</p>
+                    <p className={(activeDraft.preview.capital_gain ?? 0) < 0 ? 'text-destructive' : 'text-ink'}>
+                      {formatCurrency(activeDraft.preview.capital_gain)}
+                    </p>
+                  </div>
+                </div>
+
+                <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                  Asunto
+                  <input
+                    value={activeDraft.subject}
+                    onChange={(event) => updateDraft(activeDraft.preview.transaction_id, { subject: event.target.value })}
+                    className="h-10 rounded-md border border-line bg-surface px-3 text-sm font-normal normal-case tracking-normal text-ink shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                  />
+                </label>
+
+                <label className="flex min-h-0 flex-1 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                  Cuerpo del email
+                  <textarea
+                    value={activeDraft.body}
+                    onChange={(event) => updateDraft(activeDraft.preview.transaction_id, { body: event.target.value })}
+                    className="min-h-64 flex-1 resize-none rounded-md border border-line bg-surface p-3 text-sm font-normal normal-case leading-relaxed tracking-normal text-ink shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                  />
+                </label>
+
+                {pdfPreviewError && (
+                  <p className="rounded-lg bg-destructive/5 px-sm py-2 text-xs text-destructive">
+                    {pdfPreviewError}
+                  </p>
+                )}
+
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs text-ink-muted">
+                    PDF adjunto: <span className="font-medium text-ink">prophero-valoracion-{activeDraft.preview.transaction_id}.pdf</span>
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => previewPdf(activeDraft)}
+                    disabled={pdfPreviewing}
+                  >
+                    {pdfPreviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                    Ver PDF
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-sm md:flex-row md:items-center md:justify-between">
+          <p className="text-xs text-ink-muted">
+            Los reportes generados no scrapean Idealista. Si ves ganancia negativa o un municipio raro,
+            abre el PDF y revisa la transacción antes de enviarla.
+          </p>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handleClose}
+              disabled={running || drafting}
+              className="text-ink-secondary"
+            >
+              {done ? 'Cerrar' : 'Cancelar'}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={runBulk}
+              disabled={!canSend}
+              className="rounded-xl shadow-card"
+            >
+              {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              {running
+                ? 'Enviando…'
+                : drafting
+                  ? 'Preparando…'
+                  : done
+                    ? 'Completado'
+                    : `Enviar ${readyCount} revisados`}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+interface BulkCounterProps {
+  label: string
+  value: number
+  tone: 'muted' | 'active' | 'success' | 'warn' | 'error'
+}
+
+function BulkCounter({ label, value, tone }: BulkCounterProps) {
+  const toneClass = {
+    muted: 'text-ink-secondary',
+    active: 'text-primary',
+    success: 'text-emerald-700',
+    warn: 'text-amber-700',
+    error: 'text-destructive',
+  }[tone]
+  return (
+    <div className="flex flex-col items-center justify-center rounded-xl bg-surface px-2 py-2 text-center">
+      <span className={`text-lg font-semibold ${toneClass}`}>{value}</span>
+      <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+        {label}
+      </span>
+    </div>
+  )
+}
+
+function BulkStatusBadge({ status }: { status: BulkItemStatus }) {
+  if (status === 'sent')
+    return (
+      <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+        <CheckCircle2 className="h-4 w-4" />
+      </span>
+    )
+  if (status === 'sending')
+    return (
+      <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <Loader2 className="h-4 w-4 animate-spin" />
+      </span>
+    )
+  if (status === 'failed')
+    return (
+      <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+        <AlertCircle className="h-4 w-4" />
+      </span>
+    )
+  if (status === 'skipped')
+    return (
+      <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+        <AlertCircle className="h-4 w-4" />
+      </span>
+    )
+  return (
+    <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-muted text-ink-muted">
+      <FileText className="h-4 w-4" />
+    </span>
   )
 }
 
@@ -606,11 +1806,6 @@ function TransactionDetailPanel({
       composerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
   }, [composerUnlocked])
-
-  const paidTotal = useMemo(() => {
-    if (!data) return null
-    return totalSpent(data)
-  }, [data])
 
   const acquisitionCostRows = useMemo(() => {
     if (!data) return []
@@ -828,7 +2023,7 @@ function TransactionDetailPanel({
                   />
                   <Metric
                     label="€/m² compra"
-                    value={formatPricePerM2(pricePerM2(paidTotal, data.landsize_m2))}
+                    value={formatPricePerM2(purchasePricePerM2(data))}
                   />
                 </dl>
                 {acquisitionCostRows.length > 0 && (
@@ -1190,7 +2385,7 @@ function CoachClientReportComposer({
   const defaultTo = transaction.client_email ?? ''
   const defaultSubject = `Tu propiedad podría haberse revalorizado — ${valuationResult.valuation_request.address}`
   const dataSourceLine = isNoScrape
-    ? 'Fuente del rango: mediana €/m² del municipio (serie pública TF Labs), aplicada a la superficie del inmueble. Sin comparables individuales en este reporte.'
+    ? 'Fuente del rango: TF Labs, serie municipal basada en cierres trimestrales de registradores, aplicada a la superficie del inmueble. Es una referencia de municipio, no una tasación individual; el valor final puede variar según las características de la propiedad.'
     : 'Fuente del rango: comparables activos en Idealista al momento de la valoración (precio, m², habitaciones y baños).'
   const initialSections: EditableReportSection[] = [
     {
@@ -1474,7 +2669,8 @@ function CoachInvestorReport({ transaction, valuationResult }: CoachInvestorRepo
   // range around the valuation anchor, rounded to avoid false precision.
   const recommendedBand = priceBand(recommendedAnchor, 0.03)
 
-  const purchasePpm2 = pricePerM2(invested, valuationResult.valuation_request.m2)
+  const purchasePpm2 =
+    transaction.purchase_eur_per_m2 ?? pricePerM2(invested, valuationResult.valuation_request.m2)
 
   // €/m² zona hoy now comes from the TF Labs municipal price series when
   // available; comparables stay as a fallback so the report doesn't go blank
@@ -1482,9 +2678,8 @@ function CoachInvestorReport({ transaction, valuationResult }: CoachInvestorRepo
   const currentPpm2 = appreciation
     ? Math.round(appreciation.to_eur_per_m2)
     : pricePerM2(recommendedAnchor, valuationResult.valuation_request.m2) ?? stats.avg_price_per_m2 ?? null
-  const ppm2DeltaPct = appreciation
-    ? appreciation.pct_change * 100
-    : purchasePpm2 && currentPpm2 ? ((currentPpm2 - purchasePpm2) / purchasePpm2) * 100 : null
+  const ppm2DeltaPct =
+    purchasePpm2 && currentPpm2 ? ((currentPpm2 - purchasePpm2) / purchasePpm2) * 100 : null
 
   // Two distinct gain figures, per product spec:
   //   1) zonePlusvalia = real-market appreciation × invested (data: TF Labs CSV)
@@ -1514,7 +2709,7 @@ function CoachInvestorReport({ transaction, valuationResult }: CoachInvestorRepo
   // backend actually used so the report doesn't claim "comparables activos"
   // when we only have the TF Labs €/m² anchor.
   const methodologySource = isNoScrape
-    ? 'mediana €/m² del municipio (serie pública TF Labs) aplicada a la superficie del inmueble'
+    ? 'TF Labs, serie municipal basada en cierres trimestrales de registradores, aplicada a la superficie del inmueble'
     : stats.estimation_method === 'ols_lstsq'
       ? 'regresión sobre comparables activos en Idealista (precio, m², habitaciones, baños)'
       : 'mediana €/m² de comparables activos en Idealista aplicada a la superficie del inmueble'
@@ -1637,9 +2832,15 @@ function CoachInvestorReport({ transaction, valuationResult }: CoachInvestorRepo
             </div>
             <div className="mt-md grid gap-md md:grid-cols-[1fr_240px] md:items-start">
               <div>
-                <dl className="grid gap-md text-sm sm:grid-cols-2 md:grid-cols-4">
+                <dl className="grid gap-md text-sm sm:grid-cols-2 md:grid-cols-5">
                   <div>
-                    <dt className="text-xs uppercase tracking-wide text-ink-muted">€/m² al firmar</dt>
+                    <dt className="text-xs uppercase tracking-wide text-ink-muted">€/m² compra real</dt>
+                    <dd className="text-sm font-semibold text-ink">
+                      {formatPricePerM2(purchasePpm2)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs uppercase tracking-wide text-ink-muted">€/m² zona al firmar</dt>
                     <dd className="text-sm font-semibold text-ink">
                       {formatPricePerM2(Math.round(appreciation.from_eur_per_m2))}
                     </dd>
@@ -1722,10 +2923,10 @@ function CoachInvestorReport({ transaction, valuationResult }: CoachInvestorRepo
           {appreciation && hasComparables
             ? `La zona de ${appreciation.town_name} ha apreciado un ${formatPercent(appreciation.pct_change * 100)} desde la firma. El rango recomendado (${formatCurrencyRange(recommendedBand.low, recommendedBand.high)}) se construye sobre comparables activos hoy y se presenta como una estimación conservadora.`
             : appreciation
-              ? `La zona de ${appreciation.town_name} ha apreciado un ${formatPercent(appreciation.pct_change * 100)} desde la firma. Sin comparables individuales, anclamos el rango recomendado (${formatCurrencyRange(recommendedBand.low, recommendedBand.high)}) en la mediana €/m² del municipio publicada por TF Labs.`
+              ? `La zona de ${appreciation.town_name} ha apreciado un ${formatPercent(appreciation.pct_change * 100)} desde la firma. Sin comparables individuales, anclamos el rango recomendado (${formatCurrencyRange(recommendedBand.low, recommendedBand.high)}) en TF Labs: datos municipales basados en cierres trimestrales de registradores. Al ser una referencia de municipio, la propiedad individual puede variar; por eso recomendamos revisarlo en una reunión con un tasador.`
               : hasComparables
                 ? 'El rango recomendado se construye sobre los comparables activos en el municipio y se presenta como una estimación conservadora, no como precio garantizado.'
-                : 'Sin comparables individuales, anclamos el rango recomendado en la mediana €/m² del municipio (serie TF Labs). Útil como termómetro de zona; menos preciso que con comparables activos.'}
+                : 'Sin comparables individuales, anclamos el rango recomendado en TF Labs: datos municipales basados en cierres trimestrales de registradores. Al ser una referencia de municipio, la propiedad individual puede variar; por eso recomendamos revisarlo en una reunión con un tasador.'}
         </p>
         <p className="mt-2 text-[11px] leading-relaxed text-ink-muted">
           Fuente del rango: {methodologySource}.

@@ -257,7 +257,7 @@
 
     .mini-metrics {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(5, 1fr);
       gap: 3mm;
     }
 
@@ -586,7 +586,11 @@
       <div>
         <div class="mini-metrics">
           <div>
-            <div class="label">€/m² al firmar</div>
+            <div class="label">€/m² compra real</div>
+            <div class="mini-value">{{ report.appreciation.purchase_ppm2 }}</div>
+          </div>
+          <div>
+            <div class="label">€/m² zona al firmar</div>
             <div class="mini-value">{{ report.appreciation.from_ppm2 }}</div>
           </div>
           <div>
@@ -694,8 +698,9 @@
     <div class="methodology">
       <strong>Cómo calculamos este valor.</strong>
       {% if estimation_method == 'market_series' %}
-      Anclamos el valor en el €/m² medio del municipio publicado por TF Labs
-      (Sale Price SQM P50, observación más reciente) y lo aplicamos a la superficie del inmueble.
+      Anclamos el valor en TF Labs, una serie municipal basada en cierres trimestrales de
+      registradores, y lo aplicamos a la superficie del inmueble. Es una referencia de municipio:
+      según las características de la propiedad individual, el valor final puede variar.
       {% else %}
       Buscamos en tiempo real propiedades similares en venta en Idealista a partir de tu dirección,
       aplicando filtros progresivos de cercanía hasta reunir suficientes comparables.
@@ -714,7 +719,7 @@
         {% else %}
         <li>El rango usa una heurística (±10%) cuando no hay dispersión suficiente para medir.</li>
         {% endif %}
-        <li>No sustituye una tasación oficial ni una revisión fiscal/legal personalizada.</li>
+        <li>No sustituye una tasación oficial ni una revisión fiscal/legal personalizada; recomendamos revisarlo en una reunión con un tasador.</li>
       </ul>
     </div>
   </section>
@@ -1314,10 +1319,9 @@
   <section class="methodology">
     <strong>Cómo calculamos este valor.</strong>
     {% if estimation_method == 'market_series' %}
-    Anclamos el valor en el €/m² medio del municipio publicado por TF Labs
-    (Sale Price SQM P50, observación más reciente) y lo aplicamos a la
-    superficie del inmueble. Esta variante no consulta anuncios individuales
-    en Idealista.
+    Anclamos el valor en TF Labs, una serie municipal basada en cierres
+    trimestrales de registradores, y lo aplicamos a la superficie del inmueble.
+    Esta variante no consulta anuncios individuales en Idealista.
     {% else %}
     Buscamos en tiempo real propiedades similares en venta en Idealista a partir de tu
     dirección, aplicando filtros progresivos de cercanía (misma calle → microzona →
@@ -1344,7 +1348,7 @@
       <li>No ajustamos por estado real del inmueble, vistas, planta, reformas,
           documentación, ni por el momento de mercado en el que decidas vender. Esos
           factores pueden mover la cifra final un ±10–20% — y son justo los que
-          revisamos en la llamada de estrategia.</li>
+          recomendamos revisar en una reunión con un tasador.</li>
     </ul>
   </section>
 

@@ -30,7 +30,7 @@ from catastro.client import CatastroByRCResult, CatastroPropertyAddress  # noqa:
 from models import MunicipioInfo, ResolvedAddress, TransactionDetail, ValuationRequest  # noqa: E402
 
 
-@pytest.mark.parametrize("unit_suffix", ["1º-DR", "2º-DR"])
+@pytest.mark.parametrize("unit_suffix", ["0°-DR", "1º-DR", "2º-DR"])
 def test_normalize_airtable_address_strips_floor_door_suffix(unit_suffix: str):
     assert (
         _normalize_airtable_address_for_valuation(
@@ -106,6 +106,7 @@ def test_airtable_summary_maps_final_purchase_cost_fields():
     assert summary.council_rate == 600
     assert summary.service_charges == 1_200
     assert summary.final_total_price == 265_000
+    assert summary.purchase_eur_per_m2 == 2_650
 
 
 def test_get_transaction_for_valuation_uses_projected_airtable_fields(

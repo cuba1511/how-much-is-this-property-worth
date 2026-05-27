@@ -29,9 +29,10 @@ from airtable import (
     AirtableAPIError,
     AirtableConfig,
     AirtableConfigError,
+    enrich_with_coach_owners,
     get_transaction,
     get_transaction_for_valuation,
-    search_transactions,
+    search_transactions_page,
 )
 from catastro import (
     CatastroByRCResult,
@@ -52,7 +53,9 @@ from models import (
     CadastralReferenceLookupResponse,
     CadastralUnit,
     CadastralUnitsResponse,
+    CoachAutoEmailPreviewResponse,
     ComparablesDataset,
+    CoachAutoEmailResponse,
     CoachEmailSendRequest,
     CoachEmailSendResponse,
     CoachTransactionValuationResponse,
@@ -68,6 +71,7 @@ from models import (
     SearchStageResult,
     SimpleValuationResponse,
     TransactionDetail,
+    TransactionSearchResponse,
     TransactionSummary,
     ValuationRequest,
     ValuationResponse,
@@ -512,10 +516,10 @@ def _airtable_config() -> AirtableConfig:
 
 _ADDRESS_UNIT_PART_RE = re.compile(
     r"^(?:"
-    r"\d{1,2}\s*(?:º|ª|o|a)\s*(?:[-/\s]?(?:[a-z]{1,4}|izq(?:uierda)?|dcha?|der(?:echa)?))?"
+    r"\d{1,2}\s*(?:º|ª|°|o|a)\s*(?:[-/\s]?(?:[a-z]{1,4}|izq(?:uierda)?|dcha?|der(?:echa)?))?"
     r"|\d{1,2}\s*[-/]\s*(?:[a-z]{1,4}|izq(?:uierda)?|dcha?|der(?:echa)?)"
     r"|(?:bajo|bj|ent(?:resuelo)?|principal|pral|[aá]tico)(?:[-/\s]?[a-z0-9]+)?"
-    r"|(?:planta|puerta|pta)\s+[a-z0-9ºª-]+"
+    r"|(?:planta|puerta|pta)\s+[a-z0-9ºª°-]+"
     r")$",
     re.IGNORECASE,
 )
@@ -624,6 +628,131 @@ def _parse_settlement_date(raw: Optional[str]):
         except ValueError:
             continue
     return None
+
+
+def _round_to_step(value: float, step: int = 1000) -> int:
+    """Round a EUR figure to the nearest ``step`` to avoid calculator precision
+    on the coach list (e.g. €151.842 → €152.000)."""
+    return int(round(value / step) * step)
+
+
+MUNICIPALITY_ALIASES = {
+    # TF Labs stores the official Valencian form. Airtable transaction names
+    # sometimes keep the older Spanish spelling.
+    "moncofar": "Moncofa",
+}
+
+
+def _clean_municipality_guess(value: str) -> Optional[str]:
+    """Clean a municipality fragment parsed from Airtable transaction text.
+
+    The coach list precompute intentionally avoids geocoding for speed, so the
+    best fallback we have is the final comma-separated segment of the address.
+    Production transaction names may include unit suffixes ("u1", "u2") or
+    floor/door fragments, so we trim those before matching against TF Labs.
+    """
+    cleaned = value.strip()
+    cleaned = re.sub(r"\s+u\d+\s*$", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s+unit\s+\d+\s*$", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s+\d+[ºª]?\s*[A-Za-z]?\s*$", "", cleaned).strip()
+    if not cleaned:
+        return None
+    return MUNICIPALITY_ALIASES.get(cleaned.lower(), cleaned)
+
+
+def _guess_transaction_municipality(tx: TransactionSummary) -> Optional[str]:
+    """Best-effort municipality extraction for list-level precomputation.
+
+    `town_record_id` remains the preferred exact path. This parser only covers
+    rows where Airtable has no Town lookup populated but the transaction name
+    carries an address suffix like "<client> - <street>, <municipality>".
+    """
+    candidates: list[str] = []
+    if tx.address:
+        candidates.append(tx.address)
+    if " - " in tx.transaction_name:
+        candidates.append(tx.transaction_name.split(" - ", 1)[1])
+
+    for source in candidates:
+        parts = [p.strip() for p in source.split(",") if p.strip()]
+        for part in reversed(parts):
+            guess = _clean_municipality_guess(part)
+            if guess:
+                return guess
+    return None
+
+
+def _enrich_summary_with_appreciation(tx: TransactionSummary) -> TransactionSummary:
+    """Pre-compute zone appreciation + capital gain for a list row.
+
+    This runs the cheap TF Labs lookup only — no geocoding, no scraping. The
+    coach list calls this for every row so the worklist can be ranked by
+    capital gain without opening each transaction.
+
+    Resolution chain mirrors the per-transaction valuation flow:
+    - direct Airtable ``town_record_id`` (best, exact match)
+    - municipality name parsed out of the transaction address (fallback)
+    """
+    store = get_default_store()
+    if store is None:
+        return tx
+    settlement_date = _parse_settlement_date(tx.real_settlement_date)
+    if settlement_date is None:
+        return tx
+
+    # Try town id first; fall back to a coarse name parse if absent. Airtable
+    # transaction names often end in noisy suffixes like "Almassora u1" or use
+    # non-official variants like "Moncofar" while TF Labs stores "Moncofa".
+    municipality_guess = _guess_transaction_municipality(tx)
+
+    town = store.resolve_town(
+        airtable_record_id=tx.town_record_id,
+        name=municipality_guess,
+    )
+    if town is None:
+        return tx
+    appreciation = compute_appreciation(
+        store=store, town=town, settlement_date=settlement_date
+    )
+    if appreciation is None:
+        return tx
+
+    invested = tx.final_total_price
+    area_m2 = tx.landsize_m2
+    estimated_current_value: Optional[int] = None
+    capital_gain: Optional[int] = None
+    latest = store.latest_value(town.town_id)
+    if latest is not None and area_m2:
+        _latest_period, latest_eur_per_m2 = latest
+        if latest_eur_per_m2 and latest_eur_per_m2 > 0:
+            # Same no-scrape anchor used by `_build_no_scrape_valuation` and
+            # the PDF: latest TF Labs municipal €/m2 x property surface.
+            # Do not compound the original purchase price by appreciation_pct;
+            # that can show a positive "gain" for assets bought far above the
+            # municipal €/m2 baseline, while the report rightly shows negative.
+            estimated_current_value = _round_to_step(latest_eur_per_m2 * area_m2)
+    if estimated_current_value is not None and invested is not None:
+        capital_gain = estimated_current_value - invested
+
+    return tx.model_copy(
+        update={
+            "appreciation_pct": appreciation.pct_change,
+            "appreciation_from_period": appreciation.from_period,
+            "appreciation_to_period": appreciation.to_period,
+            "appreciation_town_name": appreciation.town_name,
+            "estimated_current_value": estimated_current_value,
+            "capital_gain": capital_gain,
+        }
+    )
+
+
+def _enrich_summaries_with_appreciation(
+    transactions: list[TransactionSummary],
+) -> list[TransactionSummary]:
+    """Batch wrapper around :func:`_enrich_summary_with_appreciation`."""
+    if not transactions:
+        return transactions
+    return [_enrich_summary_with_appreciation(tx) for tx in transactions]
 
 
 def _compute_market_appreciation_for_transaction(
@@ -947,21 +1076,37 @@ async def check_coach_auth() -> dict[str, bool]:
 
 @app.get(
     "/api/coach/transactions",
-    response_model=list[TransactionSummary],
+    response_model=TransactionSearchResponse,
     summary="Search client transactions in Airtable (coach UI)",
     dependencies=[Depends(_verify_coach_password)],
 )
 async def list_coach_transactions(
     q: str = Query("", description="Substring matched against Transaction Name (case-insensitive)"),
-    limit: int = Query(25, ge=1, le=100),
-) -> list[TransactionSummary]:
+    limit: int = Query(100, ge=1, le=100),
+    offset: Optional[str] = Query(
+        None,
+        description="Opaque Airtable pagination token returned as next_offset.",
+    ),
+) -> TransactionSearchResponse:
     """Search the Airtable `transactions` table from the coach UI.
 
     Empty `q` returns the most recent transactions (sorted by Create Date desc).
+
+    Each row is enriched with:
+      - **Coach owner** (and Account Manager) resolved against the cached
+        `Team Profiles` table.
+      - **Pre-computed zone appreciation** + capital gain via the TF Labs
+        municipal €/m² series. This lets the frontend sort/filter the worklist
+        by capital gain without opening each transaction.
     """
     config = _airtable_config()
     try:
-        return await search_transactions(config=config, query=q, max_results=limit)
+        rows, next_offset = await search_transactions_page(
+            config=config,
+            query=q,
+            page_size=limit,
+            offset=offset,
+        )
     except AirtableAPIError as exc:
         logger.error("Airtable search failed: %s", exc)
         raise HTTPException(
@@ -971,6 +1116,20 @@ async def list_coach_transactions(
     except httpx.HTTPError as exc:
         logger.error("Airtable network error: %s", exc, exc_info=True)
         raise HTTPException(status_code=502, detail="Airtable unreachable")
+
+    # Coach owner enrichment is best-effort: failure shouldn't break the list.
+    try:
+        rows = await enrich_with_coach_owners(config=config, transactions=rows)
+    except (AirtableAPIError, httpx.HTTPError) as exc:
+        logger.warning("Coach owner enrichment failed: %s", exc)
+
+    rows = _enrich_summaries_with_appreciation(rows)
+    return TransactionSearchResponse(
+        records=rows,
+        next_offset=next_offset,
+        page_size=limit,
+        has_more=bool(next_offset),
+    )
 
 
 @app.get(
@@ -1061,6 +1220,251 @@ async def generate_coach_transaction_valuation(
     )
 
 
+def _format_period_es(period: Optional[str]) -> str:
+    """Render a ``YYYY-MM`` period as 'MMM YYYY' in Spanish (for email copy)."""
+    if not period or "-" not in period:
+        return "—"
+    try:
+        year, month = period.split("-")
+        month_idx = int(month)
+    except ValueError:
+        return period
+    months = [
+        "ene.", "feb.", "mar.", "abr.", "may.", "jun.",
+        "jul.", "ago.", "sept.", "oct.", "nov.", "dic.",
+    ]
+    if not 1 <= month_idx <= 12:
+        return period
+    return f"{months[month_idx - 1]} {year}"
+
+
+def _format_eur(value: Optional[int]) -> str:
+    if value is None:
+        return "—"
+    return f"{value:,.0f} €".replace(",", ".")
+
+
+def _format_pct(value: Optional[float]) -> str:
+    if value is None:
+        return "—"
+    sign = "+" if value > 0 else ""
+    return f"{sign}{value * 100:.1f}%"
+
+
+def _client_first_name(transaction_name: str) -> str:
+    """Pull a friendly first name out of an Airtable Transaction Name.
+
+    Names follow the ``<Client name> - <Address>`` convention; we split on the
+    separator and take the first word of the leading half. Falls back to the
+    full name when the convention isn't honoured.
+    """
+    head = transaction_name.split(" - ")[0].strip()
+    return head.split(" ")[0] if head else transaction_name
+
+
+def _build_default_coach_email(
+    *,
+    transaction: TransactionDetail,
+    valuation_request: ValuationRequest,
+    valuation: ValuationResponse,
+) -> tuple[str, str]:
+    """Build the default subject + body for an auto-sent coach email.
+
+    Mirrors the structure the frontend ``CoachClientReportComposer`` creates so
+    a bulk-sent email reads the same as one a coach composed by hand. Keeping
+    the copy on the backend lets the bulk endpoint stay stateless.
+    """
+    address = (
+        valuation_request.selected_address.label
+        if valuation_request.selected_address
+        else valuation_request.address
+    )
+    appreciation = valuation.market_appreciation
+    invested = transaction.final_total_price
+
+    # Recommended exit band (±3% around the headline estimate, rounded to €1k).
+    # Same band the frontend renders in the report. Keeps copy/numbers in sync.
+    anchor = valuation.stats.estimated_value
+    if anchor is not None:
+        low_raw = anchor * 0.97
+        high_raw = anchor * 1.03
+        low_rounded = _round_to_step(low_raw)
+        high_rounded = _round_to_step(high_raw)
+        if high_rounded <= low_rounded:
+            high_rounded = low_rounded + 1000
+        recommended_band = (low_rounded, high_rounded)
+    else:
+        recommended_band = (None, None)
+
+    band_text = (
+        f"{_format_eur(recommended_band[0])} – {_format_eur(recommended_band[1])}"
+        if recommended_band[0] is not None and recommended_band[1] is not None
+        else "—"
+    )
+
+    gain_low = (
+        recommended_band[0] - invested
+        if recommended_band[0] is not None and invested is not None
+        else None
+    )
+    gain_high = (
+        recommended_band[1] - invested
+        if recommended_band[1] is not None and invested is not None
+        else None
+    )
+    gain_text = (
+        f"{_format_eur(gain_low)} – {_format_eur(gain_high)}"
+        if gain_low is not None and gain_high is not None
+        else "—"
+    )
+
+    is_no_scrape = valuation.search_metadata.strategy == "no_scrape"
+    source_line = (
+        "Fuente del rango: TF Labs, serie municipal basada en cierres trimestrales "
+        "de registradores, aplicada a la superficie del inmueble. Es una referencia "
+        "de municipio, no una tasación individual; el valor final puede variar según "
+        "las características de la propiedad."
+        if is_no_scrape
+        else "Fuente del rango: comparables activos en Idealista al momento de la valoración."
+    )
+
+    appreciation_line = (
+        f"En tu zona ({appreciation.town_name}) el €/m² ha variado un "
+        f"{_format_pct(appreciation.pct_change)} entre "
+        f"{_format_period_es(appreciation.from_period)} y "
+        f"{_format_period_es(appreciation.to_period)}."
+        if appreciation
+        else "Hemos cruzado los datos de tu operación con la evolución reciente del mercado."
+    )
+
+    subject = f"Tu propiedad podría haberse revalorizado — {address}"
+
+    body_lines = [
+        f"Hola {_client_first_name(transaction.transaction_name)},",
+        "",
+        "Soy del equipo de PropHero. Hemos preparado una estimación inicial con "
+        "nuestra herramienta y vemos una posible revalorización de tu propiedad.",
+        "",
+        "Posible revalorización",
+        appreciation_line,
+        f"Rango recomendado de salida: {band_text}.",
+        f"Ganancia potencial estimada vs. tu compra: {gain_text}.",
+        "",
+        "Qué podría significar",
+        "No es una tasación oficial ni una promesa de venta; es una primera estimación "
+        "que indica que puede ser un buen momento para valorar una desinversión. Si "
+        "los números encajan, podrías capturar parte de esa plusvalía y estudiar la "
+        "compra de otra propiedad con una estrategia más clara.",
+        "",
+        "Fuente",
+        source_line,
+        "",
+        "Siguiente paso",
+        "Puedes leer el informe adjunto y, si tiene sentido explorarlo, agendar una "
+        "llamada gratuita con un tasador para revisar el caso concreto aquí:",
+        "https://prophero.com/contacto",
+        "",
+        "Un saludo,",
+        "PropHero",
+    ]
+    return subject, "\n".join(body_lines)
+
+
+def _capital_gain_from_valuation(
+    transaction: TransactionDetail,
+    valuation: ValuationResponse,
+) -> Optional[int]:
+    """Capital gain at the mid-point of the recommended band (anchor +/-0%)."""
+
+    invested = transaction.final_total_price
+    if valuation.stats.estimated_value is None or invested is None:
+        return None
+    return int(round(valuation.stats.estimated_value - invested))
+
+
+def _review_warning_for_auto_email(
+    *,
+    transaction: TransactionDetail,
+    valuation: ValuationResponse,
+    capital_gain: Optional[int],
+) -> Optional[str]:
+    """Flag drafts that should be read carefully before sending."""
+
+    if not transaction.client_email:
+        return "No hay email de cliente; no se puede enviar automáticamente."
+    if capital_gain is not None and capital_gain <= 0:
+        return "Ganancia estimada negativa o cero; revisar antes de contactar al cliente."
+    appreciation = valuation.market_appreciation
+    if appreciation and appreciation.pct_change <= 0:
+        return "La revalorización municipal es negativa o cero; revisar el informe adjunto."
+    return None
+
+
+async def _prepare_auto_email_preview(record_id: str) -> CoachAutoEmailPreviewResponse:
+    """Build the no-scrape valuation + email draft without sending anything."""
+
+    config = _airtable_config()
+    try:
+        transaction = await get_transaction_for_valuation(config=config, record_id=record_id)
+    except AirtableAPIError as exc:
+        if exc.status_code == 404:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+        logger.error("Airtable detail fetch failed: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Airtable upstream error ({exc.status_code})",
+        )
+    except httpx.HTTPError as exc:
+        logger.error("Airtable network error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="Airtable unreachable")
+
+    valuation_request = await _valuation_request_from_transaction(transaction)
+    valuation = await _build_no_scrape_valuation(valuation_request, transaction)
+    # Best-effort appreciation. The email and PDF will still render without it.
+    try:
+        valuation.market_appreciation = _compute_market_appreciation_for_transaction(
+            transaction, valuation_request
+        )
+    except Exception as exc:  # noqa: BLE001 - best effort enrichment
+        logger.warning(
+            "Auto-email preview appreciation failed for transaction %s: %s",
+            transaction.id,
+            exc,
+            exc_info=True,
+        )
+
+    subject, body = _build_default_coach_email(
+        transaction=transaction,
+        valuation_request=valuation_request,
+        valuation=valuation,
+    )
+    capital_gain = _capital_gain_from_valuation(transaction, valuation)
+    test_to = os.environ.get("RESEND_TEST_TO", "").strip()
+    delivered_to = test_to or transaction.client_email
+    return CoachAutoEmailPreviewResponse(
+        transaction_id=transaction.id,
+        transaction=transaction,
+        valuation_request=valuation_request,
+        valuation=valuation,
+        client_email=transaction.client_email,
+        delivered_to=delivered_to,
+        subject=subject,
+        body=body,
+        appreciation_pct=(
+            valuation.market_appreciation.pct_change
+            if valuation.market_appreciation
+            else None
+        ),
+        capital_gain=capital_gain,
+        estimated_value=valuation.stats.estimated_value,
+        review_warning=_review_warning_for_auto_email(
+            transaction=transaction,
+            valuation=valuation,
+            capital_gain=capital_gain,
+        ),
+    )
+
+
 @app.post(
     "/api/coach/transactions/{record_id}/email/send",
     response_model=CoachEmailSendResponse,
@@ -1115,6 +1519,97 @@ async def send_coach_transaction_email(
     return CoachEmailSendResponse(
         sent=sent,
         message="Email sent" if sent else "RESEND_API_KEY not set — email skipped in dev",
+    )
+
+
+@app.post(
+    "/api/coach/transactions/{record_id}/email/auto-preview",
+    response_model=CoachAutoEmailPreviewResponse,
+    summary="Generate the default coach email + report payload without sending",
+    dependencies=[Depends(_verify_coach_password)],
+)
+async def preview_auto_coach_transaction_email(
+    record_id: str,
+) -> CoachAutoEmailPreviewResponse:
+    """Prepare the bulk-send draft so a coach can review copy and PDF first."""
+
+    return await _prepare_auto_email_preview(record_id)
+
+
+@app.post(
+    "/api/coach/transactions/{record_id}/email/auto-send",
+    response_model=CoachAutoEmailResponse,
+    summary="Auto-generate + send the default coach email for one transaction",
+    dependencies=[Depends(_verify_coach_password)],
+)
+async def auto_send_coach_transaction_email(
+    record_id: str,
+) -> CoachAutoEmailResponse:
+    """Auto-pipeline: Airtable → no-scrape valuation → PDF → branded email.
+
+    Used by the coach UI's bulk-send action. Each call is a self-contained
+    pipeline so the frontend can fan it out in parallel with a small
+    concurrency cap (3) to keep Airtable + Resend happy.
+
+    Bulk delivery deliberately uses the **no-scrape** valuation (TF Labs
+    municipal €/m² only): it's instant, deterministic, and the data the email
+    leans on is the zone appreciation, not individual Idealista comparables.
+    """
+    preview = await _prepare_auto_email_preview(record_id)
+    transaction = preview.transaction
+    valuation_request = preview.valuation_request
+    valuation = preview.valuation
+    subject = preview.subject
+    body = preview.body
+
+    if not transaction.client_email:
+        return CoachAutoEmailResponse(
+            transaction_id=transaction.id,
+            sent=False,
+            skipped_reason="Transaction has no client email",
+            client_email=None,
+            subject=subject,
+            appreciation_pct=preview.appreciation_pct,
+            capital_gain=preview.capital_gain,
+            estimated_value=preview.estimated_value,
+        )
+
+    try:
+        html = render_report_html(
+            valuation=valuation,
+            request_payload=valuation_request.model_dump(mode="json"),
+            lead=None,
+            transaction=transaction,
+            include_comparables=False,
+        )
+        attachment_bytes = await generate_pdf_bytes(html)
+    except Exception as exc:  # noqa: BLE001 — surface as 502 below
+        logger.error("Auto-send PDF render failed for %s: %s", record_id, exc, exc_info=True)
+        raise HTTPException(status_code=502, detail=f"PDF render failed: {exc}")
+
+    test_to = os.environ.get("RESEND_TEST_TO", "").strip()
+    delivered_to = test_to or transaction.client_email
+    try:
+        sent = await send_custom_email(
+            to=transaction.client_email,
+            subject=subject,
+            body=body,
+            attachment_filename=f"prophero-valoracion-{record_id}.pdf",
+            attachment_bytes=attachment_bytes,
+        )
+    except EmailDeliveryError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    return CoachAutoEmailResponse(
+        transaction_id=transaction.id,
+        sent=sent,
+        skipped_reason=None if sent else "RESEND_API_KEY not configured",
+        delivered_to=delivered_to if sent else None,
+        client_email=transaction.client_email,
+        subject=subject,
+        appreciation_pct=preview.appreciation_pct,
+        capital_gain=preview.capital_gain,
+        estimated_value=preview.estimated_value,
     )
 
 

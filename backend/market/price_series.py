@@ -142,6 +142,29 @@ class PriceSeriesStore:
                 if row:
                     return self._row_to_match(row, "name_match")
 
+                # Bilingual fallback: TF Labs stores some municipalities under
+                # a slashed "Castilian/Catalan" form (e.g. "Almazora/Almassora").
+                # We try LIKE matches against either side of the slash before
+                # giving up so coaches see appreciation data for the same town
+                # the geocoder returned in plain Castilian or Catalan.
+                like_prefix = f"{normalized}/%"
+                like_suffix = f"%/{normalized}"
+                if province_id:
+                    row = self._conn.execute(
+                        "SELECT * FROM market_towns WHERE province_id = ? "
+                        "AND (town_name_norm LIKE ? OR town_name_norm LIKE ?) LIMIT 1",
+                        (province_id, like_prefix, like_suffix),
+                    ).fetchone()
+                    if row:
+                        return self._row_to_match(row, "name_match")
+                row = self._conn.execute(
+                    "SELECT * FROM market_towns "
+                    "WHERE town_name_norm LIKE ? OR town_name_norm LIKE ? LIMIT 1",
+                    (like_prefix, like_suffix),
+                ).fetchone()
+                if row:
+                    return self._row_to_match(row, "name_match")
+
         return None
 
     @staticmethod

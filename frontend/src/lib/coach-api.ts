@@ -38,12 +38,31 @@ export interface TransactionSummary {
   council_rate: number | null
   service_charges: number | null
   final_total_price: number | null
+  purchase_eur_per_m2: number | null
   real_settlement_date: string | null
   town_record_id: string | null
+  coach_id: string | null
+  coach_name: string | null
+  coach_email: string | null
+  account_manager_id: string | null
+  account_manager_name: string | null
+  appreciation_pct: number | null
+  appreciation_from_period: string | null
+  appreciation_to_period: string | null
+  appreciation_town_name: string | null
+  estimated_current_value: number | null
+  capital_gain: number | null
 }
 
 export interface TransactionDetail extends TransactionSummary {
   raw_fields: Record<string, unknown>
+}
+
+export interface TransactionSearchResponse {
+  records: TransactionSummary[]
+  next_offset: string | null
+  page_size: number
+  has_more: boolean
 }
 
 export interface CoachTransactionValuationResponse {
@@ -55,6 +74,33 @@ export interface CoachTransactionValuationResponse {
 export interface CoachEmailSendResponse {
   sent: boolean
   message: string
+}
+
+export interface CoachAutoEmailPreviewResponse {
+  transaction_id: string
+  transaction: TransactionDetail
+  valuation_request: ValuationRequest
+  valuation: ValuationResponse
+  client_email: string | null
+  delivered_to: string | null
+  subject: string
+  body: string
+  appreciation_pct: number | null
+  capital_gain: number | null
+  estimated_value: number | null
+  review_warning: string | null
+}
+
+export interface CoachAutoEmailResponse {
+  transaction_id: string
+  sent: boolean
+  skipped_reason: string | null
+  delivered_to: string | null
+  client_email: string | null
+  subject: string
+  appreciation_pct: number | null
+  capital_gain: number | null
+  estimated_value: number | null
 }
 
 export interface CoachEmailSendPayload {
@@ -187,9 +233,14 @@ async function handleResponse<T>(res: Response): Promise<T> {
 
 export async function searchTransactions(
   query: string,
-  { limit = 25, signal }: { limit?: number; signal?: AbortSignal } = {},
-): Promise<TransactionSummary[]> {
+  {
+    limit = 100,
+    offset,
+    signal,
+  }: { limit?: number; offset?: string | null; signal?: AbortSignal } = {},
+): Promise<TransactionSearchResponse> {
   const params = new URLSearchParams({ q: query, limit: String(limit) })
+  if (offset) params.set('offset', offset)
   let res: Response
   try {
     res = await fetchWithTimeout(`${API_BASE}/api/coach/transactions?${params}`, {
@@ -204,7 +255,7 @@ export async function searchTransactions(
       `Network error: ${(err as Error).message ?? 'unknown'}`,
     )
   }
-  return handleResponse<TransactionSummary[]>(res)
+  return handleResponse<TransactionSearchResponse>(res)
 }
 
 export async function getTransaction(
@@ -259,6 +310,62 @@ export async function generateTransactionValuation(
     )
   }
   return handleResponse<CoachTransactionValuationResponse>(res)
+}
+
+/**
+ * Trigger the no-scrape auto-pipeline: Airtable → TF Labs valuation → PDF →
+ * branded email. Used by the bulk-send action on the coach worklist.
+ *
+ * Each call is self-contained and idempotent on the upstream side, so the
+ * frontend safely fans this out in parallel (with a small concurrency cap so
+ * we don't melt Airtable + Resend + Playwright at once).
+ */
+export async function sendTransactionAutoEmail(
+  recordId: string,
+  { signal }: { signal?: AbortSignal } = {},
+): Promise<CoachAutoEmailResponse> {
+  let res: Response
+  try {
+    res = await fetch(
+      `${API_BASE}/api/coach/transactions/${encodeURIComponent(recordId)}/email/auto-send`,
+      {
+        method: 'POST',
+        headers: buildHeaders(),
+        signal,
+      },
+    )
+  } catch (err) {
+    if (isAbortLikeError(err)) throw asAbortError()
+    throw new CoachApiError(
+      'network',
+      `Network error: ${(err as Error).message ?? 'unknown'}`,
+    )
+  }
+  return handleResponse<CoachAutoEmailResponse>(res)
+}
+
+export async function previewTransactionAutoEmail(
+  recordId: string,
+  { signal }: { signal?: AbortSignal } = {},
+): Promise<CoachAutoEmailPreviewResponse> {
+  let res: Response
+  try {
+    res = await fetch(
+      `${API_BASE}/api/coach/transactions/${encodeURIComponent(recordId)}/email/auto-preview`,
+      {
+        method: 'POST',
+        headers: buildHeaders(),
+        signal,
+      },
+    )
+  } catch (err) {
+    if (isAbortLikeError(err)) throw asAbortError()
+    throw new CoachApiError(
+      'network',
+      `Network error: ${(err as Error).message ?? 'unknown'}`,
+    )
+  }
+  return handleResponse<CoachAutoEmailPreviewResponse>(res)
 }
 
 export async function sendTransactionEmail(

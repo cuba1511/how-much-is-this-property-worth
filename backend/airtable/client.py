@@ -149,6 +149,91 @@ async def list_records(
     return records
 
 
+async def list_records_page(
+    *,
+    config: AirtableConfig,
+    table: str,
+    view: Optional[str] = None,
+    filter_formula: Optional[str] = None,
+    fields: Optional[list[str]] = None,
+    page_size: int = 100,
+    offset: Optional[str] = None,
+    sort: Optional[list[dict[str, str]]] = None,
+) -> tuple[list[dict[str, Any]], Optional[str]]:
+    """List one Airtable page and return ``(records, next_offset)``.
+
+    This is intentionally separate from ``list_records``: Airtable pagination
+    uses an opaque ``offset`` token, so callers that want "load more" behavior
+    need access to that token instead of just the accumulated records.
+    """
+    params: dict[str, Any] = {
+        "pageSize": page_size,
+    }
+    if offset:
+        params["offset"] = offset
+    if view:
+        params["view"] = view
+    if filter_formula:
+        params["filterByFormula"] = filter_formula
+    if fields:
+        for field in fields:
+            params.setdefault("fields[]", [])
+            params["fields[]"].append(field)
+    if sort:
+        for idx, entry in enumerate(sort):
+            if "field" in entry:
+                params[f"sort[{idx}][field]"] = entry["field"]
+            if "direction" in entry:
+                params[f"sort[{idx}][direction]"] = entry["direction"]
+
+    table_path = urllib.parse.quote(table, safe="")
+    url = f"{AIRTABLE_API_BASE}/{config.base_id}/{table_path}"
+    headers = {"Authorization": f"Bearer {config.pat}"}
+
+    logger.info(
+        "Airtable list_records_page → table=%s view=%s filter=%s page_size=%s offset=%s",
+        table,
+        view or "-",
+        "yes" if filter_formula else "no",
+        page_size,
+        "yes" if offset else "no",
+    )
+    started = time.monotonic()
+    async with httpx.AsyncClient(
+        timeout=_DEFAULT_TIMEOUT,
+        trust_env=False,
+    ) as client:
+        response = await _get_with_retries(
+            client=client,
+            url=url,
+            params=params,
+            headers=headers,
+            started=started,
+            context=f"list_records_page table={table} page_size={page_size}",
+        )
+
+    elapsed = time.monotonic() - started
+    if response.status_code >= 400:
+        logger.warning(
+            "Airtable list_records_page FAILED status=%s in %.2fs",
+            response.status_code,
+            elapsed,
+        )
+        raise AirtableAPIError(response.status_code, response.text)
+
+    payload = response.json()
+    records = payload.get("records", [])
+    next_offset = payload.get("offset")
+    logger.info(
+        "Airtable list_records_page ← %s records next=%s in %.2fs (table=%s)",
+        len(records),
+        "yes" if next_offset else "no",
+        elapsed,
+        table,
+    )
+    return records, next_offset
+
+
 async def get_record(
     *,
     config: AirtableConfig,
