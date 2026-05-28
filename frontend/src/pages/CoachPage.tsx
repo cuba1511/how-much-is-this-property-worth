@@ -1090,9 +1090,9 @@ interface TransactionRowProps {
 }
 
 function TransactionRow({ row, selected, onToggle, onSelect }: TransactionRowProps) {
-  const gain = row.capital_gain
   const appreciation = row.appreciation_pct
-  const gainPositive = gain !== null && gain !== undefined && gain > 0
+  const appreciationPositive =
+    appreciation !== null && appreciation !== undefined && appreciation > 0
   const ppm2 = purchasePricePerM2(row)
 
   return (
@@ -1163,18 +1163,13 @@ function TransactionRow({ row, selected, onToggle, onSelect }: TransactionRowPro
               <span className="text-xs uppercase tracking-wide text-ink-muted">Plusvalía</span>
               <span
                 className={`text-sm font-semibold leading-tight ${
-                  gainPositive ? 'text-emerald-700' : 'text-ink-muted'
+                  appreciationPositive ? 'text-emerald-700' : 'text-ink-muted'
                 }`}
               >
                 {appreciation !== null && appreciation !== undefined
                   ? formatPercent(appreciation * 100)
                   : '—'}
               </span>
-              {gain !== null && gain !== undefined && (
-                <span className={`text-xs font-medium ${gainPositive ? 'text-emerald-600' : 'text-ink-secondary'}`}>
-                  {formatCurrency(gain)}
-                </span>
-              )}
             </div>
           </div>
         </button>
@@ -1188,16 +1183,11 @@ function TransactionRow({ row, selected, onToggle, onSelect }: TransactionRowPro
         </div>
         <div>
           <span className="block text-[11px] uppercase tracking-wide text-ink-muted">Plusvalía</span>
-          <span className={`text-sm font-semibold leading-tight ${gainPositive ? 'text-emerald-700' : 'text-ink-muted'}`}>
+          <span className={`text-sm font-semibold leading-tight ${appreciationPositive ? 'text-emerald-700' : 'text-ink-muted'}`}>
             {appreciation !== null && appreciation !== undefined
               ? formatPercent(appreciation * 100)
               : '—'}
           </span>
-          {gain !== null && gain !== undefined && (
-            <span className={`block text-xs font-medium ${gainPositive ? 'text-emerald-600' : 'text-ink-secondary'}`}>
-              {formatCurrency(gain)}
-            </span>
-          )}
         </div>
       </div>
     </li>
