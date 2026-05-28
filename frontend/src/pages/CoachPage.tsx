@@ -7,6 +7,7 @@ import {
   BarChart3,
   Building2,
   Calculator,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
@@ -163,6 +164,12 @@ function formatCurrencyRange(low: number | null, high: number | null): string {
   return `${lowNumber} – ${formatCurrency(high)}`
 }
 
+function formatEmailCurrencyRange(low: number | null, high: number | null): string {
+  if (low === null || high === null) return '—'
+  if (low === high) return formatCurrency(low)
+  return `${formatCurrency(low)} y ${formatCurrency(high)}`
+}
+
 // Build a "soft" band around an anchor so each scenario reads as a range, not
 // a punctual number. Spread is intentionally narrow (~3%) so the three
 // scenario bands don't collapse into one another; rounding to €1k keeps the
@@ -206,6 +213,12 @@ function formatNumber(value: number | null, suffix = ''): string {
 function formatPercent(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '—'
   return `${value > 0 ? '+' : ''}${value.toFixed(1)}%`
+}
+
+function formatEmailPercent(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return '—'
+  const sign = value > 0 ? '+' : ''
+  return `${sign}${value.toFixed(1).replace('.', ',')}%`
 }
 
 function totalSpent(row: TransactionSummary): number | null {
@@ -279,6 +292,35 @@ function searchStageLabel(stage: string): string {
 
 function clientName(transactionName: string): string {
   return transactionName.split(' - ')[0]?.trim() || transactionName
+}
+
+function clientFirstName(transactionName: string): string {
+  const name = clientName(transactionName)
+  return name.split(/\s+/)[0]?.trim() || name
+}
+
+function formatSubjectGain(value: number | null): string | null {
+  if (value === null) return null
+  const roundedDown = Math.max(0, Math.floor(value / 1000) * 1000)
+  return roundedDown > 0 ? formatCurrency(roundedDown) : null
+}
+
+function coachEmailArea(
+  transaction: TransactionDetail,
+  valuationResult: CoachTransactionValuationResponse,
+): string {
+  const address = `${transaction.address ?? ''} ${valuationResult.valuation_request.address ?? ''}`.toLowerCase()
+  if (address.includes('torrefiel')) return 'Torrefiel'
+
+  const selected = valuationResult.valuation_request.selected_address
+  return (
+    selected?.neighbourhood ||
+    selected?.quarter ||
+    selected?.city_district ||
+    selected?.municipality ||
+    valuationResult.valuation.market_appreciation?.town_name ||
+    valuationResult.valuation.municipio.name
+  )
 }
 
 export default function CoachPage() {
@@ -492,76 +534,6 @@ function average(values: Array<number | null | undefined>): number | null {
   return finite.reduce((sum, value) => sum + value, 0) / finite.length
 }
 
-function normalizeSearchText(value: string | null | undefined): string {
-  return (value ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim()
-}
-
-interface CoachPortfolio {
-  id: string
-  name: string
-  email: string | null
-  totalCount: number
-  positives: number
-  totalGain: number
-  avgGain: number | null
-  avgAppreciation: number | null
-  avgEstimatedValue: number | null
-  totalPaid: number
-}
-
-function buildCoachPortfolios(rows: TransactionSummary[]): CoachPortfolio[] {
-  const grouped = new Map<string, { name: string; email: string | null; rows: TransactionSummary[] }>()
-
-  for (const row of rows) {
-    if (!row.coach_id || !row.coach_name) continue
-    const existing = grouped.get(row.coach_id)
-    if (existing) {
-      existing.rows.push(row)
-      if (!existing.email && row.coach_email) existing.email = row.coach_email
-    } else {
-      grouped.set(row.coach_id, {
-        name: row.coach_name,
-        email: row.coach_email,
-        rows: [row],
-      })
-    }
-  }
-
-  return Array.from(grouped.entries())
-    .map(([id, coach]) => {
-      let positives = 0
-      let totalGain = 0
-      let totalPaid = 0
-
-      for (const row of coach.rows) {
-        if (row.capital_gain !== null && row.capital_gain !== undefined) {
-          totalGain += row.capital_gain
-          if (row.capital_gain > 0) positives += 1
-        }
-        const paid = totalSpent(row)
-        if (paid !== null && Number.isFinite(paid)) totalPaid += paid
-      }
-
-      return {
-        id,
-        name: coach.name,
-        email: coach.email,
-        totalCount: coach.rows.length,
-        positives,
-        totalGain,
-        avgGain: average(coach.rows.map((row) => row.capital_gain)),
-        avgAppreciation: average(coach.rows.map((row) => row.appreciation_pct)),
-        avgEstimatedValue: average(coach.rows.map((row) => row.estimated_current_value)),
-        totalPaid,
-      }
-    })
-    .sort((a, b) => a.name.localeCompare(b.name, 'es'))
-}
-
 function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchPanelProps) {
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
@@ -580,13 +552,26 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
   // filters without re-querying Airtable.
   const [sortMode, setSortMode] = useState<SortMode>('gain_desc')
   const [minGain, setMinGain] = useState<string>('')
-  const [coachFilter, setCoachFilter] = useState<string>('all')
-  const [coachNameQuery, setCoachNameQuery] = useState<string>('')
+  const [coachFilters, setCoachFilters] = useState<Set<string>>(new Set())
+  const [coachDropdownOpen, setCoachDropdownOpen] = useState(false)
+  const coachDropdownRef = useRef<HTMLDivElement>(null)
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkOpen, setBulkOpen] = useState(false)
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(DEFAULT_LOCAL_PAGE_SIZE)
   const [currentPageIndex, setCurrentPageIndex] = useState(0)
+
+  // Close coach dropdown when clicking outside it.
+  useEffect(() => {
+    if (!coachDropdownOpen) return
+    function handleClickOutside(e: MouseEvent) {
+      if (coachDropdownRef.current && !coachDropdownRef.current.contains(e.target as Node)) {
+        setCoachDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [coachDropdownOpen])
 
   // Debounce + abort: cancel the previous in-flight request whenever the
   // query changes within SEARCH_DEBOUNCE_MS, so rapid typing never produces
@@ -662,36 +647,6 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
       .sort((a, b) => a.name.localeCompare(b.name, 'es'))
   }, [allRows])
 
-  const coachPortfolios = useMemo(() => buildCoachPortfolios(allRows), [allRows])
-
-  const normalizedCoachNameQuery = useMemo(
-    () => normalizeSearchText(coachNameQuery),
-    [coachNameQuery],
-  )
-
-  const selectedCoachPortfolio = useMemo(
-    () => coachPortfolios.find((coach) => coach.id === coachFilter) ?? null,
-    [coachFilter, coachPortfolios],
-  )
-
-  const matchingCoachPortfolios = useMemo(() => {
-    const matching = normalizedCoachNameQuery
-      ? coachPortfolios.filter((coach) =>
-          normalizeSearchText(`${coach.name} ${coach.email ?? ''}`).includes(
-            normalizedCoachNameQuery,
-          ),
-        )
-      : coachPortfolios
-
-    return matching
-      .slice()
-      .sort((a, b) => {
-        if (a.id === coachFilter) return -1
-        if (b.id === coachFilter) return 1
-        return a.name.localeCompare(b.name, 'es')
-      })
-  }, [coachFilter, coachPortfolios, normalizedCoachNameQuery])
-
   const minGainNumber = useMemo(() => {
     const parsed = Number(minGain)
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null
@@ -700,15 +655,7 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
   const filteredAll = useMemo(() => {
     return allRows
       .filter((row) => {
-        if (coachFilter !== 'all' && row.coach_id !== coachFilter) return false
-        if (
-          normalizedCoachNameQuery &&
-          !normalizeSearchText(`${row.coach_name ?? ''} ${row.coach_email ?? ''}`).includes(
-            normalizedCoachNameQuery,
-          )
-        ) {
-          return false
-        }
+        if (coachFilters.size > 0 && (!row.coach_id || !coachFilters.has(row.coach_id))) return false
         if (minGainNumber !== null) {
           const gain = row.capital_gain ?? Number.NEGATIVE_INFINITY
           if (gain < minGainNumber) return false
@@ -717,7 +664,7 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
       })
       .slice()
       .sort((a, b) => compareRows(a, b, sortMode))
-  }, [allRows, coachFilter, minGainNumber, normalizedCoachNameQuery, sortMode])
+  }, [allRows, coachFilters, minGainNumber, sortMode])
 
   const totalPages = Math.max(1, Math.ceil(filteredAll.length / pageSize))
   const clampedPageIndex = Math.min(currentPageIndex, totalPages - 1)
@@ -808,12 +755,9 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
   const allVisibleSelected =
     filtered.length > 0 && filtered.every((row) => selected.has(row.id))
 
-  const filtersActive = coachFilter !== 'all' || minGainNumber !== null || normalizedCoachNameQuery !== ''
-  const visibleCoachPortfolios = matchingCoachPortfolios.slice(0, 8)
-  const hiddenCoachPortfolioCount = Math.max(0, matchingCoachPortfolios.length - visibleCoachPortfolios.length)
+  const filtersActive = coachFilters.size > 0 || minGainNumber !== null
   const activeFilterCount =
-    (coachFilter !== 'all' ? 1 : 0) +
-    (normalizedCoachNameQuery !== '' ? 1 : 0) +
+    (coachFilters.size > 0 ? 1 : 0) +
     (minGainNumber !== null ? 1 : 0)
 
   return (
@@ -834,9 +778,72 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
           </div>
 
           <div className="flex items-center gap-2">
-            <label className="sr-only" htmlFor="coach-sort">
-              Ordenar
-            </label>
+            {/* Coach owner multi-select dropdown */}
+            <div ref={coachDropdownRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setCoachDropdownOpen((o) => !o)}
+                className="flex h-10 items-center gap-2 rounded-md border border-line bg-surface px-3 text-sm text-ink shadow-sm transition hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+              >
+                <UserCircle2 className="h-4 w-4 text-ink-muted" aria-hidden />
+                <span>
+                  {coachFilters.size === 0
+                    ? 'Todos los coaches'
+                    : coachFilters.size === 1
+                      ? coachOptions.find((c) => coachFilters.has(c.id))?.name ?? '1 coach'
+                      : `${coachFilters.size} coaches`}
+                </span>
+                {coachFilters.size > 0 && (
+                  <span className="flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white">
+                    {coachFilters.size}
+                  </span>
+                )}
+                <ChevronDown className="h-3.5 w-3.5 text-ink-muted" aria-hidden />
+              </button>
+
+              {coachDropdownOpen && (
+                <div className="absolute right-0 top-full z-30 mt-1 max-h-72 w-56 overflow-y-auto rounded-xl border border-line bg-surface shadow-lift">
+                  <label className="flex cursor-pointer items-center gap-2 border-b border-line/60 px-3 py-2.5 text-sm text-ink hover:bg-surface-muted">
+                    <input
+                      type="checkbox"
+                      checked={coachFilters.size === 0}
+                      onChange={() => {
+                        setCoachFilters(new Set())
+                        setCurrentPageIndex(0)
+                        setSelected(new Set())
+                      }}
+                      className="h-4 w-4 rounded border-line accent-primary"
+                    />
+                    <span className="font-medium">Todos los coaches</span>
+                  </label>
+                  {coachOptions.map((coach) => (
+                    <label
+                      key={coach.id}
+                      className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-ink hover:bg-surface-muted"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={coachFilters.has(coach.id)}
+                        onChange={() => {
+                          setCoachFilters((prev) => {
+                            const next = new Set(prev)
+                            if (next.has(coach.id)) next.delete(coach.id)
+                            else next.add(coach.id)
+                            return next
+                          })
+                          setCurrentPageIndex(0)
+                          setSelected(new Set())
+                        }}
+                        className="h-4 w-4 rounded border-line accent-primary"
+                      />
+                      {coach.name}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <label className="sr-only" htmlFor="coach-sort">Ordenar</label>
             <select
               id="coach-sort"
               value={sortMode}
@@ -849,6 +856,7 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
                 </option>
               ))}
             </select>
+
             <Button
               type="button"
               variant={filtersOpen || filtersActive ? 'default' : 'outline'}
@@ -871,7 +879,7 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
         {filtersOpen && (
           <div
             id="coach-filters-panel"
-            className="mt-md grid gap-md rounded-2xl border border-line/60 bg-surface-muted p-md md:grid-cols-3"
+            className="mt-md grid gap-md rounded-2xl border border-line/60 bg-surface-muted p-md md:grid-cols-2"
           >
             <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
               Capital gain mínimo (€)
@@ -886,26 +894,6 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
                 className="h-10 rounded-md border border-line bg-surface px-3 text-sm font-normal text-ink shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
               />
             </label>
-            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-              Coach owner
-              <select
-                value={coachFilter}
-                onChange={(e) => {
-                  setCoachFilter(e.target.value)
-                  setCoachNameQuery('')
-                  setCurrentPageIndex(0)
-                  setSelected(new Set())
-                }}
-                className="h-10 rounded-md border border-line bg-surface px-3 text-sm font-normal text-ink shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-              >
-                <option value="all">Todos los coaches</option>
-                {coachOptions.map((coach) => (
-                  <option key={coach.id} value={coach.id}>
-                    {coach.name}
-                  </option>
-                ))}
-              </select>
-            </label>
             <div className="flex items-end">
               <Button
                 type="button"
@@ -913,8 +901,7 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
                 size="sm"
                 onClick={() => {
                   setMinGain('')
-                  setCoachFilter('all')
-                  setCoachNameQuery('')
+                  setCoachFilters(new Set())
                 }}
                 disabled={!filtersActive}
                 className="text-ink-secondary"
@@ -924,127 +911,6 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
               </Button>
             </div>
           </div>
-        )}
-      </Card>
-
-      <Card className="border-line bg-surface p-md shadow-card">
-        <div className="flex flex-col gap-md lg:flex-row lg:items-start lg:justify-between">
-          <div className="max-w-xl">
-            <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-              Cartera por coach owner
-            </p>
-            <h2 className="mt-1 text-lg font-semibold text-ink">
-              {selectedCoachPortfolio ? selectedCoachPortfolio.name : 'Todas las carteras'}
-            </h2>
-            <p className="mt-1 text-sm text-ink-secondary">
-              Busca por nombre del coach owner o selecciona una tarjeta para ver solo su cartera.
-            </p>
-          </div>
-          <div className="flex w-full flex-col gap-2 lg:max-w-sm">
-            <label
-              className="text-xs font-semibold uppercase tracking-wide text-ink-muted"
-              htmlFor="coach-owner-search"
-            >
-              Nombre del coach owner
-            </label>
-            <div className="flex h-10 items-center gap-2 rounded-md border border-line bg-surface-muted px-3">
-              <UserCircle2 className="h-4 w-4 text-ink-muted" aria-hidden />
-              <input
-                id="coach-owner-search"
-                type="search"
-                value={coachNameQuery}
-                onChange={(e) => {
-                  setCoachNameQuery(e.target.value)
-                  setCoachFilter('all')
-                  setCurrentPageIndex(0)
-                  setSelected(new Set())
-                }}
-                placeholder="Ej. Patricia, Sara..."
-                className="w-full bg-transparent text-sm text-ink placeholder:text-ink-muted focus:outline-none"
-              />
-              {coachNameQuery && (
-                <button
-                  type="button"
-                  onClick={() => setCoachNameQuery('')}
-                  className="rounded-pill p-1 text-ink-muted transition hover:bg-surface-tint hover:text-ink"
-                  aria-label="Limpiar búsqueda de coach owner"
-                >
-                  <X className="h-3.5 w-3.5" aria-hidden />
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-md grid gap-sm md:grid-cols-2 xl:grid-cols-4">
-          {visibleCoachPortfolios.map((coach) => {
-            const isSelected = coach.id === coachFilter
-            return (
-              <button
-                key={coach.id}
-                type="button"
-                onClick={() => {
-                  setCoachFilter(isSelected ? 'all' : coach.id)
-                  setCoachNameQuery('')
-                  setCurrentPageIndex(0)
-                  setSelected(new Set())
-                }}
-                className={`rounded-2xl border p-sm text-left shadow-card transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
-                  isSelected
-                    ? 'border-line-brand bg-surface-tint'
-                    : 'border-line bg-surface hover:border-line-brand hover:bg-surface-tint'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-ink">{coach.name}</p>
-                    {coach.email && (
-                      <p className="truncate text-xs text-ink-muted">{coach.email}</p>
-                    )}
-                  </div>
-                  <span className="rounded-pill bg-surface-muted px-2 py-0.5 text-xs font-semibold text-ink-secondary">
-                    {coach.totalCount}
-                  </span>
-                </div>
-                <div className="mt-sm grid grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <span className="block uppercase tracking-wide text-ink-muted">Capital gain</span>
-                    <span className="font-semibold text-ink-success">{formatCurrency(coach.totalGain)}</span>
-                  </div>
-                  <div>
-                    <span className="block uppercase tracking-wide text-ink-muted">Positivas</span>
-                    <span className="font-semibold text-ink">
-                      {coach.positives}/{coach.totalCount}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="block uppercase tracking-wide text-ink-muted">Valor estim.</span>
-                    <span className="font-semibold text-ink">{formatCurrency(coach.avgEstimatedValue)}</span>
-                  </div>
-                  <div>
-                    <span className="block uppercase tracking-wide text-ink-muted">Revalor.</span>
-                    <span className="font-semibold text-ink">
-                      {coach.avgAppreciation !== null
-                        ? formatPercent(coach.avgAppreciation * 100)
-                        : '—'}
-                    </span>
-                  </div>
-                </div>
-              </button>
-            )
-          })}
-        </div>
-
-        {matchingCoachPortfolios.length === 0 && (
-          <p className="mt-md rounded-xl border border-line bg-surface-muted px-md py-sm text-sm text-ink-secondary">
-            No hay coach owners que coincidan con esa búsqueda en las transacciones cargadas.
-          </p>
-        )}
-
-        {hiddenCoachPortfolioCount > 0 && (
-          <p className="mt-sm text-xs text-ink-muted">
-            Mostrando 8 de {matchingCoachPortfolios.length} coaches. Usa el buscador para acotar por nombre.
-          </p>
         )}
       </Card>
 
@@ -1293,29 +1159,22 @@ function TransactionRow({ row, selected, onToggle, onSelect }: TransactionRowPro
                 {formatPricePerM2(ppm2)}
               </span>
             </div>
-            <div className="flex flex-col">
-              <span className="text-xs uppercase tracking-wide text-ink-muted">Revalor.</span>
+            <div className="flex flex-col items-end">
+              <span className="text-xs uppercase tracking-wide text-ink-muted">Plusvalía</span>
               <span
-                className={`text-sm font-semibold ${
-                  appreciation !== null && appreciation !== undefined && appreciation > 0
-                    ? 'text-emerald-700'
-                    : 'text-ink-muted'
+                className={`text-sm font-semibold leading-tight ${
+                  gainPositive ? 'text-emerald-700' : 'text-ink-muted'
                 }`}
               >
                 {appreciation !== null && appreciation !== undefined
                   ? formatPercent(appreciation * 100)
                   : '—'}
               </span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-xs uppercase tracking-wide text-ink-muted">Capital gain</span>
-              <span
-                className={`text-sm font-semibold ${
-                  gainPositive ? 'text-emerald-700' : 'text-ink'
-                }`}
-              >
-                {gain !== null && gain !== undefined ? formatCurrency(gain) : '—'}
-              </span>
+              {gain !== null && gain !== undefined && (
+                <span className={`text-xs font-medium ${gainPositive ? 'text-emerald-600' : 'text-ink-secondary'}`}>
+                  {formatCurrency(gain)}
+                </span>
+              )}
             </div>
           </div>
         </button>
@@ -1328,10 +1187,17 @@ function TransactionRow({ row, selected, onToggle, onSelect }: TransactionRowPro
           </span>
         </div>
         <div>
-          <span className="block text-[11px] uppercase tracking-wide text-ink-muted">Capital gain</span>
-          <span className={`text-sm font-semibold ${gainPositive ? 'text-ink-success' : 'text-ink'}`}>
-            {gain !== null && gain !== undefined ? formatCurrency(gain) : '—'}
+          <span className="block text-[11px] uppercase tracking-wide text-ink-muted">Plusvalía</span>
+          <span className={`text-sm font-semibold leading-tight ${gainPositive ? 'text-emerald-700' : 'text-ink-muted'}`}>
+            {appreciation !== null && appreciation !== undefined
+              ? formatPercent(appreciation * 100)
+              : '—'}
           </span>
+          {gain !== null && gain !== undefined && (
+            <span className={`block text-xs font-medium ${gainPositive ? 'text-emerald-600' : 'text-ink-secondary'}`}>
+              {formatCurrency(gain)}
+            </span>
+          )}
         </div>
       </div>
     </li>
@@ -2611,7 +2477,6 @@ function CoachClientReportComposer({
   const stats = valuationResult.valuation.stats
   const appreciation = valuationResult.valuation.market_appreciation ?? null
   const invested = totalSpent(transaction)
-  const isNoScrape = valuationResult.valuation.search_metadata.strategy === 'no_scrape'
 
   // Mirror the investor-report recommended band so the email matches the
   // range the coach just validated on screen.
@@ -2621,72 +2486,55 @@ function CoachClientReportComposer({
   const recommendedGainHigh = capitalGain(recommendedBand.high, invested)
   const recommendedRoiLow = roiPercent(recommendedGainLow, invested)
   const recommendedRoiHigh = roiPercent(recommendedGainHigh, invested)
-  const recommendedRoiText =
+  const emailRoiText =
     recommendedRoiLow !== null && recommendedRoiHigh !== null
-      ? recommendedRoiLow === recommendedRoiHigh
-        ? formatPercent(recommendedRoiLow)
-        : `${formatPercent(recommendedRoiLow)} – ${formatPercent(recommendedRoiHigh)}`
-      : null
-  const settlementDate = formatDate(transaction.real_settlement_date)
+      ? ` — un ROI de entre ${formatEmailPercent(recommendedRoiLow)} y ${formatEmailPercent(recommendedRoiHigh)}`
+      : ''
   const defaultTo = transaction.client_email ?? ''
-  const defaultSubject = `Tu propiedad podría haberse revalorizado — ${valuationResult.valuation_request.address}`
-  const dataSourceLine = isNoScrape
-    ? 'Fuente del rango: TF Labs, serie municipal basada en cierres trimestrales de registradores, aplicada a la superficie del inmueble. Es una referencia de municipio, no una tasación individual; el valor final puede variar según las características de la propiedad.'
-    : 'Fuente del rango: comparables activos en Idealista al momento de la valoración (precio, m², habitaciones y baños).'
+  const area = coachEmailArea(transaction, valuationResult)
+  const zoneName = appreciation?.town_name ?? valuationResult.valuation.municipio.name
+  const subjectGain = formatSubjectGain(recommendedGainLow)
+  const firstName = clientFirstName(transaction.transaction_name)
+  const defaultSubject = subjectGain
+    ? `${firstName}, tu propiedad en ${area} podría haber ganado más de ${subjectGain}`
+    : `${firstName}, tu propiedad en ${area} podría haber ganado valor`
+  const purchasePeriodText = appreciation ? ` en ${formatPeriod(appreciation.from_period)}` : ''
+  const fromPeriod = appreciation ? formatPeriod(appreciation.from_period) : 'la compra'
+  const toPeriod = appreciation ? formatPeriod(appreciation.to_period) : 'hoy'
   const initialSections: EditableReportSection[] = [
     {
-      id: 'summary',
-      title: 'Posible revalorización',
-      body: [
-        `Hemos preparado una estimación inicial para ${valuationResult.valuation_request.address}. El dato principal es sencillo: el €/m² de la zona donde compraste ha subido respecto al momento de la compra, y eso apunta a una posible revalorización de tu propiedad.`,
-        recommendedGainLow !== null && recommendedGainHigh !== null
-          ? `Según nuestro rango recomendado de salida, la ganancia potencial estimada estaría entre ${formatCurrencyRange(recommendedGainLow, recommendedGainHigh)}${recommendedRoiText ? ` (ROI ${recommendedRoiText})` : ''}.`
-          : `El informe adjunto estima un rango recomendado de salida de ${formatCurrencyRange(recommendedBand.low, recommendedBand.high)}.`,
-      ].filter(Boolean).join('\n'),
-    },
-    {
       id: 'gain',
-      title: 'Cómo lo hemos estimado',
-      body: appreciation
-        ? [
-            `La lectura combina la evolución del precio por m² de ${appreciation.town_name} desde la compra (${formatPeriod(appreciation.from_period)} → ${formatPeriod(appreciation.to_period)}), los datos de la operación y el rango de salida que vemos hoy.`,
-            `En el PDF tienes el detalle de criterios, rango recomendado y metodología para revisar la oportunidad con calma.`,
-          ]
-            .filter((value) => value !== null)
-            .join('\n')
-        : [
-            transaction.real_settlement_date ? `Tomamos como referencia la fecha de compra (${settlementDate}) y los datos disponibles de la operación.` : null,
-            invested ? `También contrastamos el total pagado (${formatCurrency(invested)}) con el rango de mercado estimado hoy.` : null,
-            `En el PDF tienes el detalle de criterios, rango recomendado y metodología para revisar la oportunidad con calma.`,
-          ]
-            .filter(Boolean)
-            .join('\n'),
+      title: 'Cómo lo calculamos',
+      body: [
+        `Tomamos la evolución del precio por m² en ${zoneName} (${fromPeriod} → ${toPeriod}), los datos de tu operación en ${valuationResult.valuation_request.address}, y el rango de salida que observamos hoy.`,
+        'La fuente es TF Labs, basada en cierres trimestrales de registradores. No es una tasación oficial, pero sí una señal sólida de que puede ser buen momento para valorar una desinversión.',
+      ].join('\n'),
     },
     {
       id: 'meaning',
-      title: 'Qué podría significar',
+      title: 'Qué significaría para ti',
       body: [
-        'No es una tasación oficial ni una promesa de venta; es una primera estimación automatizada que indica que puede ser un buen momento para valorar una desinversión.',
-        `Si los números encajan, podrías capturar parte de esa plusvalía y estudiar la compra de otra propiedad con una estrategia más clara.`,
-        `La decisión final dependerá de demanda real, estado del activo, documentación, fiscalidad y margen de negociación.`,
+        'Capturar parte de esa plusvalía ahora te permitiría reinvertir con una estrategia más clara y más capital.',
+        'El valor final dependerá de demanda real, estado del activo, fiscalidad y negociación — de todo eso hablamos contigo en detalle.',
       ].join('\n'),
-    },
-    {
-      id: 'market',
-      title: 'Fuente',
-      body: [
-        dataSourceLine,
-      ].filter(Boolean).join('\n'),
     },
     {
       id: 'next-step',
-      title: 'Siguiente paso',
+      title: '¿Tiene sentido explorarlo?',
       body: [
-        'Puedes leer el informe adjunto y, si tiene sentido explorarlo, agendar una llamada gratuita con nuestros especialistas aquí:',
-        'https://prophero.com/contacto',
-        'En esa llamada te ayudaremos a aterrizar una estrategia concreta de desinversión: precio inicial, margen de negociación, timing, fiscalidad, costes y posibles alternativas para reinvertir.',
+        'Agenda una llamada gratuita con nuestros especialistas:',
+        '👉 https://prophero.com/contacto',
+        'En 30 minutos te ayudamos a aterrizar precio de salida, margen de negociación, timing, costes e impuestos.',
       ].join('\n'),
     },
+  ]
+  const emailIntroParagraphs = [
+    'Desde PropHero monitorizamos continuamente el mercado para avisarte cuando aparece una oportunidad clara. Y hoy la vemos en tu propiedad.',
+    `El €/m² en tu zona ha subido desde que compraste${purchasePeriodText}.`,
+    recommendedGainLow !== null && recommendedGainHigh !== null
+      ? `Según nuestra estimación, la ganancia potencial estaría entre ${formatEmailCurrencyRange(recommendedGainLow, recommendedGainHigh)}${emailRoiText}.`
+      : `Según nuestra estimación, el rango de salida estaría entre ${formatCurrencyRange(recommendedBand.low, recommendedBand.high)}.`,
+    'Te adjuntamos el informe completo, pero aquí tienes el resumen:',
   ]
 
   const [to, setTo] = useState(defaultTo)
@@ -2698,15 +2546,12 @@ function CoachClientReportComposer({
   const [error, setError] = useState<string | null>(null)
 
   const emailBody = [
-    `Hola ${clientName(transaction.transaction_name)},`,
+    `Hola ${firstName},`,
     '',
-    'Soy del equipo de PropHero. Hemos preparado una estimación inicial con nuestra herramienta y vemos una posible revalorización de tu propiedad.',
-    '',
-    'El punto principal es que el €/m² de la zona donde compraste ha subido desde el momento de la compra. El PDF adjunto incluye el informe completo; te dejo aquí el contexto principal:',
-    '',
+    ...emailIntroParagraphs.flatMap((paragraph) => [paragraph, '']),
     ...sections.flatMap((section) => [section.title, section.body, '']),
     'Un saludo,',
-    'PropHero',
+    'El equipo de PropHero',
   ].join('\n')
 
   function updateSection(sectionId: string, key: 'title' | 'body', value: string) {
@@ -2803,6 +2648,12 @@ function CoachClientReportComposer({
               </p>
             </div>
             <div className="mt-lg grid gap-lg">
+              <div className="grid gap-3 text-sm leading-6 text-ink-secondary">
+                <p>Hola {firstName},</p>
+                {emailIntroParagraphs.map((paragraph) => (
+                  <p key={paragraph}>{paragraph}</p>
+                ))}
+              </div>
               {sections.map((section) => (
                 <section key={section.id}>
                   <h5 className="text-sm font-semibold uppercase tracking-wide text-primary">

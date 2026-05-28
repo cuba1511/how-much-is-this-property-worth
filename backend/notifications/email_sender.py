@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 RESEND_API_URL = "https://api.resend.com/emails"
 DEFAULT_BOOKING_URL = "https://prophero.com"
+DEFAULT_LOGO_URL = "https://prophero.com/logo.svg"
 
 
 def _recipient_for_delivery(actual_to: str) -> str:
@@ -66,6 +67,7 @@ def _render_email_html(lead: LeadInfo, valuation: ValuationResponse) -> str:
     safe_address = escape(address)
     safe_municipio = escape(municipio)
     safe_booking_url = escape(booking_url, quote=True)
+    logo_url = escape(os.environ.get("PROPHERO_EMAIL_LOGO_URL", DEFAULT_LOGO_URL), quote=True)
     location = (
         f"<strong>{safe_address}</strong>{f', {safe_municipio}' if address != municipio else ''}"
     )
@@ -83,8 +85,7 @@ def _render_email_html(lead: LeadInfo, valuation: ValuationResponse) -> str:
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
                 <tr>
                   <td>
-                    <span style="display:inline-block;width:26px;height:26px;border-radius:8px;background:#2050f6;vertical-align:middle;"></span>
-                    <span style="font-weight:700;font-size:16px;letter-spacing:-0.01em;margin-left:8px;vertical-align:middle;">PropHero</span>
+                    <img src="{logo_url}" width="125" height="28" alt="PropHero" style="display:block;border:0;outline:none;text-decoration:none;width:125px;height:auto;">
                   </td>
                 </tr>
               </table>
@@ -179,6 +180,7 @@ def _render_custom_email_html(body: str) -> str:
     """Render coach-authored plain text as a readable branded HTML email."""
     blocks = _split_text_blocks(body)
     rendered_blocks: list[str] = []
+    logo_url = escape(os.environ.get("PROPHERO_EMAIL_LOGO_URL", DEFAULT_LOGO_URL), quote=True)
 
     for index, lines in enumerate(blocks):
         if len(lines) > 1 and _looks_like_section_heading(lines[0]):
@@ -208,8 +210,7 @@ def _render_custom_email_html(body: str) -> str:
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="640" style="max-width:640px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e7edf5;">
           <tr>
             <td style="padding:22px 28px;border-bottom:1px solid #e7edf5;">
-              <span style="display:inline-block;width:28px;height:28px;border-radius:8px;background:#2050f6;vertical-align:middle;"></span>
-              <span style="font-weight:700;font-size:17px;letter-spacing:-0.01em;margin-left:9px;vertical-align:middle;color:#1e252d;">PropHero</span>
+              <img src="{logo_url}" width="125" height="28" alt="PropHero" style="display:block;border:0;outline:none;text-decoration:none;width:125px;height:auto;">
             </td>
           </tr>
           <tr>
