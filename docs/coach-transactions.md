@@ -68,9 +68,9 @@ Each list row is enriched before returning to the browser:
   guess from the transaction address. It does **not** geocode and does **not**
   scrape Idealista, so the list can rank/filter rows quickly.
 - `estimated_current_value` uses the same no-scrape anchor as the PDF report:
-  latest municipal €/m² × property surface. `capital_gain` is
-  `estimated_current_value - final_total_price`; it is **not** the purchase
-  price compounded by municipal appreciation.
+  latest municipal €/m² × property surface. `capital_gain` is the same TF Labs
+  zone appreciation percentage shown in `appreciation_pct`, converted to points
+  for display and sorting.
 - `purchase_eur_per_m2` is computed as `final_total_price / landsize_m2`.
   This is the actual initial acquisition €/m² paid by the client; the TF Labs
   `from_eur_per_m2` remains the municipal zone median at the settlement period.
@@ -163,10 +163,11 @@ appreciation card simply doesn't render and the report falls back to the
 comparables-only narrative.
 
 The list-level appreciation fields are precomputed for worklist triage only.
-`capital_gain` is `estimated_current_value - final_total_price`, where
-`estimated_current_value` is latest municipal €/m² multiplied by `landsize_m2`
-and rounded to the nearest EUR 1,000. The detail report still recomputes the full
-payload when the coach opens a transaction.
+`capital_gain` is `appreciation_pct * 100`, so the list shows the TF Labs zone
+revaluation percentage directly. `estimated_current_value` remains available as
+latest municipal €/m² multiplied by `landsize_m2` and rounded to the nearest EUR
+1,000. The detail report still recomputes the full payload when the coach opens
+a transaction.
 
 Lookup fields may come back as arrays from Airtable;
 `backend/airtable/transactions.py` flattens them to a scalar before returning.

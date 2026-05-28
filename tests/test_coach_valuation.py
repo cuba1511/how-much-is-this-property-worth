@@ -303,6 +303,64 @@ def test_build_no_scrape_valuation_uses_market_series_anchor(
     ]
 
 
+def test_build_no_scrape_valuation_uses_airtable_town_when_geocoding_fails(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """No-scrape coach reports should not fail just because Nominatim times out.
+
+    Airtable's linked Town is enough to resolve the TF Labs €/m² series and
+    build the report without comparables.
+    """
+    town = TownMatch(
+        town_id="rec-town-moncofa",
+        ine_code="12077",
+        town_name="Moncofa",
+        province_id="CASTELLON",
+        community_id="VC",
+        resolution_strategy="airtable_town_id",
+    )
+    store = _FakePriceSeriesStore(town=town, eur_per_m2=1_650.0)
+    monkeypatch.setattr("main.get_default_store", lambda: store)
+
+    async def fake_get_municipio_from_address(_address: str) -> MunicipioInfo:
+        raise TimeoutError("nominatim timeout")
+
+    monkeypatch.setattr("main.get_municipio_from_address", fake_get_municipio_from_address)
+
+    request = ValuationRequest(
+        address="Calle ONDA, 8, MONCOFA, 12593, España",
+        m2=100,
+        bedrooms=3,
+        bathrooms=1,
+        valuation_intent="info",
+    )
+    transaction = TransactionDetail(
+        id="rec123",
+        transaction_name="Client - Calle Onda, 8, Moncofa",
+        address="Calle ONDA, 8, MONCOFA, 12593",
+        type="Piso",
+        bedrooms=3,
+        bathrooms=1,
+        landsize_m2=100,
+        town_record_id="rec-town-moncofa",
+    )
+
+    valuation = asyncio.run(_build_no_scrape_valuation(request, transaction))
+
+    assert valuation.municipio.name == "Moncofa"
+    assert valuation.municipio.slug == "moncofa"
+    assert valuation.stats.avg_price_per_m2 == 1_650
+    assert valuation.stats.estimated_value == 165_000
+    assert valuation.search_metadata.strategy == "no_scrape"
+    assert store.resolve_calls == [
+        {
+            "airtable_record_id": "rec-town-moncofa",
+            "name": "MONCOFA",
+            "province_id": None,
+        }
+    ]
+
+
 def test_build_no_scrape_valuation_degrades_without_price_series(
     monkeypatch: pytest.MonkeyPatch,
 ):

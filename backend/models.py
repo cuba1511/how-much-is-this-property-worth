@@ -606,10 +606,11 @@ class TransactionSummary(BaseModel):
             "Rounded to the nearest €1.000 to match the no-scrape PDF."
         ),
     )
-    capital_gain: Optional[int] = Field(
+    capital_gain: Optional[float] = Field(
         None,
         description=(
-            "Pre-computed capital gain in EUR (estimated_current_value − final_total_price). "
+            "Pre-computed capital gain percentage, using the TF Labs zone "
+            "appreciation percentage between settlement and the latest observation. "
             "Drives the 'capital gain ↑' sort in the coach list."
         ),
     )

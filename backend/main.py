@@ -47,6 +47,7 @@ from geocoding import (
     reverse_geocode,
     suggest_addresses,
 )
+from geocoding.geocoder import slugify
 from market import compute_appreciation, get_default_store
 from models import (
     CadastralReferenceLookupRequest,
@@ -65,6 +66,7 @@ from models import (
     LeadSubmission,
     Listing,
     MarketAppreciation,
+    MunicipioInfo,
     ResolvedAddress,
     ReportPdfRenderRequest,
     SearchMetadata,
@@ -655,7 +657,7 @@ def _clean_municipality_guess(value: str) -> Optional[str]:
     cleaned = re.sub(r"\s+u\d+\s*$", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\s+unit\s+\d+\s*$", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\s+\d+[ºª]?\s*[A-Za-z]?\s*$", "", cleaned).strip()
-    if not cleaned:
+    if not cleaned or cleaned.isdigit():
         return None
     return MUNICIPALITY_ALIASES.get(cleaned.lower(), cleaned)
 
@@ -717,10 +719,9 @@ def _enrich_summary_with_appreciation(tx: TransactionSummary) -> TransactionSumm
     if appreciation is None:
         return tx
 
-    invested = tx.final_total_price
     area_m2 = tx.landsize_m2
     estimated_current_value: Optional[int] = None
-    capital_gain: Optional[int] = None
+    capital_gain = round(appreciation.pct_change * 100, 1)
     latest = store.latest_value(town.town_id)
     if latest is not None and area_m2:
         _latest_period, latest_eur_per_m2 = latest
@@ -731,9 +732,6 @@ def _enrich_summary_with_appreciation(tx: TransactionSummary) -> TransactionSumm
             # that can show a positive "gain" for assets bought far above the
             # municipal €/m2 baseline, while the report rightly shows negative.
             estimated_current_value = _round_to_step(latest_eur_per_m2 * area_m2)
-    if estimated_current_value is not None and invested is not None:
-        capital_gain = estimated_current_value - invested
-
     return tx.model_copy(
         update={
             "appreciation_pct": appreciation.pct_change,
@@ -753,6 +751,26 @@ def _enrich_summaries_with_appreciation(
     if not transactions:
         return transactions
     return [_enrich_summary_with_appreciation(tx) for tx in transactions]
+
+
+def _municipio_from_town_match(
+    town,
+    *,
+    selected_address: Optional[ResolvedAddress] = None,
+) -> MunicipioInfo:
+    """Build enough MunicipioInfo for no-scrape reports from TF Labs metadata."""
+    return MunicipioInfo(
+        name=town.town_name,
+        slug=slugify(town.town_name),
+        province=town.province_id,
+        lat=selected_address.lat if selected_address else None,
+        lon=selected_address.lon if selected_address else None,
+        road=selected_address.road if selected_address else None,
+        neighbourhood=selected_address.neighbourhood if selected_address else None,
+        quarter=selected_address.quarter if selected_address else None,
+        city_district=selected_address.city_district if selected_address else None,
+        postcode=selected_address.postcode if selected_address else None,
+    )
 
 
 def _compute_market_appreciation_for_transaction(
@@ -824,6 +842,26 @@ async def _build_no_scrape_valuation(
     leaving ``estimated_value=None`` so the renderer shows the honest
     "no estimated" hero block instead of inventing a number.
     """
+    store = get_default_store()
+    town = None
+    if store is not None:
+        pre_geocode_name = (
+            request.selected_address.municipality
+            if request.selected_address and request.selected_address.municipality
+            else _guess_transaction_municipality(transaction)
+            if transaction
+            else None
+        )
+        pre_geocode_province = (
+            request.selected_address.province if request.selected_address else None
+        )
+        if (transaction and transaction.town_record_id) or pre_geocode_name:
+            town = store.resolve_town(
+                airtable_record_id=transaction.town_record_id if transaction else None,
+                name=pre_geocode_name,
+                province_id=pre_geocode_province,
+            )
+
     try:
         municipio = (
             municipio_from_resolved_address(request.selected_address)
@@ -831,10 +869,25 @@ async def _build_no_scrape_valuation(
             else await get_municipio_from_address(request.address)
         )
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        if town is None:
+            raise HTTPException(status_code=422, detail=str(exc))
+        logger.warning(
+            "No-scrape geocoding failed for %r; using Airtable town %s",
+            request.address,
+            town.town_name,
+        )
+        municipio = _municipio_from_town_match(town, selected_address=request.selected_address)
     except Exception as exc:
-        logger.error("No-scrape geocoding failed: %s", exc, exc_info=True)
-        raise HTTPException(status_code=502, detail="Geocoding service unavailable")
+        if town is None:
+            logger.error("No-scrape geocoding failed: %s", exc, exc_info=True)
+            raise HTTPException(status_code=502, detail="Geocoding service unavailable")
+        logger.warning(
+            "No-scrape geocoding failed for %r; using Airtable town %s: %s",
+            request.address,
+            town.town_name,
+            exc,
+        )
+        municipio = _municipio_from_town_match(town, selected_address=request.selected_address)
 
     valuation_address = (
         request.selected_address.label if request.selected_address else request.address
@@ -845,29 +898,28 @@ async def _build_no_scrape_valuation(
     # this is a *current* valuation, not a back-calc of historical worth.
     market_eur_per_m2: Optional[int] = None
     estimated_value: Optional[int] = None
-    store = get_default_store()
-    town = None
     if store is not None:
-        municipality_name = (
-            request.selected_address.municipality
-            if request.selected_address and request.selected_address.municipality
-            else municipio.name
-        )
-        province = (
-            request.selected_address.province
-            if request.selected_address
-            else municipio.province
-        )
-        # Same resolution chain as `_compute_market_appreciation_for_transaction`:
-        # the Airtable Town record id is identical to ``market_towns.town_id``,
-        # so when we have it we get a 100% hit. Falling back to name only is
-        # brittle for bilingual municipalities (e.g. TF Labs stores Alicante as
-        # "Alicante/Alacant" so the plain "Alicante" lookup misses).
-        town = store.resolve_town(
-            airtable_record_id=transaction.town_record_id if transaction else None,
-            name=municipality_name,
-            province_id=province,
-        )
+        if town is None:
+            municipality_name = (
+                request.selected_address.municipality
+                if request.selected_address and request.selected_address.municipality
+                else municipio.name
+            )
+            province = (
+                request.selected_address.province
+                if request.selected_address
+                else municipio.province
+            )
+            # Same resolution chain as `_compute_market_appreciation_for_transaction`:
+            # the Airtable Town record id is identical to ``market_towns.town_id``,
+            # so when we have it we get a 100% hit. Falling back to name only is
+            # brittle for bilingual municipalities (e.g. TF Labs stores Alicante as
+            # "Alicante/Alacant" so the plain "Alicante" lookup misses).
+            town = store.resolve_town(
+                airtable_record_id=transaction.town_record_id if transaction else None,
+                name=municipality_name,
+                province_id=province,
+            )
         if town is not None:
             latest = store.latest_value(town.town_id)
             if latest is not None:
