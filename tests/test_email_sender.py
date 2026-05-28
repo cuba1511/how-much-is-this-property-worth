@@ -243,7 +243,7 @@ def test_send_custom_email_formats_coach_sections_for_gmail(monkeypatch: pytest.
     assert "text-transform:uppercase" in payload["html"]
     assert "Posible revalorización" in payload["html"]
     assert "Hemos preparado una estimación inicial.<br>La ganancia potencial" in payload["html"]
-    assert "https://prophero.com/logo.svg" in payload["html"]
+    assert "<img" not in payload["html"]
     assert "PropHero · Informe adjunto en PDF" in payload["html"]
 
 
