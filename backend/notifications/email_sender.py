@@ -79,17 +79,6 @@ def _render_email_html(lead: LeadInfo, valuation: ValuationResponse) -> str:
       <td align="center">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="560" style="max-width:560px;background:#ffffff;border-radius:18px;overflow:hidden;border:1px solid #eadfd2;box-shadow:0 12px 36px rgba(30,37,45,0.08);">
           <tr>
-            <td style="padding:22px 28px 0;">
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                <tr>
-                  <td>
-                    <div style="font-size:22px;line-height:1;font-weight:800;letter-spacing:-0.03em;color:#1e252d;">PropHero</div>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-          <tr>
             <td style="padding:26px 28px 30px;">
               <p style="margin:0 0 14px;font-size:16px;line-height:1.55;color:#1e252d;">Hola {greeting_name},</p>
               <p style="margin:0 0 18px;font-size:16px;line-height:1.65;color:#344454;">
@@ -205,11 +194,6 @@ def _render_custom_email_html(body: str) -> str:
     <tr>
       <td align="center">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="640" style="max-width:640px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e7edf5;">
-          <tr>
-            <td style="padding:22px 28px;border-bottom:1px solid #e7edf5;">
-              <div style="font-size:22px;line-height:1;font-weight:800;letter-spacing:-0.03em;color:#1e252d;">PropHero</div>
-            </td>
-          </tr>
           <tr>
             <td style="padding:28px;">
               {content}
