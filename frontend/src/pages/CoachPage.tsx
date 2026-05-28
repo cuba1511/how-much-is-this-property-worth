@@ -492,6 +492,76 @@ function average(values: Array<number | null | undefined>): number | null {
   return finite.reduce((sum, value) => sum + value, 0) / finite.length
 }
 
+function normalizeSearchText(value: string | null | undefined): string {
+  return (value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+}
+
+interface CoachPortfolio {
+  id: string
+  name: string
+  email: string | null
+  totalCount: number
+  positives: number
+  totalGain: number
+  avgGain: number | null
+  avgAppreciation: number | null
+  avgEstimatedValue: number | null
+  totalPaid: number
+}
+
+function buildCoachPortfolios(rows: TransactionSummary[]): CoachPortfolio[] {
+  const grouped = new Map<string, { name: string; email: string | null; rows: TransactionSummary[] }>()
+
+  for (const row of rows) {
+    if (!row.coach_id || !row.coach_name) continue
+    const existing = grouped.get(row.coach_id)
+    if (existing) {
+      existing.rows.push(row)
+      if (!existing.email && row.coach_email) existing.email = row.coach_email
+    } else {
+      grouped.set(row.coach_id, {
+        name: row.coach_name,
+        email: row.coach_email,
+        rows: [row],
+      })
+    }
+  }
+
+  return Array.from(grouped.entries())
+    .map(([id, coach]) => {
+      let positives = 0
+      let totalGain = 0
+      let totalPaid = 0
+
+      for (const row of coach.rows) {
+        if (row.capital_gain !== null && row.capital_gain !== undefined) {
+          totalGain += row.capital_gain
+          if (row.capital_gain > 0) positives += 1
+        }
+        const paid = totalSpent(row)
+        if (paid !== null && Number.isFinite(paid)) totalPaid += paid
+      }
+
+      return {
+        id,
+        name: coach.name,
+        email: coach.email,
+        totalCount: coach.rows.length,
+        positives,
+        totalGain,
+        avgGain: average(coach.rows.map((row) => row.capital_gain)),
+        avgAppreciation: average(coach.rows.map((row) => row.appreciation_pct)),
+        avgEstimatedValue: average(coach.rows.map((row) => row.estimated_current_value)),
+        totalPaid,
+      }
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+}
+
 function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchPanelProps) {
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
@@ -511,6 +581,7 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
   const [sortMode, setSortMode] = useState<SortMode>('gain_desc')
   const [minGain, setMinGain] = useState<string>('')
   const [coachFilter, setCoachFilter] = useState<string>('all')
+  const [coachNameQuery, setCoachNameQuery] = useState<string>('')
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkOpen, setBulkOpen] = useState(false)
@@ -591,6 +662,36 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
       .sort((a, b) => a.name.localeCompare(b.name, 'es'))
   }, [allRows])
 
+  const coachPortfolios = useMemo(() => buildCoachPortfolios(allRows), [allRows])
+
+  const normalizedCoachNameQuery = useMemo(
+    () => normalizeSearchText(coachNameQuery),
+    [coachNameQuery],
+  )
+
+  const selectedCoachPortfolio = useMemo(
+    () => coachPortfolios.find((coach) => coach.id === coachFilter) ?? null,
+    [coachFilter, coachPortfolios],
+  )
+
+  const matchingCoachPortfolios = useMemo(() => {
+    const matching = normalizedCoachNameQuery
+      ? coachPortfolios.filter((coach) =>
+          normalizeSearchText(`${coach.name} ${coach.email ?? ''}`).includes(
+            normalizedCoachNameQuery,
+          ),
+        )
+      : coachPortfolios
+
+    return matching
+      .slice()
+      .sort((a, b) => {
+        if (a.id === coachFilter) return -1
+        if (b.id === coachFilter) return 1
+        return a.name.localeCompare(b.name, 'es')
+      })
+  }, [coachFilter, coachPortfolios, normalizedCoachNameQuery])
+
   const minGainNumber = useMemo(() => {
     const parsed = Number(minGain)
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null
@@ -600,6 +701,14 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
     return allRows
       .filter((row) => {
         if (coachFilter !== 'all' && row.coach_id !== coachFilter) return false
+        if (
+          normalizedCoachNameQuery &&
+          !normalizeSearchText(`${row.coach_name ?? ''} ${row.coach_email ?? ''}`).includes(
+            normalizedCoachNameQuery,
+          )
+        ) {
+          return false
+        }
         if (minGainNumber !== null) {
           const gain = row.capital_gain ?? Number.NEGATIVE_INFINITY
           if (gain < minGainNumber) return false
@@ -608,7 +717,7 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
       })
       .slice()
       .sort((a, b) => compareRows(a, b, sortMode))
-  }, [allRows, coachFilter, minGainNumber, sortMode])
+  }, [allRows, coachFilter, minGainNumber, normalizedCoachNameQuery, sortMode])
 
   const totalPages = Math.max(1, Math.ceil(filteredAll.length / pageSize))
   const clampedPageIndex = Math.min(currentPageIndex, totalPages - 1)
@@ -699,7 +808,13 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
   const allVisibleSelected =
     filtered.length > 0 && filtered.every((row) => selected.has(row.id))
 
-  const filtersActive = coachFilter !== 'all' || minGainNumber !== null
+  const filtersActive = coachFilter !== 'all' || minGainNumber !== null || normalizedCoachNameQuery !== ''
+  const visibleCoachPortfolios = matchingCoachPortfolios.slice(0, 8)
+  const hiddenCoachPortfolioCount = Math.max(0, matchingCoachPortfolios.length - visibleCoachPortfolios.length)
+  const activeFilterCount =
+    (coachFilter !== 'all' ? 1 : 0) +
+    (normalizedCoachNameQuery !== '' ? 1 : 0) +
+    (minGainNumber !== null ? 1 : 0)
 
   return (
     <div className="flex flex-col gap-md">
@@ -746,7 +861,7 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
               Filtros
               {filtersActive && (
                 <span className="ml-1 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
-                  {(coachFilter !== 'all' ? 1 : 0) + (minGainNumber !== null ? 1 : 0)}
+                  {activeFilterCount}
                 </span>
               )}
             </Button>
@@ -775,7 +890,12 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
               Coach owner
               <select
                 value={coachFilter}
-                onChange={(e) => setCoachFilter(e.target.value)}
+                onChange={(e) => {
+                  setCoachFilter(e.target.value)
+                  setCoachNameQuery('')
+                  setCurrentPageIndex(0)
+                  setSelected(new Set())
+                }}
                 className="h-10 rounded-md border border-line bg-surface px-3 text-sm font-normal text-ink shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
               >
                 <option value="all">Todos los coaches</option>
@@ -794,6 +914,7 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
                 onClick={() => {
                   setMinGain('')
                   setCoachFilter('all')
+                  setCoachNameQuery('')
                 }}
                 disabled={!filtersActive}
                 className="text-ink-secondary"
@@ -803,6 +924,127 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
               </Button>
             </div>
           </div>
+        )}
+      </Card>
+
+      <Card className="border-line bg-surface p-md shadow-card">
+        <div className="flex flex-col gap-md lg:flex-row lg:items-start lg:justify-between">
+          <div className="max-w-xl">
+            <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+              Cartera por coach owner
+            </p>
+            <h2 className="mt-1 text-lg font-semibold text-ink">
+              {selectedCoachPortfolio ? selectedCoachPortfolio.name : 'Todas las carteras'}
+            </h2>
+            <p className="mt-1 text-sm text-ink-secondary">
+              Busca por nombre del coach owner o selecciona una tarjeta para ver solo su cartera.
+            </p>
+          </div>
+          <div className="flex w-full flex-col gap-2 lg:max-w-sm">
+            <label
+              className="text-xs font-semibold uppercase tracking-wide text-ink-muted"
+              htmlFor="coach-owner-search"
+            >
+              Nombre del coach owner
+            </label>
+            <div className="flex h-10 items-center gap-2 rounded-md border border-line bg-surface-muted px-3">
+              <UserCircle2 className="h-4 w-4 text-ink-muted" aria-hidden />
+              <input
+                id="coach-owner-search"
+                type="search"
+                value={coachNameQuery}
+                onChange={(e) => {
+                  setCoachNameQuery(e.target.value)
+                  setCoachFilter('all')
+                  setCurrentPageIndex(0)
+                  setSelected(new Set())
+                }}
+                placeholder="Ej. Patricia, Sara..."
+                className="w-full bg-transparent text-sm text-ink placeholder:text-ink-muted focus:outline-none"
+              />
+              {coachNameQuery && (
+                <button
+                  type="button"
+                  onClick={() => setCoachNameQuery('')}
+                  className="rounded-pill p-1 text-ink-muted transition hover:bg-surface-tint hover:text-ink"
+                  aria-label="Limpiar búsqueda de coach owner"
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-md grid gap-sm md:grid-cols-2 xl:grid-cols-4">
+          {visibleCoachPortfolios.map((coach) => {
+            const isSelected = coach.id === coachFilter
+            return (
+              <button
+                key={coach.id}
+                type="button"
+                onClick={() => {
+                  setCoachFilter(isSelected ? 'all' : coach.id)
+                  setCoachNameQuery('')
+                  setCurrentPageIndex(0)
+                  setSelected(new Set())
+                }}
+                className={`rounded-2xl border p-sm text-left shadow-card transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
+                  isSelected
+                    ? 'border-line-brand bg-surface-tint'
+                    : 'border-line bg-surface hover:border-line-brand hover:bg-surface-tint'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-ink">{coach.name}</p>
+                    {coach.email && (
+                      <p className="truncate text-xs text-ink-muted">{coach.email}</p>
+                    )}
+                  </div>
+                  <span className="rounded-pill bg-surface-muted px-2 py-0.5 text-xs font-semibold text-ink-secondary">
+                    {coach.totalCount}
+                  </span>
+                </div>
+                <div className="mt-sm grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="block uppercase tracking-wide text-ink-muted">Capital gain</span>
+                    <span className="font-semibold text-ink-success">{formatCurrency(coach.totalGain)}</span>
+                  </div>
+                  <div>
+                    <span className="block uppercase tracking-wide text-ink-muted">Positivas</span>
+                    <span className="font-semibold text-ink">
+                      {coach.positives}/{coach.totalCount}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="block uppercase tracking-wide text-ink-muted">Valor estim.</span>
+                    <span className="font-semibold text-ink">{formatCurrency(coach.avgEstimatedValue)}</span>
+                  </div>
+                  <div>
+                    <span className="block uppercase tracking-wide text-ink-muted">Revalor.</span>
+                    <span className="font-semibold text-ink">
+                      {coach.avgAppreciation !== null
+                        ? formatPercent(coach.avgAppreciation * 100)
+                        : '—'}
+                    </span>
+                  </div>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+
+        {matchingCoachPortfolios.length === 0 && (
+          <p className="mt-md rounded-xl border border-line bg-surface-muted px-md py-sm text-sm text-ink-secondary">
+            No hay coach owners que coincidan con esa búsqueda en las transacciones cargadas.
+          </p>
+        )}
+
+        {hiddenCoachPortfolioCount > 0 && (
+          <p className="mt-sm text-xs text-ink-muted">
+            Mostrando 8 de {matchingCoachPortfolios.length} coaches. Usa el buscador para acotar por nombre.
+          </p>
         )}
       </Card>
 
@@ -1087,7 +1329,7 @@ function TransactionRow({ row, selected, onToggle, onSelect }: TransactionRowPro
         </div>
         <div>
           <span className="block text-[11px] uppercase tracking-wide text-ink-muted">Capital gain</span>
-          <span className={`text-sm font-semibold ${gainPositive ? 'text-emerald-700' : 'text-ink'}`}>
+          <span className={`text-sm font-semibold ${gainPositive ? 'text-ink-success' : 'text-ink'}`}>
             {gain !== null && gain !== undefined ? formatCurrency(gain) : '—'}
           </span>
         </div>
@@ -1557,7 +1799,11 @@ function BulkSendDialog({ open, onOpenChange, rows, onClearSelection }: BulkSend
                             : 'text-ink-muted'
                         }`}
                       >
-                        {formatCurrency(draft?.preview.capital_gain ?? row.capital_gain)}
+                        {draft
+                          ? formatCurrency(draft.preview.capital_gain)
+                          : row.capital_gain !== null && row.capital_gain !== undefined
+                            ? formatCurrency(row.capital_gain)
+                            : '—'}
                       </span>
                     </button>
                   </li>
@@ -1593,7 +1839,7 @@ function BulkSendDialog({ open, onOpenChange, rows, onClearSelection }: BulkSend
                     <p className="text-ink">{formatCurrency(activeDraft.preview.estimated_value)}</p>
                   </div>
                   <div>
-                    <p className="font-semibold uppercase tracking-wide text-ink-muted">Capital gain</p>
+                    <p className="font-semibold uppercase tracking-wide text-ink-muted">Ganancia vs compra</p>
                     <p className={(activeDraft.preview.capital_gain ?? 0) < 0 ? 'text-destructive' : 'text-ink'}>
                       {formatCurrency(activeDraft.preview.capital_gain)}
                     </p>

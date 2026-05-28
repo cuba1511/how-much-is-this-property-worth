@@ -2,9 +2,8 @@ import animate from "tailwindcss-animate"
 
 /** @type {import('tailwindcss').Config} */
 /**
- * Colours aligned with PropHero marketing site (Bricks `color-palettes.min.css`):
- * --text #1e252d, --light-bg #f5f7f9, --blue-bg #f3f5fe, --blueelectric #2050f6,
- * --bluelight #65c6eb, --f45504 #f45504, --color-16 #162eb7, --ea4ac0 #ea4ac0
+ * Semantic aliases are mapped to the Figma-exported design tokens in
+ * `frontend/src/index.css` (`design-tokensLast version`).
  */
 export default {
   darkMode: ["class"],
@@ -27,8 +26,8 @@ export default {
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
-          light: '#5578f8',
-          dark: '#162eb7',
+          light: 'var(--ds-color-bg-primary-alt)',
+          dark: 'var(--ds-color-fg-brand-hover)',
         },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
@@ -60,18 +59,21 @@ export default {
           foreground: '#ffffff',
         },
         surface: {
-          DEFAULT: '#ffffff',
-          muted: '#f5f7f9',
-          tint: '#f3f5fe',
+          DEFAULT: 'var(--ds-color-bg-card)',
+          muted: 'var(--ds-color-bg-page)',
+          tint: 'var(--ds-color-bg-primary-alt)',
+          elevated: 'var(--ds-color-bg-elevated-alt)',
         },
         ink: {
-          DEFAULT: '#1e252d',
-          secondary: '#596b7d',
-          muted: '#abb8c7',
+          DEFAULT: 'var(--ds-color-fg-primary)',
+          secondary: 'var(--ds-color-fg-secondary)',
+          muted: 'var(--ds-color-fg-tertiary)',
+          success: 'var(--ds-color-fg-success)',
         },
         line: {
-          DEFAULT: 'rgba(32, 80, 246, 0.18)',
-          strong: '#4d4d4d',
+          DEFAULT: 'var(--ds-color-border-elevated)',
+          strong: 'var(--ds-color-border-default)',
+          brand: 'var(--ds-color-border-brand)',
         },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
@@ -99,16 +101,16 @@ export default {
         '3xl': '64px',
       },
       boxShadow: {
-        card: '0 10px 40px rgba(32, 80, 246, 0.08)',
-        lift: '0 12px 32px rgba(30, 37, 45, 0.12)',
+        card: 'var(--ds-shadow-level-1)',
+        lift: 'var(--ds-shadow-level-2)',
       },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
-        xl: '16px',
-        '2xl': '20px',
-        pill: '9999px',
+        xl: 'var(--ds-radius-card)',
+        '2xl': 'var(--ds-radius-card)',
+        pill: 'var(--ds-radius-button)',
       },
       transitionDuration: {
         DEFAULT: '200ms',

@@ -4,21 +4,56 @@
 
 @layer base {
   :root {
-    /* PropHero tokens (from live site colour palette) */
-    --ph-white: #ffffff;
-    --ph-light-bg: #f5f7f9;
-    --ph-blue-bg: #f3f5fe;
-    --ph-text: #1e252d;
-    --ph-text-secondary: #596b7d;
-    --ph-text-muted: #abb8c7;
-    --ph-blue: #2050f6;
-    --ph-blue-dark: #162eb7;
+    /* Design system tokens from `design-tokensLast version` */
+    --ds-color-bg-page: #f6f6f6;
+    --ds-color-bg-card: #ffffff;
+    --ds-color-bg-disabled: #f5f5f5;
+    --ds-color-bg-elevated: #d4d4d8;
+    --ds-color-bg-elevated-alt: #fafafa;
+    --ds-color-bg-primary: #2050f6;
+    --ds-color-bg-primary-alt: #eef4ff;
+    --ds-color-bg-secondary: #212121;
+    --ds-color-bg-success-alt: #dcfce7;
+    --ds-color-fg-primary: #212121;
+    --ds-color-fg-secondary: #71717a;
+    --ds-color-fg-tertiary: #a1a1aa;
+    --ds-color-fg-contrast: #ffffff;
+    --ds-color-fg-brand: #2050f6;
+    --ds-color-fg-brand-hover: #1337e2;
+    --ds-color-fg-success: #15803d;
+    --ds-color-border-default: #d4d4d8;
+    --ds-color-border-elevated: #e4e4e7;
+    --ds-color-border-elevated-alt: #fafafa;
+    --ds-color-border-brand: #2050f6;
+    --ds-color-action-secondary-bg: #d9e7ff;
+    --ds-color-action-secondary-bg-hover: #eef4ff;
+    --ds-radius-input: 8px;
+    --ds-radius-button: 9999px;
+    --ds-radius-card: 24px;
+    --ds-spacing-1: 4px;
+    --ds-spacing-2: 8px;
+    --ds-spacing-3: 12px;
+    --ds-spacing-4: 16px;
+    --ds-spacing-5: 20px;
+    --ds-spacing-6: 24px;
+    --ds-shadow-level-1: 0 0 16px #0000001a;
+    --ds-shadow-level-2: 0 0 16px #0000001a;
+
+    /* PropHero aliases mapped to the current design system */
+    --ph-white: var(--ds-color-bg-card);
+    --ph-light-bg: var(--ds-color-bg-page);
+    --ph-blue-bg: var(--ds-color-bg-primary-alt);
+    --ph-text: var(--ds-color-fg-primary);
+    --ph-text-secondary: var(--ds-color-fg-secondary);
+    --ph-text-muted: var(--ds-color-fg-tertiary);
+    --ph-blue: var(--ds-color-bg-primary);
+    --ph-blue-dark: var(--ds-color-fg-brand-hover);
     --ph-cyan: #65c6eb;
     --ph-orange: #f45504;
     --ph-orange-light: #ff7a40;
     --ph-pink: #ea4ac0;
-    --ph-line: rgba(32, 80, 246, 0.18);
-    --ph-line-strong: #4d4d4d;
+    --ph-line: var(--ds-color-border-elevated);
+    --ph-line-strong: var(--ds-color-border-default);
 
     /* shadcn/ui CSS variables — mapped to PropHero palette */
     --background: 0 0% 100%;
@@ -69,7 +104,7 @@
     --primary-bg: color-mix(in srgb, var(--ph-blue) 10%, transparent);
     --primary-border: color-mix(in srgb, var(--ph-blue) 35%, transparent);
     --social-bg: var(--ph-light-bg);
-    --shadow: 0 10px 40px rgba(32, 80, 246, 0.08);
+    --shadow: var(--ds-shadow-level-1);
 
     --sans: Inter, system-ui, 'Segoe UI', Roboto, sans-serif;
     --heading: Inter, system-ui, 'Segoe UI', Roboto, sans-serif;
