@@ -2117,7 +2117,12 @@ async def _send_report_in_background(
             lead=lead,
         )
         pdf_bytes = await generate_pdf_bytes(html)
-        await send_valuation_email(lead=lead, valuation=valuation, pdf_bytes=pdf_bytes)
+        await send_valuation_email(
+            lead=lead,
+            valuation=valuation,
+            pdf_bytes=pdf_bytes,
+            request_payload=request_payload,
+        )
         db.mark_email_sent(valuation_id)
     except EmailDeliveryError as exc:
         logger.error("Email delivery failed for valuation %d: %s", valuation_id, exc)

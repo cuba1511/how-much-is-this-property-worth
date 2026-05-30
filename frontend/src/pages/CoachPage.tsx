@@ -1094,6 +1094,8 @@ function TransactionRow({ row, selected, onToggle, onSelect }: TransactionRowPro
   const appreciationPositive =
     appreciation !== null && appreciation !== undefined && appreciation > 0
   const ppm2 = purchasePricePerM2(row)
+  // Euro gain: TF Labs estimated current value minus what the client actually paid.
+  const eurGain = capitalGain(row.estimated_current_value, totalSpent(row))
 
   return (
     <li
@@ -1170,6 +1172,11 @@ function TransactionRow({ row, selected, onToggle, onSelect }: TransactionRowPro
                   ? formatPercent(appreciation * 100)
                   : '—'}
               </span>
+              {eurGain !== null && (
+                <span className={`text-xs font-medium ${appreciationPositive ? 'text-emerald-600' : 'text-ink-secondary'}`}>
+                  {formatCurrency(eurGain)}
+                </span>
+              )}
             </div>
           </div>
         </button>
@@ -1188,6 +1195,11 @@ function TransactionRow({ row, selected, onToggle, onSelect }: TransactionRowPro
               ? formatPercent(appreciation * 100)
               : '—'}
           </span>
+          {eurGain !== null && (
+            <span className={`block text-xs font-medium ${appreciationPositive ? 'text-emerald-600' : 'text-ink-secondary'}`}>
+              {formatCurrency(eurGain)}
+            </span>
+          )}
         </div>
       </div>
     </li>

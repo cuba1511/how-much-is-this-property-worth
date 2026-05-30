@@ -472,6 +472,7 @@ def _build_report_context(
     recommended_band = _price_band(recommended_anchor, 0.03)
 
     purchase_ppm2 = _purchase_eur_per_m2(transaction, request_m2)
+    # Zone median €/m²: prefer TF Labs appreciation series; fall back to Idealista comparables
     current_ppm2 = (
         round(appreciation.to_eur_per_m2)
         if appreciation
@@ -497,31 +498,50 @@ def _build_report_context(
     recommended_range = _format_currency_range(recommended_band["low"], recommended_band["high"])
     appreciation_pct = appreciation.pct_change * 100 if appreciation else None
 
+    # Zone median displayed in the hero: formatted €/m²
+    zone_median_label = (
+        f"€/m² zona ({_format_period(appreciation.to_period)})"
+        if appreciation
+        else "€/m² zona hoy"
+    )
+
+    # Rental disclaimer: always shown in the coach flow (investor portfolio = likely rented).
+    # In the public flow we surface it when the intent signals renting.
+    valuation_intent = request_payload.get("valuation_intent") or ""
+    is_rented_context = transaction is not None or valuation_intent in ("rent_out", "rent")
+    rental_disclaimer_text = (
+        "⚠️ Este valor corresponde al inmueble vacío y en buen estado de conservación. "
+        "Si el inmueble está actualmente alquilado, el precio de mercado libre puede "
+        "ser inferior al trasladado aquí, ya que los compradores descuentan la carga "
+        "arrendaticia. Confirma el estado actual antes de tomar decisiones."
+    ) if is_rented_context else None
+
     return {
         "is_coach": transaction is not None,
         "kicker": "Reporte inversor" if transaction else "Reporte de valoración",
         "headline": (
-            "Estimación conservadora de salida"
+            "Referencia de zona y potencial de salida"
             if transaction
-            else "Cuánto vale tu propiedad hoy"
+            else "¿Cuánto vale tu propiedad en el mercado actual?"
         ),
         "subtitle": (
-            "Este resumen muestra un único rango recomendado, la fuente del cálculo y "
-            "la ganancia potencial frente a la compra. No estima tiempos de venta."
+            "Mediana €/m² zonal, evolución desde la compra y rango conservador de referencia. "
+            "El precio exacto depende de la subzona, el estado y las condiciones de cada activo."
             if transaction
-            else "Esta es una lectura cuantitativa del mercado para tu inmueble: rango de venta, "
-            "evolución de zona y una recomendación conservadora para salir al mercado."
+            else "Esta es una referencia de mercado basada en la mediana de zona. "
+            "El valor real de tu inmueble puede variar según subzona, estado y condiciones. "
+            "Agenda una llamada para obtener una estimación personalizada."
         ),
+        # Hero card: show zone median €/m² as primary metric (not a sale-price range)
+        "zone_median_ppm2": _format_price_per_m2(current_ppm2),
+        "zone_median_label": zone_median_label,
+        # Keep range fields for the recommendation section (below the fold)
         "overall_range": recommended_range,
         "recommended_range": recommended_range,
         "settlement_date": _format_date_es(transaction.real_settlement_date if transaction else None),
         "invested": _format_eur_or_dash(invested),
         "purchase_ppm2": _format_price_per_m2(purchase_ppm2),
-        "current_ppm2_label": (
-            f"€/m² zona ({_format_period(appreciation.to_period)})"
-            if appreciation
-            else "€/m² zona hoy"
-        ),
+        "current_ppm2_label": zone_median_label,
         "current_ppm2": _format_price_per_m2(current_ppm2),
         "ppm2_delta": _format_percent(ppm2_delta_pct) if ppm2_delta_pct is not None else None,
         "zone_plusvalia": _format_eur_or_dash(zone_plusvalia),
@@ -558,10 +578,11 @@ def _build_report_context(
         else None,
         "map_html": map_html,
         "recommendation": _build_recommendation(
-            label="Rango recomendado conservador",
+            label="Rango de referencia conservador",
             description=(
-                "Usamos una banda estrecha alrededor de la valoración base para no presentar "
-                "alternativas comerciales que no estén respaldadas por datos de mercado."
+                "Referencia basada en la mediana de zona. El precio real puede variar "
+                "por subzona, estado del activo, fiscalidad y momento de salida. "
+                "No lo uses como precio de venta sin revisarlo con un experto."
             ),
             band=recommended_band,
             invested=invested,
@@ -574,6 +595,8 @@ def _build_report_context(
         ),
         "methodology_source": _methodology_source(stats.estimation_method, no_scrape),
         "has_comparables": has_comparables,
+        "rental_disclaimer": rental_disclaimer_text,
+        "is_rented_context": is_rented_context,
     }
 
 

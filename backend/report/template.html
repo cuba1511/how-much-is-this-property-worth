@@ -493,12 +493,22 @@
       <p class="hero-subtitle">{{ report.subtitle }}</p>
     </div>
     <aside class="sale-range-card">
-      <div class="label">Rango de venta hoy</div>
-      <div class="sale-range">{{ report.overall_range }}</div>
-      <p class="small-note">Recomendado: <strong>{{ report.recommended_range }}</strong></p>
-      <p class="small-muted">Rangos conservadores · redondeados a €1.000</p>
+      <div class="label">{{ report.zone_median_label }}</div>
+      <div class="sale-range">{{ report.zone_median_ppm2 }}</div>
+      {% if report.appreciation %}
+      <p class="small-note" style="color: var(--ph-emerald);">
+        <strong>{{ report.appreciation.pct }}</strong> desde {{ report.appreciation.from_period }}
+      </p>
+      {% endif %}
+      <p class="small-muted">Mediana de zona · referencia, no precio de venta</p>
     </aside>
   </section>
+
+  {% if report.rental_disclaimer %}
+  <div style="margin: 0 0 4mm; padding: 4mm 5mm; background: #fff8ed; border: 1.5px solid #f9c954; border-radius: 10px; break-inside: avoid;">
+    <p style="margin: 0; font-size: 9pt; color: #7a4f00; line-height: 1.55;">{{ report.rental_disclaimer }}</p>
+  </div>
+  {% endif %}
 
   <section class="section">
     <h2 class="section-title">Datos de la propiedad</h2>
@@ -630,7 +640,7 @@
       <p class="recommendation-desc">{{ report.recommendation.description }}</p>
       <dl class="kv">
         <div class="kv-row">
-          <dt>Rango de salida</dt>
+          <dt>Rango de referencia (zona)</dt>
           <dd>{{ report.recommendation.range }}</dd>
         </div>
         {% if report.is_coach %}
@@ -646,8 +656,9 @@
       </dl>
     </article>
     <p class="small-muted" style="margin-top: 3mm;">
-      El rango está redondeado a €1.000 para evitar precisión falsa. No estimamos tiempo de venta:
-      dependerá de demanda real, estado del activo, documentación, fiscalidad y negociación.
+      Rango redondeado a €1.000 para evitar precisión falsa. Es una <strong>referencia de zona</strong>,
+      no el precio final: el valor real depende de la subzona exacta, el estado del activo,
+      si está alquilado, la fiscalidad y el momento de negociación.
     </p>
   </section>
 
@@ -726,18 +737,21 @@
 
   <section class="next-step">
     <div>
-      <h2>¿Quieres aterrizar estos números con un experto?</h2>
+      <h2>El precio exacto lo calculamos juntos</h2>
       <p>
-        Agenda una llamada gratuita con el equipo de PropHero para gestionar la desinversión,
-        validar el precio de salida y construir un plan comercial concreto sobre esta propiedad.
+        La referencia de zona es el punto de partida. En una llamada de 30 minutos vemos
+        el precio de salida real para <em>tu</em> inmueble, el efecto del alquiler (si aplica),
+        la fiscalidad y el plan operativo de desinversión. Sin compromiso.
       </p>
     </div>
-    <a class="next-step-cta" href="{{ booking_url }}">Llamada gratuita con PropHero</a>
+    <a class="next-step-cta" href="{{ booking_url }}">Llamada gratuita · 30 min</a>
   </section>
 
   <footer class="footer">
-    <strong>Descargo:</strong> esta valoración es una estimación automatizada basada en datos públicos,
-    referencias de mercado y, cuando aplica, comparables activos. No sustituye a una tasación oficial.
+    <strong>Descargo:</strong> este documento muestra una referencia de mercado basada en la mediana
+    de zona y, cuando aplica, comparables activos en Idealista. No es una tasación oficial ni sustituye
+    al asesoramiento fiscal o legal. El valor asume el inmueble <strong>vacío y en buen estado</strong>;
+    si está alquilado o necesita reforma, el precio real puede diferir significativamente.
     <br><br>
     Generado por <strong>PropHero</strong> · {{ generated_at }}
   </footer>

@@ -24,6 +24,7 @@ Design choices:
 from __future__ import annotations
 
 import logging
+import re
 import sqlite3
 import threading
 import unicodedata
@@ -57,9 +58,18 @@ class TownMatch:
 
 
 def _normalize_name(name: str) -> str:
-    """Same normalization used by the build script (lowercase + no accents)."""
+    """Same normalization used by the build script (lowercase + no accents).
+
+    Also collapses whitespace around "/" so geocoder output like
+    "Alacant / Alicante" normalises to "alacant/alicante" and can be matched
+    against TF Labs entries like "alicante/alacant".
+    """
     decomposed = unicodedata.normalize("NFKD", name)
-    return "".join(ch for ch in decomposed if not unicodedata.combining(ch)).lower().strip()
+    cleaned = "".join(ch for ch in decomposed if not unicodedata.combining(ch)).lower().strip()
+    # Normalize spaces around "/" — Nominatim returns bilingual names with
+    # surrounding spaces ("Alacant / Alicante") while TF Labs omits them.
+    cleaned = re.sub(r"\s*/\s*", "/", cleaned)
+    return cleaned
 
 
 def _period_for(d: date) -> str:
@@ -164,6 +174,29 @@ class PriceSeriesStore:
                 ).fetchone()
                 if row:
                     return self._row_to_match(row, "name_match")
+
+                # Flipped bilingual: geocoders sometimes return "X/Y" while TF Labs
+                # stores "Y/X" (e.g. Nominatim → "alacant/alicante", TF Labs →
+                # "alicante/alacant"). Try the reversed form before giving up.
+                if "/" in normalized:
+                    left, _, right = normalized.partition("/")
+                    left, right = left.strip(), right.strip()
+                    if left and right:
+                        flipped = f"{right}/{left}"
+                        if province_id:
+                            row = self._conn.execute(
+                                "SELECT * FROM market_towns WHERE province_id = ? "
+                                "AND town_name_norm = ? LIMIT 1",
+                                (province_id, flipped),
+                            ).fetchone()
+                            if row:
+                                return self._row_to_match(row, "name_match")
+                        row = self._conn.execute(
+                            "SELECT * FROM market_towns WHERE town_name_norm = ? LIMIT 1",
+                            (flipped,),
+                        ).fetchone()
+                        if row:
+                            return self._row_to_match(row, "name_match")
 
         return None
 
