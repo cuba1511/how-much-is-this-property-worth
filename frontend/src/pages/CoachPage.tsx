@@ -164,12 +164,6 @@ function formatCurrencyRange(low: number | null, high: number | null): string {
   return `${lowNumber} – ${formatCurrency(high)}`
 }
 
-function formatEmailCurrencyRange(low: number | null, high: number | null): string {
-  if (low === null || high === null) return '—'
-  if (low === high) return formatCurrency(low)
-  return `${formatCurrency(low)} y ${formatCurrency(high)}`
-}
-
 // Build a "soft" band around an anchor so each scenario reads as a range, not
 // a punctual number. Spread is intentionally narrow (~3%) so the three
 // scenario bands don't collapse into one another; rounding to €1k keeps the
@@ -192,6 +186,11 @@ function priceBand(
 function formatPricePerM2(value: number | null | undefined): string {
   if (value === null || value === undefined) return '—'
   return `${new Intl.NumberFormat('es-ES', { maximumFractionDigits: 0 }).format(value)} €/m²`
+}
+
+function formatEmailPricePerM2(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '—'
+  return `${new Intl.NumberFormat('es-ES', { maximumFractionDigits: 0 }).format(value)} EUR/m²`
 }
 
 function formatDate(value: string | null): string {
@@ -297,30 +296,6 @@ function clientName(transactionName: string): string {
 function clientFirstName(transactionName: string): string {
   const name = clientName(transactionName)
   return name.split(/\s+/)[0]?.trim() || name
-}
-
-function formatSubjectGain(value: number | null): string | null {
-  if (value === null) return null
-  const roundedDown = Math.max(0, Math.floor(value / 1000) * 1000)
-  return roundedDown > 0 ? formatCurrency(roundedDown) : null
-}
-
-function coachEmailArea(
-  transaction: TransactionDetail,
-  valuationResult: CoachTransactionValuationResponse,
-): string {
-  const address = `${transaction.address ?? ''} ${valuationResult.valuation_request.address ?? ''}`.toLowerCase()
-  if (address.includes('torrefiel')) return 'Torrefiel'
-
-  const selected = valuationResult.valuation_request.selected_address
-  return (
-    selected?.neighbourhood ||
-    selected?.quarter ||
-    selected?.city_district ||
-    selected?.municipality ||
-    valuationResult.valuation.market_appreciation?.town_name ||
-    valuationResult.valuation.municipio.name
-  )
 }
 
 export default function CoachPage() {
@@ -2479,64 +2454,40 @@ function CoachClientReportComposer({
   const stats = valuationResult.valuation.stats
   const appreciation = valuationResult.valuation.market_appreciation ?? null
   const invested = totalSpent(transaction)
-
-  // Mirror the investor-report recommended band so the email matches the
-  // range the coach just validated on screen.
-  const recommendedAnchor = stats.estimated_value ?? null
-  const recommendedBand = priceBand(recommendedAnchor, 0.03)
-  const recommendedGainLow = capitalGain(recommendedBand.low, invested)
-  const recommendedGainHigh = capitalGain(recommendedBand.high, invested)
-  const recommendedRoiLow = roiPercent(recommendedGainLow, invested)
-  const recommendedRoiHigh = roiPercent(recommendedGainHigh, invested)
-  const emailRoiText =
-    recommendedRoiLow !== null && recommendedRoiHigh !== null
-      ? ` — un ROI de entre ${formatEmailPercent(recommendedRoiLow)} y ${formatEmailPercent(recommendedRoiHigh)}`
-      : ''
   const defaultTo = transaction.client_email ?? ''
-  const area = coachEmailArea(transaction, valuationResult)
   const zoneName = appreciation?.town_name ?? valuationResult.valuation.municipio.name
-  const subjectGain = formatSubjectGain(recommendedGainLow)
+  const currentPpm2 = appreciation?.to_eur_per_m2 ?? stats.avg_price_per_m2 ?? null
+  const purchasePpm2 =
+    transaction.purchase_eur_per_m2 ?? pricePerM2(invested, transaction.landsize_m2)
   const firstName = clientFirstName(transaction.transaction_name)
-  const defaultSubject = subjectGain
-    ? `${firstName}, tu propiedad en ${area} podría haber ganado más de ${subjectGain}`
-    : `${firstName}, tu propiedad en ${area} podría haber ganado valor`
-  const purchasePeriodText = appreciation ? ` en ${formatPeriod(appreciation.from_period)}` : ''
-  const fromPeriod = appreciation ? formatPeriod(appreciation.from_period) : 'la compra'
-  const toPeriod = appreciation ? formatPeriod(appreciation.to_period) : 'hoy'
+  const defaultSubject = `Tu propiedad en ${zoneName} muestra una posible señal de revalorización`
+  const propertyAddress =
+    valuationResult.valuation_request.selected_address?.label ??
+    valuationResult.valuation_request.address
+  const bookingUrl = 'https://prophero.com/contacto'
+  const contactEmail = transaction.coach_email ?? 'contacto@prophero.com'
   const initialSections: EditableReportSection[] = [
     {
-      id: 'gain',
-      title: 'Cómo lo calculamos',
+      id: 'market',
+      title: 'Lo que pagaste vs. cómo está el mercado hoy',
       body: [
-        `Tomamos la evolución del precio por m² en ${zoneName} (${fromPeriod} → ${toPeriod}), los datos de tu operación en ${valuationResult.valuation_request.address}, y el rango de salida que observamos hoy.`,
-        'La fuente es TF Labs, basada en cierres trimestrales de registradores. No es una tasación oficial, pero sí una señal sólida de que puede ser buen momento para valorar una desinversión.',
+        `Cuando adquiriste tu propiedad, el precio fue de ${formatEmailPricePerM2(purchasePpm2)}.`,
+        `Hoy, el EUR/m² medio en ${zoneName} se sitúa en ${formatEmailPricePerM2(currentPpm2)} — lo que representa una variación de ${formatEmailPercent(appreciation?.pct_change !== undefined ? appreciation.pct_change * 100 : null)} desde tu adquisición.`,
+        `Este dato refleja la mediana del municipio de ${zoneName} y no el valor específico de tu inmueble. La ubicación exacta, planta, orientación y estado de la propiedad pueden hacer que tu caso sea mejor o peor que la mediana. En la sesión con nuestros expertos lo analizamos en detalle.`,
       ].join('\n'),
     },
     {
       id: 'meaning',
-      title: 'Qué significaría para ti',
+      title: '¿Qué significa esto para ti?',
       body: [
-        'Capturar parte de esa plusvalía ahora te permitiría reinvertir con una estrategia más clara y más capital.',
-        'El valor final dependerá de demanda real, estado del activo, fiscalidad y negociación — de todo eso hablamos contigo en detalle.',
-      ].join('\n'),
-    },
-    {
-      id: 'next-step',
-      title: '¿Tiene sentido explorarlo?',
-      body: [
-        'Agenda una llamada gratuita con nuestros especialistas:',
-        '👉 https://prophero.com/contacto',
-        'En 30 minutos te ayudamos a aterrizar precio de salida, margen de negociación, timing, costes e impuestos.',
+        `Si el mercado de ${zoneName} se ha revalorizado, es una buena señal para tu inversión. Pero para entender el impacto real en tu propiedad concreta, te invitamos a una sesión gratuita de 30 minutos con uno de nuestros expertos en valoración.`,
+        `→ ${bookingUrl}`,
       ].join('\n'),
     },
   ]
   const emailIntroParagraphs = [
-    'Desde PropHero monitorizamos continuamente el mercado para avisarte cuando aparece una oportunidad clara. Y hoy la vemos en tu propiedad.',
-    `El €/m² en tu zona ha subido desde que compraste${purchasePeriodText}.`,
-    recommendedGainLow !== null && recommendedGainHigh !== null
-      ? `Según nuestra estimación, la ganancia potencial estaría entre ${formatEmailCurrencyRange(recommendedGainLow, recommendedGainHigh)}${emailRoiText}.`
-      : `Según nuestra estimación, el rango de salida estaría entre ${formatCurrencyRange(recommendedBand.low, recommendedBand.high)}.`,
-    'Te adjuntamos el informe completo, pero aquí tienes el resumen:',
+    `Desde el equipo de Data & Divestments de PropHero queremos compartirte una actualización sobre tu propiedad en ${propertyAddress}.`,
+    `Hemos analizado la evolución del mercado en tu ${zoneName} y encontramos una señal positiva que creemos que te va a interesar.`,
   ]
 
   const [to, setTo] = useState(defaultTo)
@@ -2553,7 +2504,7 @@ function CoachClientReportComposer({
     ...emailIntroParagraphs.flatMap((paragraph) => [paragraph, '']),
     ...sections.flatMap((section) => [section.title, section.body, '']),
     'Un saludo,',
-    'El equipo de PropHero',
+    `El equipo de PropHero Data & Divestments · ${contactEmail}`,
   ].join('\n')
 
   function updateSection(sectionId: string, key: 'title' | 'body', value: string) {
@@ -2666,6 +2617,10 @@ function CoachClientReportComposer({
                   </p>
                 </section>
               ))}
+              <div className="grid gap-1 text-sm leading-6 text-ink-secondary">
+                <p>Un saludo,</p>
+                <p>El equipo de PropHero Data &amp; Divestments · {contactEmail}</p>
+              </div>
             </div>
           </div>
         ) : (

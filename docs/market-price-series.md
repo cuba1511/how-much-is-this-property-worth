@@ -71,7 +71,19 @@ factor it out — that's why the SQLite is ~5× smaller than the raw CSV.
   appreciation block is simply omitted from the response.
 - `compute_appreciation(store, town, settlement_date) → MarketAppreciation`
   — wraps the period math (months elapsed, annualized %, baseline
-  fallback when settlement is before 2005-01).
+  fallback when settlement is before 2005-01). It also includes:
+  - the latest observation at or before December of the year before the
+    current period (for example, `2025-12` when the latest period is
+    `2026-01`) so reports can show a real prior-year €/m² instead of a
+    placeholder.
+  - a `yearly_series` array with one entry per year between settlement and
+    the latest observation (December snapshots for intermediate years).
+    The PDF chart and the coach frontend use this to plot every
+    intermediate year, not just the endpoints.
+
+This dataset does **not** contain population or population-growth fields. Any
+population trend needs a separate source, such as INE municipal padrón series
+(`pobmun`) keyed by INE municipality code.
 
 ### Town resolution chain
 
@@ -104,6 +116,15 @@ optional `market_appreciation` block inside `valuation`:
     "from_eur_per_m2": 3360.81,
     "to_period": "2026-01",
     "to_eur_per_m2": 5621.27,
+    "previous_year_period": "2025-12",
+    "previous_year_eur_per_m2": 5568.42,
+    "yearly_series": [
+      { "year": 2022, "period": "2022-06", "eur_per_m2": 3360.81 },
+      { "year": 2023, "period": "2023-12", "eur_per_m2": 4105.33 },
+      { "year": 2024, "period": "2024-12", "eur_per_m2": 4890.17 },
+      { "year": 2025, "period": "2025-12", "eur_per_m2": 5568.42 },
+      { "year": 2026, "period": "2026-01", "eur_per_m2": 5621.27 }
+    ],
     "pct_change": 0.6726,
     "annualized_pct_change": 0.1544,
     "months_elapsed": 43,

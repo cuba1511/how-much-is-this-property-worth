@@ -511,56 +511,88 @@ def _build_price_evolution_rows(appreciation: Any) -> list[dict[str, str]]:
     if not appreciation:
         return [
             {"label": "Año compra", "value": "—"},
-            {"label": "Año anterior", "value": "—"},
             {"label": "Hoy", "value": "—"},
         ]
+    yearly = getattr(appreciation, "yearly_series", None)
+    if yearly and len(yearly) >= 2:
+        rows: list[dict[str, str]] = []
+        for idx, entry in enumerate(yearly):
+            year = entry.get("year") or _year_from_period(entry.get("period", ""))
+            value = entry.get("eur_per_m2")
+            if idx == 0:
+                label = str(year) if year else "Año compra"
+            elif idx == len(yearly) - 1:
+                label = f"Hoy ({_format_period_full(entry.get('period', ''))})"
+            else:
+                label = str(year) if year else _format_period_full(entry.get("period", ""))
+            rows.append({"label": label, "value": _format_price_per_m2(round(value)) if value else "—"})
+        return rows
+
     from_year = _year_from_period(appreciation.from_period)
-    to_year = _year_from_period(appreciation.to_period)
-    return [
+    rows = [
         {
             "label": str(from_year) if from_year else "Año compra",
             "value": _format_price_per_m2(round(appreciation.from_eur_per_m2)),
-        },
-        {
-            "label": str(to_year - 1) if to_year else "Año anterior",
-            "value": "—",
-        },
+        }
+    ]
+    previous_year_period = getattr(appreciation, "previous_year_period", None)
+    previous_year_value = getattr(appreciation, "previous_year_eur_per_m2", None)
+    if (
+        previous_year_period
+        and previous_year_value is not None
+        and previous_year_period not in {appreciation.from_period, appreciation.to_period}
+    ):
+        rows.append(
+            {
+                "label": _format_period_full(previous_year_period),
+                "value": _format_price_per_m2(round(previous_year_value)),
+            }
+        )
+    rows.append(
         {
             "label": f"Hoy ({_format_period_full(appreciation.to_period)})",
             "value": _format_price_per_m2(round(appreciation.to_eur_per_m2)),
-        },
-    ]
+        }
+    )
+    return rows
 
 
 def _build_price_chart(appreciation: Any) -> str:
     points: list[dict[str, Any]] = []
     if appreciation:
-        from_year = _year_from_period(appreciation.from_period)
-        to_year = _year_from_period(appreciation.to_period)
-        points = [
-            {
-                "label": str(from_year) if from_year else "Compra",
-                "value": round(appreciation.from_eur_per_m2),
-                "formatted": _format_price_per_m2(round(appreciation.from_eur_per_m2)),
-            },
-            {
-                "label": str(to_year) if to_year else "Hoy",
-                "value": round(appreciation.to_eur_per_m2),
-                "formatted": _format_price_per_m2(round(appreciation.to_eur_per_m2)),
-            },
-        ]
+        yearly = getattr(appreciation, "yearly_series", None)
+        if yearly and len(yearly) >= 2:
+            for entry in yearly:
+                year = entry.get("year") or _year_from_period(entry.get("period", ""))
+                value = entry.get("eur_per_m2")
+                if value is None:
+                    continue
+                points.append(
+                    {
+                        "label": str(year) if year else "—",
+                        "value": round(value),
+                        "formatted": _format_price_per_m2(round(value)),
+                    }
+                )
+        else:
+            from_year = _year_from_period(appreciation.from_period)
+            to_year = _year_from_period(appreciation.to_period)
+            points = [
+                {
+                    "label": str(from_year) if from_year else "Compra",
+                    "value": round(appreciation.from_eur_per_m2),
+                    "formatted": _format_price_per_m2(round(appreciation.from_eur_per_m2)),
+                },
+                {
+                    "label": str(to_year) if to_year else "Hoy",
+                    "value": round(appreciation.to_eur_per_m2),
+                    "formatted": _format_price_per_m2(round(appreciation.to_eur_per_m2)),
+                },
+            ]
     return _sparkline_svg(
         points,
-        title="Evolución del precio EUR/m2 de venta",
+        title="Evolución del precio €/m2 de venta",
         empty_label="Serie de EUR/m² no disponible",
-    )
-
-
-def _build_population_chart() -> str:
-    return _sparkline_svg(
-        [],
-        title="Crecimiento poblacional",
-        empty_label="Crecimiento poblacional pendiente de fuente",
     )
 
 
@@ -720,6 +752,12 @@ def _build_report_context(
             "purchase_ppm2": _format_price_per_m2(purchase_ppm2),
             "from_ppm2": _format_price_per_m2(round(appreciation.from_eur_per_m2)),
             "to_ppm2": _format_price_per_m2(round(appreciation.to_eur_per_m2)),
+            "previous_year_period": getattr(appreciation, "previous_year_period", None),
+            "previous_year_ppm2": (
+                _format_price_per_m2(round(appreciation.previous_year_eur_per_m2))
+                if getattr(appreciation, "previous_year_eur_per_m2", None) is not None
+                else None
+            ),
             "months_elapsed": appreciation.months_elapsed,
             "annualized": (
                 _format_percent(appreciation.annualized_pct_change * 100)
@@ -731,7 +769,6 @@ def _build_report_context(
         else None,
         "price_evolution_rows": _build_price_evolution_rows(appreciation),
         "price_evolution_chart": _build_price_chart(appreciation),
-        "population_chart": _build_population_chart(),
         "map_html": map_html,
         "recommendation": _build_recommendation(
             label="Rango de referencia conservador",

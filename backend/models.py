@@ -424,6 +424,23 @@ class MarketAppreciation(BaseModel):
     from_eur_per_m2: float = Field(..., description="Median €/m² at the settlement period.")
     to_period: str = Field(..., description="YYYY-MM of the most recent observation.")
     to_eur_per_m2: float = Field(..., description="Median €/m² at the most recent period.")
+    previous_year_period: Optional[str] = Field(
+        None,
+        description="Latest available YYYY-MM at or before December of the year before `to_period`.",
+    )
+    previous_year_eur_per_m2: Optional[float] = Field(
+        None,
+        description="Median €/m² at `previous_year_period`, when available.",
+    )
+    yearly_series: Optional[list[dict]] = Field(
+        None,
+        description=(
+            "Year-end snapshots between `from_period` and `to_period` "
+            "(inclusive). Each entry has keys `year` (int), `period` (YYYY-MM), "
+            "and `eur_per_m2` (float). Used by the chart to plot every "
+            "intermediate year, not just the endpoints."
+        ),
+    )
 
     pct_change: float = Field(
         ...,

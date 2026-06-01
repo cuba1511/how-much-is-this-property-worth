@@ -208,6 +208,9 @@ export interface MarketAppreciation {
   from_eur_per_m2: number
   to_period: string
   to_eur_per_m2: number
+  previous_year_period?: string | null
+  previous_year_eur_per_m2?: number | null
+  yearly_series?: { year: number; period: string; eur_per_m2: number }[] | null
   pct_change: number
   annualized_pct_change: number | null
   months_elapsed: number

@@ -250,6 +250,49 @@ class PriceSeriesStore:
                 return row["period"], row["value"]
         return None
 
+    def yearly_snapshots(
+        self,
+        town_id: str,
+        from_year: int,
+        to_year: int,
+        *,
+        from_period: Optional[str] = None,
+    ) -> list[dict]:
+        """December snapshot for each year in ``[from_year, to_year]``.
+
+        For the first year, uses ``from_period`` when given (preserves the
+        exact settlement-month value) or falls back to December.  For the last
+        year uses the latest available observation.  Intermediate years always
+        target December.
+
+        Returns a list of ``{"year": int, "period": str, "eur_per_m2": float}``
+        dicts, de-duplicated so consecutive entries that resolve to the same
+        underlying period are collapsed.
+        """
+        if from_year > to_year:
+            return []
+
+        results: list[dict] = []
+        seen_periods: set[str] = set()
+
+        for year in range(from_year, to_year + 1):
+            if year == from_year and from_period:
+                pair = self.value_at(town_id, from_period)
+            elif year == to_year:
+                pair = self.latest_value(town_id)
+            else:
+                pair = self.value_at(town_id, f"{year}-12")
+            if not pair:
+                continue
+            actual_period, value = pair
+            if actual_period in seen_periods:
+                continue
+            seen_periods.add(actual_period)
+            results.append(
+                {"year": year, "period": actual_period, "eur_per_m2": round(value, 2)}
+            )
+        return results
+
     def latest_value(self, town_id: str) -> Optional[tuple[str, float]]:
         """Most recent observation for a town."""
         with self._lock:
@@ -316,9 +359,21 @@ def compute_appreciation(
 
     from_period, from_value = from_pair
     to_period, to_value = latest_pair
+    previous_year_pair: Optional[tuple[str, float]] = None
+    try:
+        to_year = int(to_period.split("-", 1)[0])
+    except (TypeError, ValueError):
+        to_year = 0
+    if to_year:
+        previous_year_pair = store.value_at(town.town_id, f"{to_year - 1}-12")
 
     if from_value <= 0:
         return None
+
+    from_year = int(from_period.split("-", 1)[0])
+    yearly_series = store.yearly_snapshots(
+        town.town_id, from_year, to_year or 0, from_period=from_period
+    )
 
     pct_change = (to_value - from_value) / from_value
     months_elapsed = _months_between(from_period, to_period)
@@ -340,6 +395,11 @@ def compute_appreciation(
         from_eur_per_m2=round(from_value, 2),
         to_period=to_period,
         to_eur_per_m2=round(to_value, 2),
+        previous_year_period=previous_year_pair[0] if previous_year_pair else None,
+        previous_year_eur_per_m2=(
+            round(previous_year_pair[1], 2) if previous_year_pair else None
+        ),
+        yearly_series=yearly_series if yearly_series else None,
         pct_change=round(pct_change, 4),
         annualized_pct_change=round(annualized, 4) if annualized is not None else None,
         months_elapsed=months_elapsed,

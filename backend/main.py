@@ -1290,10 +1290,10 @@ def _format_period_es(period: Optional[str]) -> str:
     return f"{months[month_idx - 1]} {year}"
 
 
-def _format_eur(value: Optional[int]) -> str:
+def _format_eur_per_m2(value: Optional[float]) -> str:
     if value is None:
         return "—"
-    return f"{value:,.0f} €".replace(",", ".")
+    return f"{round(value):,.0f} EUR/m²".replace(",", ".")
 
 
 def _format_pct(value: Optional[float]) -> str:
@@ -1301,48 +1301,6 @@ def _format_pct(value: Optional[float]) -> str:
         return "—"
     sign = "+" if value > 0 else ""
     return f"{sign}{value * 100:.1f}%".replace(".", ",")
-
-
-def _format_pct_points(value: Optional[float]) -> str:
-    if value is None:
-        return "—"
-    sign = "+" if value > 0 else ""
-    return f"{sign}{value:.1f}%".replace(".", ",")
-
-
-def _format_subject_gain(value: Optional[int]) -> str:
-    if value is None:
-        return "valor"
-    rounded_down = max(0, int(value // 1000) * 1000)
-    if rounded_down <= 0:
-        return "valor"
-    return f"{rounded_down:,.0f} €".replace(",", ".")
-
-
-def _coach_email_area(
-    *,
-    transaction: TransactionDetail,
-    valuation_request: ValuationRequest,
-    valuation: ValuationResponse,
-) -> str:
-    address = (transaction.address or valuation_request.address or "").lower()
-    if "torrefiel" in address:
-        return "Torrefiel"
-
-    selected = valuation_request.selected_address
-    if selected:
-        for value in (
-            selected.neighbourhood,
-            selected.quarter,
-            selected.city_district,
-            selected.municipality,
-        ):
-            if value:
-                return value
-    appreciation = valuation.market_appreciation
-    if appreciation and appreciation.town_name:
-        return appreciation.town_name
-    return valuation.municipio.name
 
 
 def _client_first_name(transaction_name: str) -> str:
@@ -1374,103 +1332,54 @@ def _build_default_coach_email(
         else valuation_request.address
     )
     appreciation = valuation.market_appreciation
-    invested = transaction.final_total_price
-
-    # Recommended exit band (±3% around the headline estimate, rounded to €1k).
-    # Same band the frontend renders in the report. Keeps copy/numbers in sync.
-    anchor = valuation.stats.estimated_value
-    if anchor is not None:
-        low_raw = anchor * 0.97
-        high_raw = anchor * 1.03
-        low_rounded = _round_to_step(low_raw)
-        high_rounded = _round_to_step(high_raw)
-        if high_rounded <= low_rounded:
-            high_rounded = low_rounded + 1000
-        recommended_band = (low_rounded, high_rounded)
-    else:
-        recommended_band = (None, None)
-
-    gain_low = (
-        recommended_band[0] - invested
-        if recommended_band[0] is not None and invested is not None
-        else None
-    )
-    gain_high = (
-        recommended_band[1] - invested
-        if recommended_band[1] is not None and invested is not None
-        else None
-    )
-    gain_text = (
-        f"{_format_eur(gain_low)} y {_format_eur(gain_high)}"
-        if gain_low is not None and gain_high is not None
-        else "—"
-    )
-
-    roi_low = (gain_low / invested * 100) if gain_low is not None and invested else None
-    roi_high = (gain_high / invested * 100) if gain_high is not None and invested else None
-    roi_text = (
-        f" — un ROI de entre {_format_pct_points(roi_low)} y {_format_pct_points(roi_high)}"
-        if roi_low is not None and roi_high is not None
-        else ""
-    )
-
-    area = _coach_email_area(
-        transaction=transaction,
-        valuation_request=valuation_request,
-        valuation=valuation,
+    purchase_ppm2 = (
+        transaction.purchase_eur_per_m2
+        or (
+            round(transaction.final_total_price / transaction.landsize_m2)
+            if transaction.final_total_price and transaction.landsize_m2
+            else None
+        )
     )
     zone_name = appreciation.town_name if appreciation else valuation.municipio.name
-    from_period = _format_period_es(appreciation.from_period) if appreciation else "la compra"
-    to_period = _format_period_es(appreciation.to_period) if appreciation else "hoy"
-    purchase_period_text = (
-        f" en {_format_period_es(appreciation.from_period)}"
+    current_ppm2 = (
+        appreciation.to_eur_per_m2
         if appreciation
-        else ""
+        else valuation.stats.avg_price_per_m2
     )
-
-    subject_gain = _format_subject_gain(gain_low)
-    subject = (
-        f"{_client_first_name(transaction.transaction_name)}, tu propiedad en {area} "
-        f"podría haber ganado más de {subject_gain}"
-        if subject_gain != "valor"
-        else f"{_client_first_name(transaction.transaction_name)}, tu propiedad en {area} "
-        "podría haber ganado valor"
-    )
+    variation = _format_pct(appreciation.pct_change if appreciation else None)
+    booking_url = os.environ.get("PROPHERO_BOOKING_URL", "https://prophero.com/contacto")
+    contact_email = transaction.coach_email or "contacto@prophero.com"
+    first_name = _client_first_name(transaction.transaction_name)
+    subject = f"Tu propiedad en {zone_name} muestra una posible señal de revalorización"
 
     body_lines = [
-        f"Hola {_client_first_name(transaction.transaction_name)},",
+        f"Hola {first_name},",
         "",
-        "Desde PropHero monitorizamos continuamente el mercado para avisarte cuando "
-        "aparece una oportunidad clara. Y hoy la vemos en tu propiedad.",
+        "Desde el equipo de Data & Divestments de PropHero queremos compartirte "
+        f"una actualización sobre tu propiedad en {address}.",
+        f"Hemos analizado la evolución del mercado en tu {zone_name} y encontramos "
+        "una señal positiva que creemos que te va a interesar.",
         "",
-        f"El €/m² en tu zona ha subido desde que compraste{purchase_period_text}.",
-        f"Según nuestra estimación, la ganancia potencial estaría entre {gain_text}"
-        f"{roi_text}.",
+        "Lo que pagaste vs. cómo está el mercado hoy",
+        "Cuando adquiriste tu propiedad, el precio fue de "
+        f"{_format_eur_per_m2(purchase_ppm2)}.",
+        f"Hoy, el EUR/m² medio en {zone_name} se sitúa en "
+        f"{_format_eur_per_m2(current_ppm2)} — lo que representa una variación "
+        f"de {variation} desde tu adquisición.",
+        f"Este dato refleja la mediana del municipio de {zone_name} y no el valor "
+        "específico de tu inmueble. La ubicación exacta, planta, orientación y "
+        "estado de la propiedad pueden hacer que tu caso sea mejor o peor que la "
+        "mediana. En la sesión con nuestros expertos lo analizamos en detalle.",
         "",
-        "Te adjuntamos el informe completo, pero aquí tienes el resumen:",
-        "",
-        "Cómo lo calculamos",
-        f"Tomamos la evolución del precio por m² en {zone_name} ({from_period} → "
-        f"{to_period}), los datos de tu operación en {address}, y el rango de salida "
-        "que observamos hoy. La fuente es TF Labs, basada en cierres trimestrales de "
-        "registradores. No es una tasación oficial, pero sí una señal sólida de que "
-        "puede ser buen momento para valorar una desinversión.",
-        "",
-        "Qué significaría para ti",
-        "Capturar parte de esa plusvalía ahora te permitiría reinvertir con una "
-        "estrategia más clara y más capital. El valor final dependerá de demanda "
-        "real, estado del activo, fiscalidad y negociación — de todo eso hablamos "
-        "contigo en detalle.",
-        "",
-        "¿Tiene sentido explorarlo?",
-        "Agenda una llamada gratuita con nuestros especialistas:",
-        "👉 https://prophero.com/contacto",
-        "",
-        "En 30 minutos te ayudamos a aterrizar precio de salida, margen de "
-        "negociación, timing, costes e impuestos.",
+        "¿Qué significa esto para ti?",
+        f"Si el mercado de {zone_name} se ha revalorizado, es una buena señal para "
+        "tu inversión. Pero para entender el impacto real en tu propiedad concreta, "
+        "te invitamos a una sesión gratuita de 30 minutos con uno de nuestros "
+        "expertos en valoración.",
+        f"→ {booking_url}",
         "",
         "Un saludo,",
-        "El equipo de PropHero",
+        f"El equipo de PropHero Data & Divestments · {contact_email}",
     ]
     return subject, "\n".join(body_lines)
 

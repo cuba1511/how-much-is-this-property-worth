@@ -74,101 +74,78 @@ def _render_email_html(
     safe_address = escape(address)
     safe_municipio = escape(municipio)
     safe_booking_url = escape(booking_url, quote=True)
+    contact_email = escape(os.environ.get("PROPHERO_CONTACT_EMAIL", "contacto@prophero.com"))
     location = (
         f"<strong>{safe_address}</strong>{f', {safe_municipio}' if address != municipio else ''}"
     )
     request_payload = request_payload or {}
 
     if appreciation:
-        market_copy = (
-            f"Cuando adquiriste tu propiedad, el precio de referencia fue de "
-            f"<strong>{_format_eur_per_m2(appreciation.from_eur_per_m2)}</strong>."
-        )
+        purchase_ppm2 = _format_eur_per_m2(appreciation.from_eur_per_m2)
         current_ppm2 = _format_eur_per_m2(appreciation.to_eur_per_m2)
         variation = _format_pct(appreciation.pct_change * 100)
-        badge_copy = f"{current_ppm2} · {variation}"
     else:
-        market_copy = (
-            "Todavía no tenemos el dato de adquisición suficiente para comparar "
-            "tu compra con la serie histórica municipal."
-        )
+        purchase_ppm2 = "no disponible"
         current_ppm2 = _format_eur_per_m2(stats.avg_price_per_m2)
-        variation = "pendiente de validar"
-        badge_copy = current_ppm2
-
-    current_market_copy = (
-        f"Hoy, el EUR/m² medio en <strong>{safe_municipio}</strong> se sitúa en "
-        f"<strong>{current_ppm2}</strong>, lo que representa una variación de "
-        f"<strong>{variation}</strong> desde tu adquisición."
-        if appreciation
-        else (
-            f"Hoy, el EUR/m² medio en <strong>{safe_municipio}</strong> se sitúa en "
-            f"<strong>{current_ppm2}</strong>."
-        )
-    )
+        variation = "no disponible"
 
     return f"""
 <!DOCTYPE html>
 <html lang="es">
 <body style="margin:0;padding:0;background:#f5f7f9;font-family:Inter,Arial,sans-serif;color:#1e252d;">
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f5f7f9;padding:28px 14px;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f5f7f9;padding:18px 12px;">
     <tr>
       <td align="center">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="560" style="max-width:560px;background:#ffffff;border-radius:18px;overflow:hidden;border:1px solid #e0e7f0;box-shadow:0 8px 28px rgba(32,80,246,0.07);">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="560" style="max-width:560px;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e0e7f0;box-shadow:0 8px 28px rgba(32,80,246,0.07);">
 
           <!-- Header -->
           <tr>
-            <td style="background:#2050f6;padding:18px 28px;">
+            <td style="background:#2050f6;padding:14px 24px;">
               <span style="font-size:16px;font-weight:800;color:#ffffff;letter-spacing:-0.01em;">PropHero</span>
             </td>
           </tr>
 
           <tr>
-            <td style="padding:28px 28px 0;">
-              <p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#1e252d;">Hola {greeting_name},</p>
-              <p style="margin:0 0 22px;font-size:15px;line-height:1.7;color:#344454;">
+            <td style="padding:22px 24px 0;">
+              <p style="margin:0 0 12px;font-size:16px;line-height:1.45;color:#1e252d;">Hola {greeting_name},</p>
+              <p style="margin:0 0 14px;font-size:14px;line-height:1.55;color:#344454;">
                 Desde el equipo de Data &amp; Divestments de PropHero queremos compartirte
                 una actualización sobre tu propiedad en {location}.
               </p>
-              <p style="margin:0 0 22px;font-size:15px;line-height:1.7;color:#344454;">
-                Hemos analizado la evolución del mercado en <strong>{safe_municipio}</strong>
+              <p style="margin:0 0 16px;font-size:14px;line-height:1.55;color:#344454;">
+                Hemos analizado la evolución del mercado en tu <strong>{safe_municipio}</strong>
                 y encontramos una señal positiva que creemos que te va a interesar.
               </p>
             </td>
           </tr>
 
-          <!-- Market signal -->
+          <!-- Body copy -->
           <tr>
-            <td style="padding:0 28px 22px;">
-              <div style="background:#f0f4ff;border:1.5px solid #c7d5fb;border-radius:14px;padding:20px 22px;">
-                <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.09em;color:#2050f6;font-weight:700;">Lo que pagaste vs. cómo está el mercado hoy</div>
-                <div style="font-size:30px;font-weight:800;color:#1e252d;letter-spacing:-0.03em;margin:8px 0 10px;">{badge_copy}</div>
-                <p style="margin:0 0 10px;font-size:15px;line-height:1.7;color:#344454;">{market_copy}</p>
-                <p style="margin:0;font-size:15px;line-height:1.7;color:#344454;">{current_market_copy}</p>
-              </div>
-            </td>
-          </tr>
-
-          <!-- Context -->
-          <tr>
-            <td style="padding:0 28px 22px;">
-              <p style="margin:0 0 12px;font-size:15px;line-height:1.7;color:#344454;">
-                Este dato refleja la mediana del municipio de <strong>{safe_municipio}</strong>
-                y no el valor específico de tu inmueble.
+            <td style="padding:0 24px 16px;">
+              <p style="margin:0 0 10px;font-size:17px;font-weight:800;color:#1e252d;letter-spacing:-0.02em;">Lo que pagaste vs. cómo está el mercado hoy</p>
+              <p style="margin:0 0 9px;font-size:14px;line-height:1.55;color:#344454;">
+                Cuando adquiriste tu propiedad, el precio fue de <strong>{purchase_ppm2}</strong>.
               </p>
-              <p style="margin:0;font-size:15px;line-height:1.7;color:#344454;">
-                La ubicación exacta, planta, orientación y estado de la propiedad
-                pueden hacer que tu caso sea mejor o peor que la mediana. En la sesión
-                con nuestros expertos lo analizamos en detalle.
+              <p style="margin:0 0 9px;font-size:14px;line-height:1.55;color:#344454;">
+                Hoy, el EUR/m² medio en <strong>{safe_municipio}</strong> se sitúa en
+                <strong>{current_ppm2}</strong> &mdash; lo que representa una variación de
+                <strong>{variation}</strong> desde tu adquisición.
+              </p>
+              <p style="margin:0;font-size:14px;line-height:1.55;color:#344454;">
+                Este dato refleja la mediana del municipio de <strong>{safe_municipio}</strong>
+                y no el valor específico de tu inmueble. La ubicación exacta, planta,
+                orientación y estado de la propiedad pueden hacer que tu caso sea mejor
+                o peor que la mediana. En la sesión con nuestros expertos lo analizamos
+                en detalle.
               </p>
             </td>
           </tr>
 
           <!-- CTA -->
           <tr>
-            <td style="padding:0 28px 24px;">
-              <p style="margin:0 0 16px;font-size:18px;font-weight:800;color:#1e252d;letter-spacing:-0.02em;">¿Qué significa esto para ti?</p>
-              <p style="margin:0 0 18px;font-size:15px;line-height:1.7;color:#344454;">
+            <td style="padding:0 24px 20px;">
+              <p style="margin:0 0 10px;font-size:17px;font-weight:800;color:#1e252d;letter-spacing:-0.02em;">¿Qué significa esto para ti?</p>
+              <p style="margin:0 0 14px;font-size:14px;line-height:1.55;color:#344454;">
                 Si el mercado de <strong>{safe_municipio}</strong> se ha revalorizado,
                 es una buena señal para tu inversión. Pero para entender el impacto
                 real en tu propiedad concreta, te invitamos a una sesión gratuita de
@@ -176,33 +153,22 @@ def _render_email_html(
               </p>
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
                 <tr>
-                  <td align="center" style="background:#f45504;border-radius:14px;box-shadow:0 8px 20px rgba(244,85,4,0.22);">
-                    <a href="{safe_booking_url}" style="display:block;padding:17px 22px;color:#ffffff;text-decoration:none;font-weight:800;font-size:16px;letter-spacing:-0.01em;">
+                  <td align="center" style="background:#2050f6;border-radius:12px;box-shadow:0 8px 20px rgba(32,80,246,0.22);">
+                    <a href="{safe_booking_url}" style="display:block;padding:14px 20px;color:#ffffff;text-decoration:none;font-weight:800;font-size:15px;letter-spacing:-0.01em;">
                       Reservar sesión con un experto
                     </a>
                   </td>
                 </tr>
               </table>
-              <p style="margin:10px 0 0;text-align:center;font-size:12px;color:#9aa8b7;">Sesión gratuita · 30 min · Online</p>
             </td>
           </tr>
 
           <!-- Signature -->
           <tr>
-            <td style="padding:0 28px 26px;">
-              <p style="margin:0;font-size:15px;line-height:1.7;color:#344454;">
+            <td style="padding:0 24px 22px;">
+              <p style="margin:0;font-size:14px;line-height:1.55;color:#344454;">
                 Un saludo,<br>
-                El equipo de PropHero Data &amp; Divestments
-              </p>
-            </td>
-          </tr>
-
-          <!-- Disclaimer -->
-          <tr>
-            <td style="background:#f8f9fb;padding:16px 28px;border-top:1px solid #edf0f5;">
-              <p style="margin:0;font-size:11px;color:#9aa8b7;line-height:1.55;">
-                Los datos de EUR/m² son una referencia de mercado municipal, no una tasación oficial
-                ni una valoración específica del inmueble. PDF adjunto con metodología completa.
+                El equipo de PropHero Data &amp; Divestments · {contact_email}
               </p>
             </td>
           </tr>
@@ -256,17 +222,17 @@ def _render_custom_email_html(body: str) -> str:
         if len(lines) > 1 and _looks_like_section_heading(lines[0]):
             rendered_blocks.append(
                 f"""
-                <div style="padding:18px 0;border-top:1px solid #e7edf5;">
-                  <div style="margin:0 0 8px;font-size:16px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#2050f6;">{escape(lines[0])}</div>
-                  <p style="margin:0;font-size:15px;line-height:1.7;color:#344454;">{_render_lines(lines[1:])}</p>
+                <div style="padding:12px 0;border-top:1px solid #e7edf5;">
+                  <div style="margin:0 0 6px;font-size:14px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#2050f6;">{escape(lines[0])}</div>
+                  <p style="margin:0;font-size:14px;line-height:1.55;color:#344454;">{_render_lines(lines[1:])}</p>
                 </div>
                 """.strip()
             )
             continue
 
-        margin_top = "0" if index == 0 else "16px"
+        margin_top = "0" if index == 0 else "10px"
         rendered_blocks.append(
-            f'<p style="margin:{margin_top} 0 0;font-size:15px;line-height:1.7;color:#344454;">{_render_lines(lines)}</p>'
+            f'<p style="margin:{margin_top} 0 0;font-size:14px;line-height:1.55;color:#344454;">{_render_lines(lines)}</p>'
         )
 
     content = "\n".join(rendered_blocks)
@@ -274,17 +240,17 @@ def _render_custom_email_html(body: str) -> str:
 <!DOCTYPE html>
 <html lang="es">
 <body style="margin:0;padding:0;background:#f5f7f9;font-family:Inter,Arial,sans-serif;color:#1e252d;">
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f5f7f9;padding:28px 14px;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f5f7f9;padding:18px 12px;">
     <tr>
       <td align="center">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="640" style="max-width:640px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e7edf5;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="640" style="max-width:640px;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e7edf5;">
           <tr>
-            <td style="padding:28px;">
+            <td style="padding:22px 24px;">
               {content}
             </td>
           </tr>
           <tr>
-            <td style="background:#f5f7f9;padding:16px 28px;text-align:center;font-size:12px;color:#8493a5;">
+            <td style="background:#ffffff;border-top:1px solid #e7edf5;padding:12px 24px;text-align:center;font-size:12px;color:#8493a5;">
               PropHero · Informe adjunto en PDF
             </td>
           </tr>

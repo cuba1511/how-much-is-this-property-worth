@@ -68,7 +68,13 @@ def _seed_in_memory_db(tmp_path: Path) -> Path:
         "INSERT INTO market_price_series VALUES (?, ?, ?)",
         [
             ("recMAD", "2020-01", 2_500.0),
+            ("recMAD", "2020-12", 2_600.0),
+            ("recMAD", "2021-12", 2_900.0),
             ("recMAD", "2022-06", 3_500.0),
+            ("recMAD", "2022-12", 3_600.0),
+            ("recMAD", "2023-12", 3_900.0),
+            ("recMAD", "2024-12", 4_300.0),
+            ("recMAD", "2025-12", 4_800.0),
             ("recMAD", "2026-01", 5_000.0),
             ("recALE", "2018-03", 1_000.0),
             ("recALE", "2026-01", 1_200.0),
@@ -126,6 +132,8 @@ def test_compute_appreciation_exact_match_for_madrid(store: PriceSeriesStore):
     assert appreciation.to_period == "2026-01"
     assert appreciation.from_eur_per_m2 == pytest.approx(3_500.0)
     assert appreciation.to_eur_per_m2 == pytest.approx(5_000.0)
+    assert appreciation.previous_year_period == "2025-12"
+    assert appreciation.previous_year_eur_per_m2 == pytest.approx(4_800.0)
     # (5000 - 3500) / 3500 = 0.4286
     assert appreciation.pct_change == pytest.approx(0.4286, abs=1e-3)
     assert appreciation.months_elapsed == 43
@@ -151,17 +159,36 @@ def test_compute_appreciation_falls_back_to_earliest_when_settlement_pre_dates_c
 def test_compute_appreciation_nearest_available_when_settlement_between_periods(
     store: PriceSeriesStore,
 ):
-    """Settlement at 2021-08 (between 2020-01 and 2022-06) anchors at 2020-01,
-    because we never look forward — using a later month would inflate the
-    apparent baseline."""
+    """Settlement at 2021-08 anchors at the latest period ≤ that month
+    (2021-12 doesn't exist yet at 2021-08, so 2020-12 wins), because we
+    never look forward — using a later month would inflate the baseline."""
     town = store.resolve_town(airtable_record_id="recMAD")
     assert town is not None
     appreciation = compute_appreciation(
         store=store, town=town, settlement_date=date(2021, 8, 15)
     )
     assert appreciation is not None
-    assert appreciation.from_period == "2020-01"
+    assert appreciation.from_period == "2020-12"
     assert appreciation.sample_quality == "nearest_available"
+
+
+def test_yearly_series_includes_all_intermediate_years(store: PriceSeriesStore):
+    """The yearly_series should contain one entry per year from settlement to
+    latest, giving the chart data for every intermediate year."""
+    town = store.resolve_town(airtable_record_id="recMAD")
+    assert town is not None
+    appreciation = compute_appreciation(
+        store=store, town=town, settlement_date=date(2022, 6, 12)
+    )
+    assert appreciation is not None
+    assert appreciation.yearly_series is not None
+    years = [entry["year"] for entry in appreciation.yearly_series]
+    assert years == [2022, 2023, 2024, 2025, 2026]
+    assert appreciation.yearly_series[0]["eur_per_m2"] == 3_500.0  # 2022-06 (settlement)
+    assert appreciation.yearly_series[1]["eur_per_m2"] == 3_900.0  # 2023-12
+    assert appreciation.yearly_series[2]["eur_per_m2"] == 4_300.0  # 2024-12
+    assert appreciation.yearly_series[3]["eur_per_m2"] == 4_800.0  # 2025-12
+    assert appreciation.yearly_series[4]["eur_per_m2"] == 5_000.0  # 2026-01 (latest)
 
 
 def test_compute_appreciation_omits_annualized_below_one_year(store: PriceSeriesStore):
