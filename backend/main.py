@@ -1347,7 +1347,7 @@ def _build_default_coach_email(
         else valuation.stats.avg_price_per_m2
     )
     variation = _format_pct(appreciation.pct_change if appreciation else None)
-    booking_url = os.environ.get("PROPHERO_BOOKING_URL", "https://prophero.com/contacto")
+    booking_url = os.environ.get("PROPHERO_BOOKING_URL", "https://meetings-eu1.hubspot.com/ide-la-cuba")
     contact_email = transaction.coach_email or "contacto@prophero.com"
     first_name = _client_first_name(transaction.transaction_name)
     subject = f"Tu propiedad en {zone_name} muestra una posible señal de revalorización"

@@ -2464,7 +2464,7 @@ function CoachClientReportComposer({
   const propertyAddress =
     valuationResult.valuation_request.selected_address?.label ??
     valuationResult.valuation_request.address
-  const bookingUrl = 'https://prophero.com/contacto'
+  const bookingUrl = 'https://meetings-eu1.hubspot.com/ide-la-cuba'
   const contactEmail = transaction.coach_email ?? 'contacto@prophero.com'
   const initialSections: EditableReportSection[] = [
     {
@@ -3074,7 +3074,7 @@ function CoachInvestorReport({ transaction, valuationResult }: CoachInvestorRepo
             </p>
           </div>
           <a
-            href="https://prophero.com/contacto"
+            href="https://meetings-eu1.hubspot.com/ide-la-cuba"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-md py-sm text-sm font-semibold text-ink shadow-sm transition hover:bg-white/90"
