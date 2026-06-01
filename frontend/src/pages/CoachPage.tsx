@@ -2465,7 +2465,7 @@ function CoachClientReportComposer({
     valuationResult.valuation_request.selected_address?.label ??
     valuationResult.valuation_request.address
   const bookingUrl = 'https://meetings-eu1.hubspot.com/ide-la-cuba'
-  const contactEmail = transaction.coach_email ?? 'contacto@prophero.com'
+  const contactEmail = transaction.coach_email ?? ''
   const initialSections: EditableReportSection[] = [
     {
       id: 'market',

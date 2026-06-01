@@ -1348,7 +1348,7 @@ def _build_default_coach_email(
     )
     variation = _format_pct(appreciation.pct_change if appreciation else None)
     booking_url = os.environ.get("PROPHERO_BOOKING_URL", "https://meetings-eu1.hubspot.com/ide-la-cuba")
-    contact_email = transaction.coach_email or "contacto@prophero.com"
+    contact_email = transaction.coach_email or ""
     first_name = _client_first_name(transaction.transaction_name)
     subject = f"Tu propiedad en {zone_name} muestra una posible señal de revalorización"
 
@@ -1376,7 +1376,8 @@ def _build_default_coach_email(
         "tu inversión. Pero para entender el impacto real en tu propiedad concreta, "
         "te invitamos a una sesión gratuita de 30 minutos con uno de nuestros "
         "expertos en valoración.",
-        f"→ {booking_url}",
+        "En 30 minutos te damos una estimación real, basada en tu inmueble concreto — no en promedios.",
+        f"→ Descubre cuánto vale tu propiedad hoy [{booking_url}]",
         "",
         "Un saludo,",
         f"El equipo de PropHero Data & Divestments · {contact_email}",

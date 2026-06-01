@@ -16,6 +16,7 @@ from __future__ import annotations
 import base64
 import logging
 import os
+import re
 from datetime import date
 from html import escape
 from typing import Optional
@@ -74,7 +75,7 @@ def _render_email_html(
     safe_address = escape(address)
     safe_municipio = escape(municipio)
     safe_booking_url = escape(booking_url, quote=True)
-    contact_email = escape(os.environ.get("PROPHERO_CONTACT_EMAIL", "contacto@prophero.com"))
+    contact_email = escape(os.environ.get("PROPHERO_CONTACT_EMAIL", ""))
     location = (
         f"<strong>{safe_address}</strong>{f', {safe_municipio}' if address != municipio else ''}"
     )
@@ -204,13 +205,33 @@ def _looks_like_section_heading(line: str) -> bool:
     stripped = line.strip()
     return (
         len(stripped) <= 80
-        and stripped[-1:] not in {".", ",", ";", ":", "!", "?", ")"}
+        and stripped[-1:] not in {".", ",", ";", ":", "!", ")"}
         and not stripped.lower().startswith(("hola ", "un saludo", "saludos"))
     )
 
 
+_URL_RE = re.compile(r"(https?://[^\s\[\]<>]+)")
+
+
+def _linkify_line(line: str) -> str:
+    """Escape a line for HTML, turning bare URLs into clickable <a> tags."""
+    parts: list[str] = []
+    last = 0
+    for m in _URL_RE.finditer(line):
+        parts.append(escape(line[last : m.start()]))
+        url = m.group(1)
+        parts.append(
+            f'<a href="{escape(url, quote=True)}" '
+            f'style="color:#2050f6;font-weight:700;text-decoration:none;">'
+            f"{escape(url)}</a>"
+        )
+        last = m.end()
+    parts.append(escape(line[last:]))
+    return "".join(parts)
+
+
 def _render_lines(lines: list[str]) -> str:
-    return "<br>".join(escape(line) for line in lines)
+    return "<br>".join(_linkify_line(line) for line in lines)
 
 
 def _render_custom_email_html(body: str) -> str:

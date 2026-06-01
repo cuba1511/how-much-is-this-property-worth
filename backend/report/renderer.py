@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 TEMPLATE_DIR = Path(__file__).parent
 TEMPLATE_NAME = "template.html"
 ASSETS_DIR = TEMPLATE_DIR / "assets"
-DEFAULT_BOOKING_URL = "https://prophero.com"
+DEFAULT_BOOKING_URL = "https://meetings-eu1.hubspot.com/ide-la-cuba"
 
 
 def _load_logo_svg() -> str:
@@ -507,7 +507,9 @@ def _sparkline_svg(points: list[dict[str, Any]], *, title: str, empty_label: str
 </svg>"""
 
 
-def _build_price_evolution_rows(appreciation: Any) -> list[dict[str, str]]:
+def _build_price_evolution_rows(
+    appreciation: Any, *, purchase_ppm2: Optional[int] = None
+) -> list[dict[str, str]]:
     if not appreciation:
         return [
             {"label": "Año compra", "value": "—"},
@@ -519,6 +521,8 @@ def _build_price_evolution_rows(appreciation: Any) -> list[dict[str, str]]:
         for idx, entry in enumerate(yearly):
             year = entry.get("year") or _year_from_period(entry.get("period", ""))
             value = entry.get("eur_per_m2")
+            if idx == 0 and purchase_ppm2:
+                value = purchase_ppm2
             if idx == 0:
                 label = str(year) if year else "Año compra"
             elif idx == len(yearly) - 1:
@@ -529,10 +533,11 @@ def _build_price_evolution_rows(appreciation: Any) -> list[dict[str, str]]:
         return rows
 
     from_year = _year_from_period(appreciation.from_period)
+    first_value = purchase_ppm2 if purchase_ppm2 else round(appreciation.from_eur_per_m2)
     rows = [
         {
             "label": str(from_year) if from_year else "Año compra",
-            "value": _format_price_per_m2(round(appreciation.from_eur_per_m2)),
+            "value": _format_price_per_m2(first_value),
         }
     ]
     previous_year_period = getattr(appreciation, "previous_year_period", None)
@@ -557,16 +562,20 @@ def _build_price_evolution_rows(appreciation: Any) -> list[dict[str, str]]:
     return rows
 
 
-def _build_price_chart(appreciation: Any) -> str:
+def _build_price_chart(
+    appreciation: Any, *, purchase_ppm2: Optional[int] = None
+) -> str:
     points: list[dict[str, Any]] = []
     if appreciation:
         yearly = getattr(appreciation, "yearly_series", None)
         if yearly and len(yearly) >= 2:
-            for entry in yearly:
+            for idx, entry in enumerate(yearly):
                 year = entry.get("year") or _year_from_period(entry.get("period", ""))
                 value = entry.get("eur_per_m2")
                 if value is None:
                     continue
+                if idx == 0 and purchase_ppm2:
+                    value = purchase_ppm2
                 points.append(
                     {
                         "label": str(year) if year else "—",
@@ -577,11 +586,12 @@ def _build_price_chart(appreciation: Any) -> str:
         else:
             from_year = _year_from_period(appreciation.from_period)
             to_year = _year_from_period(appreciation.to_period)
+            first_value = purchase_ppm2 if purchase_ppm2 else round(appreciation.from_eur_per_m2)
             points = [
                 {
                     "label": str(from_year) if from_year else "Compra",
-                    "value": round(appreciation.from_eur_per_m2),
-                    "formatted": _format_price_per_m2(round(appreciation.from_eur_per_m2)),
+                    "value": first_value,
+                    "formatted": _format_price_per_m2(first_value),
                 },
                 {
                     "label": str(to_year) if to_year else "Hoy",
@@ -674,7 +684,8 @@ def _build_report_context(
     selected_address = request_payload.get("selected_address") or {}
     lat = selected_address.get("lat") or valuation.municipio.lat
     lon = selected_address.get("lon") or valuation.municipio.lon
-    map_label = appreciation.town_name if appreciation else valuation.municipio.name
+    appreciation_town_name = appreciation.town_name.title() if appreciation else None
+    map_label = appreciation_town_name if appreciation else (valuation.municipio.name or "").title()
     map_html = _build_map_html(lat, lon, map_label)
     has_comparables = len(valuation.listings) > 0
     no_scrape = valuation.search_metadata.strategy == "no_scrape"
@@ -743,7 +754,7 @@ def _build_report_context(
             _capital_gain(recommended_band["high"], invested),
         ),
         "appreciation": {
-            "town_name": appreciation.town_name,
+            "town_name": appreciation_town_name,
             "pct": _format_percent(appreciation_pct),
             "from_period": _format_period(appreciation.from_period),
             "from_year": _year_from_period(appreciation.from_period),
@@ -767,8 +778,8 @@ def _build_report_context(
         }
         if appreciation
         else None,
-        "price_evolution_rows": _build_price_evolution_rows(appreciation),
-        "price_evolution_chart": _build_price_chart(appreciation),
+        "price_evolution_rows": _build_price_evolution_rows(appreciation, purchase_ppm2=purchase_ppm2),
+        "price_evolution_chart": _build_price_chart(appreciation, purchase_ppm2=purchase_ppm2),
         "map_html": map_html,
         "recommendation": _build_recommendation(
             label="Rango de referencia conservador",
@@ -781,7 +792,7 @@ def _build_report_context(
             invested=invested,
         ),
         "market_reading": _market_reading(
-            appreciation_town=appreciation.town_name if appreciation else None,
+            appreciation_town=appreciation_town_name if appreciation else None,
             appreciation_pct=appreciation_pct,
             has_comparables=has_comparables,
             recommended_range=recommended_range,
@@ -867,8 +878,8 @@ def render_report_html(
         cadastral_reference=selected_unit.get("cadastral_reference"),
         property_reference=property_reference,
         investor_name=investor_name,
-        municipio=valuation.municipio.name,
-        province=valuation.municipio.province,
+        municipio=(valuation.municipio.name or "").title(),
+        province=(valuation.municipio.province or "").title(),
         request_m2=request_payload.get("m2"),
         request_bedrooms=request_payload.get("bedrooms"),
         request_bathrooms=request_payload.get("bathrooms"),
