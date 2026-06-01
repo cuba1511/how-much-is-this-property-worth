@@ -122,7 +122,7 @@ def _render_email_html(
           <!-- Body copy -->
           <tr>
             <td style="padding:0 24px 16px;">
-              <p style="margin:0 0 10px;font-size:17px;font-weight:800;color:#1e252d;letter-spacing:-0.02em;">Lo que pagaste vs. cómo está el mercado hoy</p>
+              <p style="margin:0 0 10px;font-size:17px;font-weight:800;color:#2050f6;letter-spacing:-0.02em;text-transform:uppercase;">Lo que pagaste vs. cómo está el mercado hoy</p>
               <p style="margin:0 0 9px;font-size:14px;line-height:1.55;color:#344454;">
                 Cuando adquiriste tu propiedad, el precio fue de <strong>{purchase_ppm2}</strong>.
               </p>
@@ -144,7 +144,7 @@ def _render_email_html(
           <!-- CTA -->
           <tr>
             <td style="padding:0 24px 20px;">
-              <p style="margin:0 0 10px;font-size:17px;font-weight:800;color:#1e252d;letter-spacing:-0.02em;">¿Qué significa esto para ti?</p>
+              <p style="margin:0 0 10px;font-size:17px;font-weight:800;color:#2050f6;letter-spacing:-0.02em;text-transform:uppercase;">¿Qué significa esto para ti?</p>
               <p style="margin:0 0 14px;font-size:14px;line-height:1.55;color:#344454;">
                 Si el mercado de <strong>{safe_municipio}</strong> se ha revalorizado,
                 es una buena señal para tu inversión. Pero para entender el impacto

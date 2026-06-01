@@ -1357,7 +1357,7 @@ def _build_default_coach_email(
         "",
         "Desde el equipo de Data & Divestments de PropHero queremos compartirte "
         f"una actualización sobre tu propiedad en {address}.",
-        f"Hemos analizado la evolución del mercado en tu {zone_name} y encontramos "
+        f"Hemos analizado la evolución del mercado en {zone_name} y encontramos "
         "una señal positiva que creemos que te va a interesar.",
         "",
         "Lo que pagaste vs. cómo está el mercado hoy",
