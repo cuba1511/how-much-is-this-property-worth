@@ -43,30 +43,15 @@ class EmailDeliveryError(Exception):
     """Raised when Resend returns a non-2xx response."""
 
 
-def _format_eur(value: Optional[int]) -> str:
+def _format_eur_per_m2(value: Optional[float | int]) -> str:
     if value is None:
         return "—"
-    return f"{int(value):,} €".replace(",", ".")
+    return f"{round(value):,} EUR/m²".replace(",", ".")
 
 
-_SPANISH_MONTHS_SHORT = {
-    1: "ene", 2: "feb", 3: "mar", 4: "abr", 5: "may", 6: "jun",
-    7: "jul", 8: "ago", 9: "sept", 10: "oct", 11: "nov", 12: "dic",
-}
-
-
-def _format_period_short(period: Optional[str]) -> str:
-    """'2022-03' → 'mar 2022'."""
-    if not period:
-        return ""
-    parts = period.split("-")
-    if len(parts) < 2:
-        return period
-    try:
-        year, month = int(parts[0]), int(parts[1])
-        return f"{_SPANISH_MONTHS_SHORT.get(month, parts[1])} {year}"
-    except ValueError:
-        return period
+def _format_pct(value: float) -> str:
+    sign = "+" if value >= 0 else ""
+    return f"{sign}{value:.1f}%"
 
 
 def _render_email_html(
@@ -76,10 +61,8 @@ def _render_email_html(
 ) -> str:
     """Inline-styled HTML compatible with Gmail/Outlook/Apple Mail.
 
-    Framework: valor → probokea → solución.
-    We never show a hard sale price. We anchor on zone €/m² and appreciation,
-    provoke curiosity about what the exact property is worth, then drive to the
-    booking call as the only way to get a personalised answer.
+    Anchors the message on municipal €/m² appreciation while making clear that
+    the exact property still needs a personalised valuation.
     """
     stats = valuation.stats
     appreciation = valuation.market_appreciation
@@ -95,33 +78,33 @@ def _render_email_html(
         f"<strong>{safe_address}</strong>{f', {safe_municipio}' if address != municipio else ''}"
     )
     request_payload = request_payload or {}
-    m2 = request_payload.get("m2")
 
-    # ── VALOR block ────────────────────────────────────────────────────────────
-    # Primary metric: zone median €/m² + appreciation if known
     if appreciation:
-        zone_ppm2 = round(appreciation.to_eur_per_m2)
-        appr_pct = appreciation.pct_change * 100
-        appr_sign = "+" if appr_pct >= 0 else ""
-        appr_badge = f"{appr_sign}{appr_pct:.1f}% desde {_format_period_short(appreciation.from_period)}"
-        town_display = escape(appreciation.town_name)
-        zone_label = f"Mediana €/m² · {town_display}"
-        zone_subline = f"<div style='font-size:13px;color:#0f8b5f;font-weight:700;margin-top:6px;'>{escape(appr_badge)}</div>"
+        market_copy = (
+            f"Cuando adquiriste tu propiedad, el precio de referencia fue de "
+            f"<strong>{_format_eur_per_m2(appreciation.from_eur_per_m2)}</strong>."
+        )
+        current_ppm2 = _format_eur_per_m2(appreciation.to_eur_per_m2)
+        variation = _format_pct(appreciation.pct_change * 100)
+        badge_copy = f"{current_ppm2} · {variation}"
     else:
-        zone_ppm2 = stats.avg_price_per_m2
-        zone_label = f"Mediana €/m² · {escape(municipio)}"
-        zone_subline = ""
+        market_copy = (
+            "Todavía no tenemos el dato de adquisición suficiente para comparar "
+            "tu compra con la serie histórica municipal."
+        )
+        current_ppm2 = _format_eur_per_m2(stats.avg_price_per_m2)
+        variation = "pendiente de validar"
+        badge_copy = current_ppm2
 
-    zone_ppm2_fmt = _format_eur(zone_ppm2) + "/m²" if zone_ppm2 else "—"
-
-    # Rough zone reference (NOT shown as the price — only as context)
-    zone_ref_total: Optional[int] = round(zone_ppm2 * m2 / 1000) * 1000 if zone_ppm2 and m2 else None
-    zone_ref_line = (
-        f"<div style='font-size:12px;color:#8493a5;margin-top:6px;'>"
-        f"Referencia de zona para {m2} m²: ~{_format_eur(zone_ref_total)}"
-        f"</div>"
-        if zone_ref_total
-        else ""
+    current_market_copy = (
+        f"Hoy, el EUR/m² medio en <strong>{safe_municipio}</strong> se sitúa en "
+        f"<strong>{current_ppm2}</strong>, lo que representa una variación de "
+        f"<strong>{variation}</strong> desde tu adquisición."
+        if appreciation
+        else (
+            f"Hoy, el EUR/m² medio en <strong>{safe_municipio}</strong> se sitúa en "
+            f"<strong>{current_ppm2}</strong>."
+        )
     )
 
     return f"""
@@ -144,79 +127,73 @@ def _render_email_html(
             <td style="padding:28px 28px 0;">
               <p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#1e252d;">Hola {greeting_name},</p>
               <p style="margin:0 0 22px;font-size:15px;line-height:1.7;color:#344454;">
-                He revisado los datos de mercado para {location} y quiero compartirte
-                lo que hemos encontrado.
+                Desde el equipo de Data &amp; Divestments de PropHero queremos compartirte
+                una actualización sobre tu propiedad en {location}.
+              </p>
+              <p style="margin:0 0 22px;font-size:15px;line-height:1.7;color:#344454;">
+                Hemos analizado la evolución del mercado en <strong>{safe_municipio}</strong>
+                y encontramos una señal positiva que creemos que te va a interesar.
               </p>
             </td>
           </tr>
 
-          <!-- VALOR: zone €/m² metric -->
+          <!-- Market signal -->
           <tr>
             <td style="padding:0 28px 22px;">
               <div style="background:#f0f4ff;border:1.5px solid #c7d5fb;border-radius:14px;padding:20px 22px;">
-                <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.09em;color:#2050f6;font-weight:700;">{zone_label}</div>
-                <div style="font-size:32px;font-weight:800;color:#1e252d;letter-spacing:-0.03em;margin:8px 0 2px;">{zone_ppm2_fmt}</div>
-                {zone_subline}
-                {zone_ref_line}
-                <div style="font-size:12px;color:#8493a5;margin-top:8px;">Fuente: serie municipal de cierres registradores (TF Labs) / comparables Idealista.</div>
+                <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.09em;color:#2050f6;font-weight:700;">Lo que pagaste vs. cómo está el mercado hoy</div>
+                <div style="font-size:30px;font-weight:800;color:#1e252d;letter-spacing:-0.03em;margin:8px 0 10px;">{badge_copy}</div>
+                <p style="margin:0 0 10px;font-size:15px;line-height:1.7;color:#344454;">{market_copy}</p>
+                <p style="margin:0;font-size:15px;line-height:1.7;color:#344454;">{current_market_copy}</p>
               </div>
             </td>
           </tr>
 
-          <!-- PROBOKEA -->
+          <!-- Context -->
           <tr>
             <td style="padding:0 28px 22px;">
               <p style="margin:0 0 12px;font-size:15px;line-height:1.7;color:#344454;">
-                Este €/m² es la referencia de <strong>toda la zona</strong>. El valor real de tu
-                inmueble puede variar bastante según:
+                Este dato refleja la mediana del municipio de <strong>{safe_municipio}</strong>
+                y no el valor específico de tu inmueble.
               </p>
-              <ul style="margin:0 0 14px;padding-left:20px;font-size:14px;line-height:1.75;color:#344454;">
-                <li>La <strong>subzona exacta</strong> (playa vs. pueblo, calle principal vs. interior)</li>
-                <li>El <strong>estado de conservación</strong> y si necesita reforma</li>
-                <li>Si el inmueble está actualmente <strong>alquilado</strong> — el mercado lo descuenta frente a un piso vacío y entregado</li>
-                <li>La <strong>fiscalidad</strong> y documentación disponible</li>
-              </ul>
               <p style="margin:0;font-size:15px;line-height:1.7;color:#344454;">
-                Por eso no podemos darte un precio exacto por email. Pero sí podemos
-                calcularlo en 30 minutos, juntos.
+                La ubicación exacta, planta, orientación y estado de la propiedad
+                pueden hacer que tu caso sea mejor o peor que la mediana. En la sesión
+                con nuestros expertos lo analizamos en detalle.
               </p>
             </td>
           </tr>
 
-          <!-- SOLUCIÓN: CTA -->
+          <!-- CTA -->
           <tr>
             <td style="padding:0 28px 24px;">
+              <p style="margin:0 0 16px;font-size:18px;font-weight:800;color:#1e252d;letter-spacing:-0.02em;">¿Qué significa esto para ti?</p>
+              <p style="margin:0 0 18px;font-size:15px;line-height:1.7;color:#344454;">
+                Si el mercado de <strong>{safe_municipio}</strong> se ha revalorizado,
+                es una buena señal para tu inversión. Pero para entender el impacto
+                real en tu propiedad concreta, te invitamos a una sesión gratuita de
+                30 minutos con uno de nuestros expertos en valoración.
+              </p>
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
                 <tr>
                   <td align="center" style="background:#f45504;border-radius:14px;box-shadow:0 8px 20px rgba(244,85,4,0.22);">
                     <a href="{safe_booking_url}" style="display:block;padding:17px 22px;color:#ffffff;text-decoration:none;font-weight:800;font-size:16px;letter-spacing:-0.01em;">
-                      Agendar llamada gratuita · 30 min
+                      Reservar sesión con un experto
                     </a>
                   </td>
                 </tr>
               </table>
-              <p style="margin:10px 0 0;text-align:center;font-size:12px;color:#9aa8b7;">Sin compromiso · Online · Experto PropHero</p>
+              <p style="margin:10px 0 0;text-align:center;font-size:12px;color:#9aa8b7;">Sesión gratuita · 30 min · Online</p>
             </td>
           </tr>
 
-          <!-- What we'll cover -->
+          <!-- Signature -->
           <tr>
             <td style="padding:0 28px 26px;">
-              <p style="margin:0 0 10px;font-size:13px;font-weight:700;color:#1e252d;">En esa llamada vemos:</p>
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                <tr>
-                  <td style="padding:4px 0;font-size:13px;color:#596b7d;">&#10003;&nbsp; Precio de salida real para <em>tu</em> propiedad</td>
-                </tr>
-                <tr>
-                  <td style="padding:4px 0;font-size:13px;color:#596b7d;">&#10003;&nbsp; Efecto del alquiler en el precio (si aplica)</td>
-                </tr>
-                <tr>
-                  <td style="padding:4px 0;font-size:13px;color:#596b7d;">&#10003;&nbsp; Timing de mercado y margen de negociación</td>
-                </tr>
-                <tr>
-                  <td style="padding:4px 0;font-size:13px;color:#596b7d;">&#10003;&nbsp; Fiscalidad y pasos operativos</td>
-                </tr>
-              </table>
+              <p style="margin:0;font-size:15px;line-height:1.7;color:#344454;">
+                Un saludo,<br>
+                El equipo de PropHero Data &amp; Divestments
+              </p>
             </td>
           </tr>
 
@@ -224,9 +201,8 @@ def _render_email_html(
           <tr>
             <td style="background:#f8f9fb;padding:16px 28px;border-top:1px solid #edf0f5;">
               <p style="margin:0;font-size:11px;color:#9aa8b7;line-height:1.55;">
-                Los datos de zona son una referencia de mercado, no una tasación oficial.
-                El valor trasladado asume el inmueble <strong>vacío y en buen estado</strong>;
-                si está alquilado, el precio de mercado libre puede diferir. PDF adjunto con metodología completa.
+                Los datos de EUR/m² son una referencia de mercado municipal, no una tasación oficial
+                ni una valoración específica del inmueble. PDF adjunto con metodología completa.
               </p>
             </td>
           </tr>
@@ -344,7 +320,7 @@ async def send_valuation_email(
 
     sender = os.environ.get("RESEND_FROM_EMAIL", "PropHero <noreply@prophero.com>")
     municipio = valuation.municipio.name
-    subject = f"Los datos de zona para tu inmueble en {municipio} — PropHero"
+    subject = f"Tu propiedad en {municipio} muestra una posible señal de revalorización"
     attachment_name = f"prophero-valoracion-{date.today().isoformat()}.pdf"
 
     payload = {

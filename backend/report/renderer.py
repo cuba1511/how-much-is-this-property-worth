@@ -56,6 +56,20 @@ SPANISH_MONTHS_SHORT = {
     11: "nov",
     12: "dic",
 }
+SPANISH_MONTHS_FULL = {
+    1: "enero",
+    2: "febrero",
+    3: "marzo",
+    4: "abril",
+    5: "mayo",
+    6: "junio",
+    7: "julio",
+    8: "agosto",
+    9: "septiembre",
+    10: "octubre",
+    11: "noviembre",
+    12: "diciembre",
+}
 STAGE_LABELS_ES = {
     "same_street": "Misma calle",
     "same_microzone": "Misma microzona",
@@ -154,6 +168,29 @@ def _format_period(period: Optional[str]) -> str:
     return f"{SPANISH_MONTHS_SHORT.get(month, parts[1])} {year}"
 
 
+def _format_period_full(period: Optional[str]) -> str:
+    if not period:
+        return "—"
+    parts = period.split("-")
+    if len(parts) < 2:
+        return period
+    try:
+        year = int(parts[0])
+        month = int(parts[1])
+    except ValueError:
+        return period
+    return f"{SPANISH_MONTHS_FULL.get(month, parts[1]).capitalize()} {year}"
+
+
+def _year_from_period(period: Optional[str]) -> Optional[int]:
+    if not period:
+        return None
+    try:
+        return int(period.split("-", 1)[0])
+    except (TypeError, ValueError):
+        return None
+
+
 def _format_date_es(value: Optional[str]) -> str:
     if not value:
         return "—"
@@ -165,6 +202,11 @@ def _format_date_es(value: Optional[str]) -> str:
         except ValueError:
             continue
     return value
+
+
+def _format_generated_month_year(value: datetime) -> str:
+    month = SPANISH_MONTHS_FULL.get(value.month, value.strftime("%B")).capitalize()
+    return f"{month} {value.year}"
 
 
 def _stage_label(stage: Optional[str]) -> str:
@@ -413,6 +455,115 @@ def _build_recommendation(
     }
 
 
+def _sparkline_svg(points: list[dict[str, Any]], *, title: str, empty_label: str) -> str:
+    width = 560
+    height = 190
+    pad_x = 42
+    pad_top = 24
+    pad_bottom = 42
+    plot_w = width - pad_x * 2
+    plot_h = height - pad_top - pad_bottom
+    numeric = [point for point in points if point.get("value") is not None]
+    if len(numeric) < 2:
+        return f"""<svg viewBox="0 0 {width} {height}" role="img" aria-label="{escape(title)}">
+  <rect width="{width}" height="{height}" rx="18" fill="#f5f7f9"/>
+  <line x1="{pad_x}" y1="{height - pad_bottom}" x2="{width - pad_x}" y2="{height - pad_bottom}" stroke="#d7dfec" stroke-width="2"/>
+  <text x="{width / 2:.0f}" y="{height / 2:.0f}" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="15" font-weight="700" fill="#596b7d">{escape(empty_label)}</text>
+</svg>"""
+
+    min_value = min(point["value"] for point in numeric)
+    max_value = max(point["value"] for point in numeric)
+    if min_value == max_value:
+        min_value *= 0.96
+        max_value *= 1.04
+    span = max_value - min_value
+    coords: list[tuple[float, float, dict[str, Any]]] = []
+    denom = max(len(numeric) - 1, 1)
+    for idx, point in enumerate(numeric):
+        x = pad_x + (plot_w * idx / denom)
+        y = pad_top + plot_h - ((point["value"] - min_value) / span * plot_h)
+        coords.append((x, y, point))
+    path = " ".join(
+        f"{'M' if idx == 0 else 'L'} {x:.1f} {y:.1f}" for idx, (x, y, _point) in enumerate(coords)
+    )
+    area = f"{path} L {coords[-1][0]:.1f} {height - pad_bottom:.1f} L {coords[0][0]:.1f} {height - pad_bottom:.1f} Z"
+    labels = []
+    for x, y, point in coords:
+        labels.append(
+            f'<circle cx="{x:.1f}" cy="{y:.1f}" r="5.5" fill="#2050f6" stroke="#ffffff" stroke-width="3"/>'
+        )
+        labels.append(
+            f'<text x="{x:.1f}" y="{height - 18}" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="700" fill="#596b7d">{escape(str(point["label"]))}</text>'
+        )
+        labels.append(
+            f'<text x="{x:.1f}" y="{y - 10:.1f}" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="800" fill="#1e252d">{escape(str(point["formatted"]))}</text>'
+        )
+    return f"""<svg viewBox="0 0 {width} {height}" role="img" aria-label="{escape(title)}">
+  <rect width="{width}" height="{height}" rx="18" fill="#ffffff"/>
+  <line x1="{pad_x}" y1="{height - pad_bottom}" x2="{width - pad_x}" y2="{height - pad_bottom}" stroke="#d7dfec" stroke-width="2"/>
+  <path d="{area}" fill="rgba(32, 80, 246, 0.08)"/>
+  <path d="{path}" fill="none" stroke="#2050f6" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  {''.join(labels)}
+</svg>"""
+
+
+def _build_price_evolution_rows(appreciation: Any) -> list[dict[str, str]]:
+    if not appreciation:
+        return [
+            {"label": "Año compra", "value": "—"},
+            {"label": "Año anterior", "value": "—"},
+            {"label": "Hoy", "value": "—"},
+        ]
+    from_year = _year_from_period(appreciation.from_period)
+    to_year = _year_from_period(appreciation.to_period)
+    return [
+        {
+            "label": str(from_year) if from_year else "Año compra",
+            "value": _format_price_per_m2(round(appreciation.from_eur_per_m2)),
+        },
+        {
+            "label": str(to_year - 1) if to_year else "Año anterior",
+            "value": "—",
+        },
+        {
+            "label": f"Hoy ({_format_period_full(appreciation.to_period)})",
+            "value": _format_price_per_m2(round(appreciation.to_eur_per_m2)),
+        },
+    ]
+
+
+def _build_price_chart(appreciation: Any) -> str:
+    points: list[dict[str, Any]] = []
+    if appreciation:
+        from_year = _year_from_period(appreciation.from_period)
+        to_year = _year_from_period(appreciation.to_period)
+        points = [
+            {
+                "label": str(from_year) if from_year else "Compra",
+                "value": round(appreciation.from_eur_per_m2),
+                "formatted": _format_price_per_m2(round(appreciation.from_eur_per_m2)),
+            },
+            {
+                "label": str(to_year) if to_year else "Hoy",
+                "value": round(appreciation.to_eur_per_m2),
+                "formatted": _format_price_per_m2(round(appreciation.to_eur_per_m2)),
+            },
+        ]
+    return _sparkline_svg(
+        points,
+        title="Evolución del precio EUR/m2 de venta",
+        empty_label="Serie de EUR/m² no disponible",
+    )
+
+
+def _build_population_chart() -> str:
+    return _sparkline_svg(
+        [],
+        title="Crecimiento poblacional",
+        empty_label="Crecimiento poblacional pendiente de fuente",
+    )
+
+
 def _market_reading(
     *,
     appreciation_town: Optional[str],
@@ -563,7 +714,9 @@ def _build_report_context(
             "town_name": appreciation.town_name,
             "pct": _format_percent(appreciation_pct),
             "from_period": _format_period(appreciation.from_period),
+            "from_year": _year_from_period(appreciation.from_period),
             "to_period": _format_period(appreciation.to_period),
+            "to_period_full": _format_period_full(appreciation.to_period),
             "purchase_ppm2": _format_price_per_m2(purchase_ppm2),
             "from_ppm2": _format_price_per_m2(round(appreciation.from_eur_per_m2)),
             "to_ppm2": _format_price_per_m2(round(appreciation.to_eur_per_m2)),
@@ -576,6 +729,9 @@ def _build_report_context(
         }
         if appreciation
         else None,
+        "price_evolution_rows": _build_price_evolution_rows(appreciation),
+        "price_evolution_chart": _build_price_chart(appreciation),
+        "population_chart": _build_population_chart(),
         "map_html": map_html,
         "recommendation": _build_recommendation(
             label="Rango de referencia conservador",
@@ -651,9 +807,19 @@ def render_report_html(
         transaction=transaction,
     )
 
+    render_generated_at = generated_at or datetime.now()
+    property_reference = (
+        selected_unit.get("cadastral_reference")
+        or request_payload.get("cadastral_reference")
+        or full_address
+        or valuation.municipio.name
+    )
+    investor_name = lead.full_name if lead else transaction.transaction_name if transaction else "el cliente"
+
     return template.render(
         # Header
-        generated_at=(generated_at or datetime.now()).strftime("%d/%m/%Y · %H:%M"),
+        generated_at=render_generated_at.strftime("%d/%m/%Y · %H:%M"),
+        generated_month_year=_format_generated_month_year(render_generated_at),
         lead=lead,
         booking_url=booking_url,
         prophero_logo_svg=PROPHERO_LOGO_SVG,
@@ -662,7 +828,10 @@ def render_report_html(
         address=valuation.municipio.road or request_payload.get("address") or "",
         full_address=full_address,
         cadastral_reference=selected_unit.get("cadastral_reference"),
+        property_reference=property_reference,
+        investor_name=investor_name,
         municipio=valuation.municipio.name,
+        province=valuation.municipio.province,
         request_m2=request_payload.get("m2"),
         request_bedrooms=request_payload.get("bedrooms"),
         request_bathrooms=request_payload.get("bathrooms"),

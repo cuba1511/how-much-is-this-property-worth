@@ -13,6 +13,7 @@ if str(BACKEND) not in sys.path:
 
 from models import (  # noqa: E402
     LeadInfo,
+    MarketAppreciation,
     MunicipioInfo,
     SearchMetadata,
     SearchStageResult,
@@ -86,6 +87,18 @@ def _valuation() -> ValuationResponse:
                 )
             ],
         ),
+        market_appreciation=MarketAppreciation(
+            town_name="Madrid",
+            settlement_date="2021-05-15",
+            from_period="2021-05",
+            from_eur_per_m2=4_000,
+            to_period="2025-12",
+            to_eur_per_m2=4_600,
+            pct_change=0.15,
+            months_elapsed=55,
+            sample_quality="exact",
+            resolution_strategy="name_match",
+        ),
     )
 
 
@@ -158,9 +171,14 @@ def test_send_valuation_email_posts_resend_payload(monkeypatch: pytest.MonkeyPat
     payload = call["json"]
     assert payload["from"] == "PropHero <noreply@example.com>"
     assert payload["to"] == ["test@example.com"]
-    assert payload["subject"] == "Tu propiedad podría haber ganado valor — Madrid"
+    assert payload["subject"] == (
+        "Tu propiedad en Madrid muestra una posible señal de revalorización"
+    )
     assert "Hola Test" in payload["html"]
-    assert "350.000 €" in payload["html"]
+    assert "4.000 EUR/m²" in payload["html"]
+    assert "4.600 EUR/m²" in payload["html"]
+    assert "+15.0%" in payload["html"]
+    assert "Reservar sesión con un experto" in payload["html"]
     assert payload["attachments"][0]["filename"].startswith("prophero-valoracion-")
     assert payload["attachments"][0]["filename"].endswith(".pdf")
     assert payload["attachments"][0]["content"] == base64.b64encode(b"%PDF-1.4 test").decode(

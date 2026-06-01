@@ -2,6 +2,381 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
+  <title>Reporte de Revalorización — {{ property_reference }}</title>
+  <style>
+    :root {
+      --ph-blue: #2050f6;
+      --ph-blue-dark: #162eb7;
+      --ph-orange: #f45504;
+      --ph-emerald: #0f8b5f;
+      --ph-text: #1e252d;
+      --ph-text-secondary: #596b7d;
+      --ph-text-muted: #8b9aab;
+      --ph-bg-muted: #f5f7f9;
+      --ph-line: rgba(32, 80, 246, 0.18);
+      --ph-line-soft: rgba(32, 80, 246, 0.09);
+    }
+
+    * { box-sizing: border-box; }
+
+    @page {
+      size: A4;
+      margin: 16mm 14mm;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ph-text);
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 10pt;
+      line-height: 1.5;
+      background: #fff;
+    }
+
+    h1, h2, h3, p { margin: 0; }
+
+    .cover {
+      min-height: 255mm;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 2mm 0 0;
+      page-break-after: always;
+    }
+
+    .brand svg {
+      display: block;
+      height: 30px;
+      width: auto;
+    }
+
+    .brand-fallback {
+      color: var(--ph-text);
+      font-size: 15pt;
+      font-weight: 800;
+    }
+
+    .cover-main {
+      max-width: 155mm;
+    }
+
+    .kicker {
+      color: var(--ph-blue-dark);
+      font-size: 8pt;
+      font-weight: 800;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin-top: 7mm;
+      font-size: 35pt;
+      line-height: 1.02;
+      letter-spacing: -0.045em;
+    }
+
+    .cover-reference {
+      margin-top: 7mm;
+      color: var(--ph-text-secondary);
+      font-size: 14pt;
+      line-height: 1.35;
+    }
+
+    .prepared {
+      margin-top: 10mm;
+      color: var(--ph-text-secondary);
+      font-size: 10.5pt;
+    }
+
+    .cover-footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 8mm;
+      padding-top: 5mm;
+      border-top: 1px solid var(--ph-line);
+      color: var(--ph-text-muted);
+      font-size: 8.5pt;
+    }
+
+    .section {
+      padding: 8mm 0;
+      border-top: 1px solid var(--ph-line-soft);
+      break-inside: avoid;
+    }
+
+    .section:first-of-type {
+      border-top: 0;
+      padding-top: 0;
+    }
+
+    .section-title {
+      margin-bottom: 5mm;
+      font-size: 16pt;
+      line-height: 1.15;
+      letter-spacing: -0.025em;
+    }
+
+    .investment-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 4mm;
+    }
+
+    .metric-card {
+      padding: 4mm;
+      border: 1px solid var(--ph-line);
+      border-radius: 12px;
+      background: #fff;
+      break-inside: avoid;
+    }
+
+    .label {
+      color: var(--ph-text-muted);
+      font-size: 7.5pt;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .value {
+      margin-top: 1.5mm;
+      font-size: 13pt;
+      font-weight: 800;
+      line-height: 1.2;
+      word-break: break-word;
+    }
+
+    .value.primary { color: var(--ph-blue); }
+
+    .source-note {
+      margin-bottom: 5mm;
+      padding: 4mm 5mm;
+      border-left: 3px solid var(--ph-blue);
+      border-radius: 10px;
+      background: var(--ph-bg-muted);
+      color: var(--ph-text-secondary);
+      font-size: 9.5pt;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 2mm;
+      font-size: 9.5pt;
+    }
+
+    th {
+      padding: 3mm 2mm;
+      border-bottom: 1px solid var(--ph-line);
+      color: var(--ph-text-muted);
+      font-size: 8pt;
+      letter-spacing: 0.07em;
+      text-align: left;
+      text-transform: uppercase;
+    }
+
+    td {
+      padding: 3.5mm 2mm;
+      border-bottom: 1px solid var(--ph-line-soft);
+      font-weight: 700;
+    }
+
+    td:last-child,
+    th:last-child { text-align: right; }
+
+    .variation {
+      margin-top: 5mm;
+      padding: 4mm 5mm;
+      border-radius: 12px;
+      background: rgba(15, 139, 95, 0.09);
+      color: var(--ph-emerald);
+      font-size: 13pt;
+      font-weight: 900;
+    }
+
+    .chart-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 5mm;
+      margin-top: 6mm;
+    }
+
+    .chart-card {
+      padding: 4mm;
+      border: 1px solid var(--ph-line);
+      border-radius: 14px;
+      background: #fff;
+      break-inside: avoid;
+    }
+
+    .chart-card h3 {
+      margin-bottom: 3mm;
+      font-size: 11pt;
+      letter-spacing: -0.01em;
+    }
+
+    .chart-card svg {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    .meaning {
+      padding: 7mm;
+      border-radius: 16px;
+      background: var(--ph-text);
+      color: #fff;
+      break-inside: avoid;
+    }
+
+    .meaning .section-title { color: #fff; }
+
+    .meaning p {
+      color: rgba(255, 255, 255, 0.78);
+      font-size: 10.5pt;
+      line-height: 1.6;
+    }
+
+    .cta {
+      display: inline-block;
+      margin-top: 6mm;
+      padding: 3.5mm 7mm;
+      border-radius: 999px;
+      background: #fff;
+      color: var(--ph-text);
+      font-size: 10pt;
+      font-weight: 900;
+      text-decoration: none;
+    }
+
+    .footer {
+      margin-top: 8mm;
+      padding-top: 4mm;
+      border-top: 1px solid var(--ph-line);
+      color: var(--ph-text-muted);
+      font-size: 8pt;
+      line-height: 1.5;
+    }
+
+    .footer strong { color: var(--ph-text-secondary); }
+  </style>
+</head>
+<body>
+  <section class="cover">
+    <div class="brand">
+      {% if prophero_logo_svg %}
+        {{ prophero_logo_svg | safe }}
+      {% else %}
+        <span class="brand-fallback">PropHero</span>
+      {% endif %}
+    </div>
+
+    <div class="cover-main">
+      <p class="kicker">Portada</p>
+      <h1>Reporte de Revalorización</h1>
+      <p class="cover-reference">{{ property_reference }}</p>
+      <p class="prepared">Preparado por PropHero · {{ generated_month_year }}</p>
+    </div>
+
+    <div class="cover-footer">
+      <span>PropHero · Data &amp; Divestments</span>
+      <span>{{ generated_month_year }}</span>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2 class="section-title">Sección 1 — Tu inversión</h2>
+    <div class="investment-grid">
+      <article class="metric-card">
+        <div class="label">Fecha de adquisición</div>
+        <div class="value">{{ report.settlement_date }}</div>
+      </article>
+      <article class="metric-card">
+        <div class="label">Precio de compra</div>
+        <div class="value primary">{{ report.invested }}</div>
+      </article>
+      <article class="metric-card">
+        <div class="label">EUR/m² en el momento de compra</div>
+        <div class="value">{{ report.purchase_ppm2 }}</div>
+      </article>
+      <article class="metric-card">
+        <div class="label">Superficie</div>
+        <div class="value">{% if request_m2 %}{{ request_m2 }} m²{% else %}—{% endif %}</div>
+      </article>
+      <article class="metric-card">
+        <div class="label">Municipio</div>
+        <div class="value">{{ municipio or '—' }}{% if province %}, {{ province }}{% endif %}</div>
+      </article>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2 class="section-title">Sección 2 — Evolución del EUR/m² en {{ municipio or 'tu municipio' }}</h2>
+    <p class="source-note">
+      <strong>¿De dónde vienen estos datos?</strong> El EUR/m² que mostramos es la media del municipio de
+      {{ municipio or 'la propiedad' }}, calculada a partir de datos del registro de la propiedad, el INE,
+      idealista y fotocasa con respecto al mercado inmobiliario. Refleja la tendencia general de la zona —
+      no el valor exacto de tu inmueble.
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Año</th>
+          <th>EUR/m² medio en {{ municipio or 'municipio' }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in report.price_evolution_rows %}
+        <tr>
+          <td>{{ row.label }}</td>
+          <td>{{ row.value }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="variation">Variación desde tu compra: {{ report.appreciation.pct if report.appreciation else '—' }}</div>
+
+    <div class="chart-grid">
+      <article class="chart-card">
+        <h3>Evolución del precio EUR/m² de venta</h3>
+        {{ report.price_evolution_chart | safe }}
+      </article>
+      <article class="chart-card">
+        <h3>Crecimiento poblacional</h3>
+        {{ report.population_chart | safe }}
+      </article>
+    </div>
+  </section>
+
+  <section class="section meaning">
+    <h2 class="section-title">Sección 3 — ¿Qué significa para ti?</h2>
+    <p>
+      El mercado en {{ municipio or 'tu municipio' }} ha evolucionado positivamente desde que adquiriste
+      tu propiedad. Esto es una señal y no una tasación oficial — el valor real de tu inmueble puede ser
+      mayor o menor dependiendo de sus características específicas.
+    </p>
+    <p style="margin-top: 4mm;">
+      Para saber exactamente cuánto podría valer hoy tu propiedad, nuestro equipo de expertos puede hacer
+      un análisis personalizado contigo.
+    </p>
+    <a class="cta" href="{{ booking_url }}">Reservar sesión gratuita con tu experto PropHero</a>
+  </section>
+
+  <footer class="footer">
+    <strong>PropHero · Data &amp; Divestments · {{ generated_month_year }}</strong>
+    Los datos de EUR/m² corresponden a la media del municipio de {{ municipio or 'la propiedad' }} y tienen
+    carácter orientativo. Este reporte no constituye una tasación oficial homologada. Documento confidencial
+    preparado para {{ investor_name }}.
+  </footer>
+</body>
+</html>
+{#
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
   <title>Reporte PropHero — {{ full_address or address }}</title>
   <style>
     :root {
