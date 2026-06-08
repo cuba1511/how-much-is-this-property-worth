@@ -59,6 +59,8 @@ from models import (
     CoachAutoEmailResponse,
     CoachEmailSendRequest,
     CoachEmailSendResponse,
+    CoachEmailTestModeRequest,
+    CoachEmailTestModeResponse,
     CoachTransactionValuationResponse,
     DatasetRow,
     LeadInfo,
@@ -80,7 +82,15 @@ from models import (
     ValuationStats,
     ValuationStatusResponse,
 )
-from notifications import EmailDeliveryError, send_custom_email, send_valuation_email
+from notifications import (
+    EmailDeliveryError,
+    delivery_recipient,
+    is_test_email_mode_enabled,
+    send_custom_email,
+    send_valuation_email,
+    set_test_email_mode,
+    test_email_recipient,
+)
 from report.pdf import generate_pdf_bytes
 from report.renderer import render_report_html
 from scraping import scrape_idealista_listings
@@ -1127,6 +1137,36 @@ async def check_coach_auth() -> dict[str, bool]:
 
 
 @app.get(
+    "/api/coach/email/test-mode",
+    response_model=CoachEmailTestModeResponse,
+    summary="Read the global coach email test-mode flag",
+    dependencies=[Depends(_verify_coach_password)],
+)
+async def get_coach_email_test_mode() -> CoachEmailTestModeResponse:
+    return CoachEmailTestModeResponse(
+        enabled=is_test_email_mode_enabled(),
+        test_email_to=test_email_recipient(),
+    )
+
+
+@app.post(
+    "/api/coach/email/test-mode",
+    response_model=CoachEmailTestModeResponse,
+    summary="Set the global coach email test-mode flag",
+    dependencies=[Depends(_verify_coach_password)],
+)
+async def update_coach_email_test_mode(
+    payload: CoachEmailTestModeRequest,
+) -> CoachEmailTestModeResponse:
+    set_test_email_mode(payload.enabled)
+    logger.info("Coach email test mode set to %s", payload.enabled)
+    return CoachEmailTestModeResponse(
+        enabled=is_test_email_mode_enabled(),
+        test_email_to=test_email_recipient(),
+    )
+
+
+@app.get(
     "/api/coach/transactions",
     response_model=TransactionSearchResponse,
     summary="Search client transactions in Airtable (coach UI)",
@@ -1293,7 +1333,7 @@ def _format_period_es(period: Optional[str]) -> str:
 def _format_eur_per_m2(value: Optional[float]) -> str:
     if value is None:
         return "—"
-    return f"{round(value):,.0f} EUR/m²".replace(",", ".")
+    return f"{round(value):,.0f} €/m²".replace(",", ".")
 
 
 def _format_pct(value: Optional[float]) -> str:
@@ -1312,6 +1352,10 @@ def _client_first_name(transaction_name: str) -> str:
     """
     head = transaction_name.split(" - ")[0].strip()
     return head.split(" ")[0] if head else transaction_name
+
+
+def _format_place_name(value: str | None) -> str:
+    return (value or "").strip().title()
 
 
 def _build_default_coach_email(
@@ -1340,7 +1384,9 @@ def _build_default_coach_email(
             else None
         )
     )
-    zone_name = appreciation.town_name if appreciation else valuation.municipio.name
+    zone_name = _format_place_name(
+        appreciation.town_name if appreciation else valuation.municipio.name
+    )
     current_ppm2 = (
         appreciation.to_eur_per_m2
         if appreciation
@@ -1363,19 +1409,21 @@ def _build_default_coach_email(
         "Lo que pagaste vs. cómo está el mercado hoy",
         "Cuando adquiriste tu propiedad, el precio fue de "
         f"{_format_eur_per_m2(purchase_ppm2)}.",
-        f"Hoy, el EUR/m² medio en {zone_name} se sitúa en "
+        f"Hoy, la mediana municipal €/m² en {zone_name} se sitúa en "
         f"{_format_eur_per_m2(current_ppm2)} — lo que representa una variación "
         f"de {variation} desde tu adquisición.",
-        f"Este dato refleja la mediana del municipio de {zone_name} y no el valor "
-        "específico de tu inmueble. La ubicación exacta, planta, orientación y "
-        "estado de la propiedad pueden hacer que tu caso sea mejor o peor que la "
-        "mediana. En la sesión con nuestros expertos lo analizamos en detalle.",
+        f"La primera cifra es tu €/m² real pagado; la segunda refleja la mediana "
+        f"del municipio de {zone_name}, no el valor específico de tu inmueble. "
+        "La ubicación exacta, planta, orientación y estado de la propiedad pueden "
+        "hacer que tu caso sea mejor o peor que la mediana. En la sesión con "
+        "nuestros expertos lo analizamos en detalle.",
         "",
         "¿Qué significa esto para ti?",
-        f"Si el mercado de {zone_name} se ha revalorizado, es una buena señal para "
-        "tu inversión. Pero para entender el impacto real en tu propiedad concreta, "
-        "te invitamos a una sesión gratuita de 30 minutos con uno de nuestros "
-        "expertos en valoración.",
+        f"Si quieres explorar cómo aprovechar la revalorización de {zone_name} "
+        "y sacar capital de tu inmueble, podemos ayudarte a aterrizarlo con "
+        "números reales. Como cliente de PropHero tienes a tu disposición "
+        "nuestro equipo de expertos y tasadores oficiales para revisar tu caso "
+        "y valorar las mejores opciones para tu propiedad.",
         "En 30 minutos te damos una estimación real, basada en tu inmueble concreto — no en promedios.",
         f"→ Descubre cuánto vale tu propiedad hoy [{booking_url}]",
         "",
@@ -1454,15 +1502,13 @@ async def _prepare_auto_email_preview(record_id: str) -> CoachAutoEmailPreviewRe
         valuation=valuation,
     )
     capital_gain = _capital_gain_from_valuation(transaction, valuation)
-    test_to = os.environ.get("RESEND_TEST_TO", "").strip()
-    delivered_to = test_to or transaction.client_email
     return CoachAutoEmailPreviewResponse(
         transaction_id=transaction.id,
         transaction=transaction,
         valuation_request=valuation_request,
         valuation=valuation,
         client_email=transaction.client_email,
-        delivered_to=delivered_to,
+        delivered_to=transaction.client_email,
         subject=subject,
         body=body,
         appreciation_pct=(
@@ -1509,6 +1555,16 @@ async def send_coach_transaction_email(
             )
             attachment_bytes = await generate_pdf_bytes(html)
 
+        email_transaction = payload.transaction or transaction
+        recipient_name = (
+            payload.lead.full_name
+            if payload.lead and payload.lead.full_name
+            else _client_first_name(email_transaction.transaction_name)
+        )
+        delivered_to, routed_to_test = delivery_recipient(
+            payload.to,
+            test_mode=payload.test_mode,
+        )
         sent = await send_custom_email(
             to=payload.to,
             subject=payload.subject,
@@ -1519,6 +1575,15 @@ async def send_coach_transaction_email(
                 else None
             ),
             attachment_bytes=attachment_bytes,
+            recipient_name=recipient_name,
+            valuation=payload.valuation,
+            request_payload=(
+                payload.valuation_request.model_dump(mode="json")
+                if payload.valuation_request
+                else None
+            ),
+            transaction=email_transaction,
+            test_mode=payload.test_mode,
         )
     except AirtableAPIError as exc:
         if exc.status_code == 404:
@@ -1533,7 +1598,16 @@ async def send_coach_transaction_email(
 
     return CoachEmailSendResponse(
         sent=sent,
-        message="Email sent" if sent else "RESEND_API_KEY not set — email skipped in dev",
+        message=(
+            f"Email sent in test mode to {delivered_to}"
+            if sent and routed_to_test
+            else "Email sent"
+            if sent
+            else "RESEND_API_KEY not set — email skipped in dev"
+        ),
+        delivered_to=delivered_to if sent else None,
+        client_email=payload.to,
+        test_mode=routed_to_test,
     )
 
 
@@ -1602,8 +1676,6 @@ async def auto_send_coach_transaction_email(
         logger.error("Auto-send PDF render failed for %s: %s", record_id, exc, exc_info=True)
         raise HTTPException(status_code=502, detail=f"PDF render failed: {exc}")
 
-    test_to = os.environ.get("RESEND_TEST_TO", "").strip()
-    delivered_to = test_to or transaction.client_email
     try:
         sent = await send_custom_email(
             to=transaction.client_email,
@@ -1611,6 +1683,10 @@ async def auto_send_coach_transaction_email(
             body=body,
             attachment_filename=f"prophero-valoracion-{record_id}.pdf",
             attachment_bytes=attachment_bytes,
+            recipient_name=_client_first_name(transaction.transaction_name),
+            valuation=valuation,
+            request_payload=valuation_request.model_dump(mode="json"),
+            transaction=transaction,
         )
     except EmailDeliveryError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
@@ -1619,7 +1695,7 @@ async def auto_send_coach_transaction_email(
         transaction_id=transaction.id,
         sent=sent,
         skipped_reason=None if sent else "RESEND_API_KEY not configured",
-        delivered_to=delivered_to if sent else None,
+        delivered_to=transaction.client_email if sent else None,
         client_email=transaction.client_email,
         subject=subject,
         appreciation_pct=preview.appreciation_pct,

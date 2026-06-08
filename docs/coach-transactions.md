@@ -87,10 +87,10 @@ Sends the coach-authored client email via Resend. The frontend submits the
 edited message plus the already-computed `ValuationResponse` snapshot; the
 backend re-fetches the Airtable record, renders the same client PDF used by
 the preview, attaches it as `prophero-valoracion-<record_id>.pdf`, then sends
-the email. If `RESEND_TEST_TO` is set, delivery is temporarily routed to that
-test inbox instead of the client address. If `RESEND_API_KEY` is unset, the
-route returns `sent=false` so the UI can exercise the flow locally without
-delivering mail.
+the email to the client address. The request can set `test_mode=true`; in that
+case Resend delivers to `RESEND_TEST_EMAIL_TO` while keeping the client email as
+metadata in the response. If `RESEND_API_KEY` is unset, the route returns
+`sent=false` so the UI can exercise the flow locally without delivering mail.
 
 ### `POST /api/coach/transactions/{record_id}/email/auto-preview`
 
@@ -115,8 +115,7 @@ Legacy one-click pipeline that generates and sends the default email in a
 single request. The current bulk UI avoids this direct path and instead calls
 `auto-preview`, lets the coach review/edit the draft, then sends through
 `POST /api/coach/transactions/{record_id}/email/send` with the reviewed
-payload. Delivery is still routed through `RESEND_TEST_TO` when that
-environment variable is set.
+payload.
 
 ## Airtable field mapping
 
@@ -130,6 +129,7 @@ environment variable is set.
 | `Created_Date`                                                                           | `created_at`         |
 | `Country (from Properties)`                                                              | filter only (`Spain`) |
 | `Stage`                                                                                  | filter only (`Property leased`) |
+| `PM selected plan`                                                                       | `pm_selected_plan`   |
 | `Price`                                                                                  | `price`              |
 | `Final reno cost`                                                                        | `final_reno_cost`    |
 | `Final furniture cost`                                                                   | `final_furniture_cost` |
@@ -194,7 +194,9 @@ AIRTABLE_TEAM_PROFILES_TABLE=Team Profiles   # Optional override for coach owner
 COACH_ACCESS_PASSWORD=<shared-secret>        # Empty = gate disabled (dev only)
 RESEND_API_KEY=re_...                        # Required for real coach email delivery
 RESEND_FROM_EMAIL=PropHero <noreply@...>     # Must match a verified Resend domain
-RESEND_TEST_TO=salchiwolf@gmail.com          # Optional test override; unset for real clients
+RESEND_REPLY_TO=reply@resend-inbound.example # Optional reply inbox for client responses
+RESEND_TEST_EMAIL_MODE=true                  # Optional global force-test mode
+RESEND_TEST_EMAIL_TO=ignacio.delacuba@prophero.com
 ```
 
 Generate a PAT at <https://airtable.com/create/tokens> with scope
@@ -212,14 +214,18 @@ Generate a PAT at <https://airtable.com/create/tokens> with scope
   - sort by capital gain, appreciation, estimated value, or date
   - filter by minimum capital gain
   - filter by coach owner
+  - filter by `PM selected plan`, including a shortcut for all rows except `Out of PH`
+  - export the current filtered client list, or the selected rows, as a CSV that can be opened in Google Sheets
   - multi-select visible rows (max 25) for bulk send
 - The list loads transactions in Airtable pages of 100. Loaded pages are exposed
   through a compact paginator (`Anterior`, `Siguiente`, and page chips). The
   paginator also shows loaded-total metrics: total loaded, positive-gain count,
   aggregate capital gain, average capital gain, and average appreciation.
+- The `/coach` header includes a global `Dev mode ON/OFF` button, enabled by
+  default from `RESEND_TEST_EMAIL_MODE`, that routes every Resend delivery to
+  the configured dev/test inbox before sending to real clients.
 - Bulk send opens a progress dialog and sends the default no-scrape report in
-  parallel with concurrency 3. In local/dev environments with `RESEND_TEST_TO`
-  set, every selected client's email is routed to the test inbox.
+  parallel with concurrency 3. It follows the global Dev mode state.
 - The "Generate valuation" button on the detail view calls
   `POST /api/coach/transactions/{id}/valuation`. The backend adapts the
   Airtable row into the existing `ValuationRequest`: it prefers Catastro
@@ -248,13 +254,12 @@ Generate a PAT at <https://airtable.com/create/tokens> with scope
   recommended sale range, **plusvalía de zona** (real TF Labs €/m² appreciation
   since the `Real settlement date`), gain/ROI versus purchase at that
   recommended range, active comparables when enabled, actual purchase €/m²
-  (`final_total_price / landsize_m2`) versus today's zone €/m², and a
-  call-to-action for the coach follow-up. It also keeps the zone €/m² at signing
-  visible separately, so the report does not confuse the client's paid basis
-  with the municipal TF Labs median. It does not estimate time-to-sale, because
-  that depends on demand, asset condition, documentation, tax position, and
-  negotiation. The mocked "real closings" panel was removed in favour of the
-  appreciation block — see
+  (`final_total_price / landsize_m2`) as the first point in the €/m² evolution
+  chart, followed by the TF Labs municipal median points for the later periods,
+  and a call-to-action for the coach follow-up. It does not estimate
+  time-to-sale, because that depends on demand, asset condition, documentation,
+  tax position, and negotiation. The mocked "real closings" panel was removed in
+  favour of the appreciation block — see
   [`market-price-series.md`](market-price-series.md).
 
 ## Local dev

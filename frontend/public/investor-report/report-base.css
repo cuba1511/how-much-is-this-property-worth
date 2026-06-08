@@ -20,11 +20,12 @@ body {
 /* Numerics — always tabular for money + percentages */
 .num { font-variant-numeric: tabular-nums; }
 
-/* Mono caps label */
+/* Eyebrow labels */
 .cap {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: var(--text-xs);
-  letter-spacing: var(--tracking-caps);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.045em;
   text-transform: uppercase;
   color: var(--ink-500);
 }

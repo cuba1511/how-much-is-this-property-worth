@@ -24,6 +24,7 @@ export interface TransactionSummary {
   bathrooms: number | null
   landsize_m2: number | null
   created_at: string | null
+  pm_selected_plan: string | null
   price: number | null
   final_reno_cost: number | null
   final_furniture_cost: number | null
@@ -74,6 +75,9 @@ export interface CoachTransactionValuationResponse {
 export interface CoachEmailSendResponse {
   sent: boolean
   message: string
+  delivered_to: string | null
+  client_email: string | null
+  test_mode: boolean
 }
 
 export interface CoachAutoEmailPreviewResponse {
@@ -103,6 +107,11 @@ export interface CoachAutoEmailResponse {
   estimated_value: number | null
 }
 
+export interface CoachEmailTestModeResponse {
+  enabled: boolean
+  test_email_to: string
+}
+
 export interface CoachEmailSendPayload {
   to: string
   subject: string
@@ -111,6 +120,7 @@ export interface CoachEmailSendPayload {
   valuation?: ValuationResponse
   transaction?: TransactionDetail
   include_comparables?: boolean
+  test_mode?: boolean
 }
 
 export type CoachApiErrorCode = 'unauthorized' | 'not_found' | 'network' | 'server'
@@ -392,6 +402,43 @@ export async function sendTransactionEmail(
     )
   }
   return handleResponse<CoachEmailSendResponse>(res)
+}
+
+export async function getCoachEmailTestMode(): Promise<CoachEmailTestModeResponse> {
+  let res: Response
+  try {
+    res = await fetchWithTimeout(`${API_BASE}/api/coach/email/test-mode`, {
+      headers: buildHeaders(),
+    })
+  } catch (err) {
+    if (err instanceof CoachApiError) throw err
+    throw new CoachApiError(
+      'network',
+      `Network error: ${(err as Error).message ?? 'unknown'}`,
+    )
+  }
+  return handleResponse<CoachEmailTestModeResponse>(res)
+}
+
+export async function setCoachEmailTestMode(enabled: boolean): Promise<CoachEmailTestModeResponse> {
+  let res: Response
+  try {
+    res = await fetchWithTimeout(`${API_BASE}/api/coach/email/test-mode`, {
+      method: 'POST',
+      headers: {
+        ...buildHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ enabled }),
+    })
+  } catch (err) {
+    if (err instanceof CoachApiError) throw err
+    throw new CoachApiError(
+      'network',
+      `Network error: ${(err as Error).message ?? 'unknown'}`,
+    )
+  }
+  return handleResponse<CoachEmailTestModeResponse>(res)
 }
 
 /**

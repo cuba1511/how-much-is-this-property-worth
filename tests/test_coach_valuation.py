@@ -74,6 +74,7 @@ def test_airtable_summary_maps_final_purchase_cost_fields():
             "fields": {
                 "Transaction Name": "Client - Address",
                 "Landsize": 100,
+                "PM selected plan": "Investor Sale",
                 "Price": 200_000,
                 "Final reno cost": 30_000,
                 "Final furniture cost": 8_000,
@@ -107,6 +108,7 @@ def test_airtable_summary_maps_final_purchase_cost_fields():
     assert summary.service_charges == 1_200
     assert summary.final_total_price == 265_000
     assert summary.purchase_eur_per_m2 == 2_650
+    assert summary.pm_selected_plan == "Investor Sale"
 
 
 def test_get_transaction_for_valuation_uses_projected_airtable_fields(

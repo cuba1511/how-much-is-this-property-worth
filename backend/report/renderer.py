@@ -512,7 +512,7 @@ def _build_price_evolution_rows(
 ) -> list[dict[str, str]]:
     if not appreciation:
         return [
-            {"label": "Año compra", "value": "—"},
+            {"label": "Compra", "value": _format_price_per_m2(purchase_ppm2)},
             {"label": "Hoy", "value": "—"},
         ]
     yearly = getattr(appreciation, "yearly_series", None)
@@ -524,9 +524,9 @@ def _build_price_evolution_rows(
             if idx == 0 and purchase_ppm2:
                 value = purchase_ppm2
             if idx == 0:
-                label = str(year) if year else "Año compra"
+                label = str(year) if year else "Compra"
             elif idx == len(yearly) - 1:
-                label = f"Hoy ({_format_period_full(entry.get('period', ''))})"
+                label = str(year) if year else f"Hoy ({_format_period_full(entry.get('period', ''))})"
             else:
                 label = str(year) if year else _format_period_full(entry.get("period", ""))
             rows.append({"label": label, "value": _format_price_per_m2(round(value)) if value else "—"})
@@ -536,7 +536,7 @@ def _build_price_evolution_rows(
     first_value = purchase_ppm2 if purchase_ppm2 else round(appreciation.from_eur_per_m2)
     rows = [
         {
-            "label": str(from_year) if from_year else "Año compra",
+            "label": str(from_year) if from_year else "Compra",
             "value": _format_price_per_m2(first_value),
         }
     ]
@@ -562,9 +562,7 @@ def _build_price_evolution_rows(
     return rows
 
 
-def _build_price_chart(
-    appreciation: Any, *, purchase_ppm2: Optional[int] = None
-) -> str:
+def _build_price_chart(appreciation: Any, *, purchase_ppm2: Optional[int] = None) -> str:
     points: list[dict[str, Any]] = []
     if appreciation:
         yearly = getattr(appreciation, "yearly_series", None)
@@ -578,7 +576,7 @@ def _build_price_chart(
                     value = purchase_ppm2
                 points.append(
                     {
-                        "label": str(year) if year else "—",
+                        "label": str(year) if year else ("Compra" if idx == 0 else "—"),
                         "value": round(value),
                         "formatted": _format_price_per_m2(round(value)),
                     }
@@ -601,8 +599,8 @@ def _build_price_chart(
             ]
     return _sparkline_svg(
         points,
-        title="Evolución del precio €/m2 de venta",
-        empty_label="Serie de EUR/m² no disponible",
+        title="Evolución del €/m2 desde la compra",
+        empty_label="Serie de €/m² no disponible",
     )
 
 
@@ -740,6 +738,13 @@ def _build_report_context(
         "ppm2_delta": _format_percent(ppm2_delta_pct) if ppm2_delta_pct is not None else None,
         "zone_plusvalia": _format_eur_or_dash(zone_plusvalia),
         "zone_plusvalia_pct": _format_percent(appreciation_pct) if appreciation_pct is not None else None,
+        "price_evolution_pct": (
+            _format_percent(ppm2_delta_pct)
+            if ppm2_delta_pct is not None
+            else _format_percent(appreciation_pct)
+            if appreciation_pct is not None
+            else "—"
+        ),
         "zone_metric_label": (
             "Plusvalía de zona"
             if appreciation and transaction
@@ -778,8 +783,14 @@ def _build_report_context(
         }
         if appreciation
         else None,
-        "price_evolution_rows": _build_price_evolution_rows(appreciation, purchase_ppm2=purchase_ppm2),
-        "price_evolution_chart": _build_price_chart(appreciation, purchase_ppm2=purchase_ppm2),
+        "price_evolution_rows": _build_price_evolution_rows(
+            appreciation,
+            purchase_ppm2=purchase_ppm2,
+        ),
+        "price_evolution_chart": _build_price_chart(
+            appreciation,
+            purchase_ppm2=purchase_ppm2,
+        ),
         "map_html": map_html,
         "recommendation": _build_recommendation(
             label="Rango de referencia conservador",

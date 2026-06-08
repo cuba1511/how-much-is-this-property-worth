@@ -70,6 +70,28 @@ def _transaction() -> TransactionDetail:
     )
 
 
+def test_default_coach_email_subject_capitalizes_municipio():
+    valuation = _valuation()
+    valuation.municipio.name = "massamagrell"
+    request = ValuationRequest(
+        address="Calle Granada, Massamagrell",
+        m2=90,
+        bedrooms=2,
+        bathrooms=1,
+    )
+
+    subject, body = main._build_default_coach_email(
+        transaction=_transaction(),
+        valuation_request=request,
+        valuation=valuation,
+    )
+
+    assert subject == (
+        "Tu propiedad en Massamagrell muestra una posible señal de revalorización"
+    )
+    assert "mercado en Massamagrell" in body
+
+
 def test_send_report_in_background_marks_email_sent(monkeypatch: pytest.MonkeyPatch):
     calls: list[tuple[str, object]] = []
 
@@ -81,8 +103,8 @@ def test_send_report_in_background_marks_email_sent(monkeypatch: pytest.MonkeyPa
         calls.append(("pdf", html))
         return b"%PDF-1.4 report"
 
-    async def fake_send_valuation_email(*, lead, valuation, pdf_bytes):
-        calls.append(("email", (lead, valuation, pdf_bytes)))
+    async def fake_send_valuation_email(*, lead, valuation, pdf_bytes, request_payload=None):
+        calls.append(("email", (lead, valuation, pdf_bytes, request_payload)))
 
     def fake_mark_email_sent(valuation_id: int, *, error: str | None = None):
         calls.append(("mark", (valuation_id, error)))
@@ -108,7 +130,7 @@ def test_send_report_in_background_marks_email_sent(monkeypatch: pytest.MonkeyPa
     assert calls == [
         ("render", (valuation, request_payload, lead)),
         ("pdf", "<html>report</html>"),
-        ("email", (lead, valuation, b"%PDF-1.4 report")),
+        ("email", (lead, valuation, b"%PDF-1.4 report", request_payload)),
         ("mark", (123, None)),
     ]
 
@@ -121,7 +143,7 @@ def test_send_report_in_background_persists_delivery_error(monkeypatch: pytest.M
     async def fake_generate_pdf_bytes(html: str) -> bytes:
         return b"%PDF-1.4 report"
 
-    async def fake_send_valuation_email(*, lead, valuation, pdf_bytes):
+    async def fake_send_valuation_email(*, lead, valuation, pdf_bytes, request_payload=None):
         raise main.EmailDeliveryError("Resend 422: bad sender")
 
     def fake_mark_email_sent(valuation_id: int, *, error: str | None = None):
@@ -267,11 +289,26 @@ def test_send_coach_transaction_email_attaches_rendered_pdf(monkeypatch: pytest.
         body,
         attachment_filename=None,
         attachment_bytes=None,
+        recipient_name=None,
+        valuation=None,
+        request_payload=None,
+        transaction=None,
+        test_mode=False,
     ):
         calls.append(
             (
                 "email",
-                (to, subject, body, attachment_filename, attachment_bytes),
+                (
+                    to,
+                    subject,
+                    body,
+                    attachment_filename,
+                    attachment_bytes,
+                    recipient_name,
+                    valuation,
+                    request_payload,
+                    transaction,
+                ),
             )
         )
         return True
@@ -308,6 +345,10 @@ def test_send_coach_transaction_email_attaches_rendered_pdf(monkeypatch: pytest.
                 "Hola",
                 "prophero-valoracion-rec123.pdf",
                 b"%PDF-1.4 coach",
+                "Test",
+                valuation,
+                request.model_dump(mode="json"),
+                transaction,
             ),
         ),
     ]

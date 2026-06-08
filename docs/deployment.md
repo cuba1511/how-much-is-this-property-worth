@@ -101,6 +101,7 @@ Lista completa en `deploy/env.example`.
 | `BRIGHT_DATA_API_KEY` | secret | Opcional |
 | `RESEND_API_KEY` | secret | Opcional |
 | `RESEND_FROM_EMAIL` | variable o secret | Opcional |
+| `RESEND_REPLY_TO` | variable o secret | Opcional. Inbox para respuestas (`Reply-To`) |
 | `HV_API_KEY` | secret | Opcional |
 
 Flujo:

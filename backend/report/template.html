@@ -350,18 +350,19 @@
   </section>
 
   <section class="section">
-    <h2 class="section-title">02 · Evolución del €/m² en {{ municipio or 'tu municipio' }}</h2>
+    <h2 class="section-title">02 · Evolución del €/m² desde tu compra</h2>
     <p class="source-note">
-      <strong>Fuente.</strong> El €/m² mostrado es la mediana municipal suavizada de TF Labs
-      (<code>SALE_PRICE_SQM_P50_SMOOTH</code>). Refleja la tendencia de {{ municipio or 'la zona' }},
-      no el valor exacto del inmueble.
+      <strong>Fuente.</strong> El primer punto de la gráfica es el mismo €/m² real pagado
+      mostrado en la sección 01. Los puntos posteriores usan datos de registro basados en
+      cierres reales para mostrar la mediana municipal del €/m². Refleja la tendencia general
+      de {{ municipio or 'la zona' }}, no el valor exacto del inmueble.
     </p>
 
     <table>
       <thead>
         <tr>
-          <th>Año</th>
-          <th>€/m² mediana en {{ municipio or 'municipio' }}</th>
+          <th>Periodo</th>
+          <th>€/m²</th>
         </tr>
       </thead>
       <tbody>
@@ -374,11 +375,11 @@
       </tbody>
     </table>
 
-    <div class="variation">Variación desde tu compra: {{ report.appreciation.pct if report.appreciation else '—' }}</div>
+    <div class="variation">Variación desde tu compra: {{ report.price_evolution_pct }}</div>
 
     <div class="chart-grid">
       <article class="chart-card">
-        <h3>Evolución del precio €/m² de venta</h3>
+        <h3>Compra real vs. referencia de mercado €/m²</h3>
         {{ report.price_evolution_chart | safe }}
       </article>
     </div>

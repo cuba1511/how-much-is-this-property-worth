@@ -17,6 +17,7 @@ from models import (  # noqa: E402
     MunicipioInfo,
     SearchMetadata,
     SearchStageResult,
+    TransactionDetail,
     ValuationResponse,
     ValuationStats,
 )
@@ -26,6 +27,12 @@ from notifications.email_sender import (  # noqa: E402
     send_custom_email,
     send_valuation_email,
 )
+
+
+@pytest.fixture(autouse=True)
+def _disable_resend_test_mode(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("RESEND_TEST_EMAIL_MODE", raising=False)
+    monkeypatch.delenv("RESEND_TEST_EMAIL_TO", raising=False)
 
 
 class FakeResponse:
@@ -56,9 +63,9 @@ class FakeAsyncClient:
 def _valuation() -> ValuationResponse:
     return ValuationResponse(
         municipio=MunicipioInfo(
-            name="Madrid",
-            slug="madrid",
-            province="Madrid",
+            name="massamagrell",
+            slug="massamagrell",
+            province="Valencia",
             road="Calle Granada",
         ),
         listings=[],
@@ -88,7 +95,7 @@ def _valuation() -> ValuationResponse:
             ],
         ),
         market_appreciation=MarketAppreciation(
-            town_name="Madrid",
+            town_name="Massamagrell",
             settlement_date="2021-05-15",
             from_period="2021-05",
             from_eur_per_m2=4_000,
@@ -107,6 +114,18 @@ def _lead() -> LeadInfo:
         full_name="Test User",
         email="test@example.com",
         phone="+34611222333",
+    )
+
+
+def _transaction() -> TransactionDetail:
+    return TransactionDetail(
+        id="rec123",
+        transaction_name="Test User",
+        address="Calle Granada",
+        final_total_price=92_100,
+        landsize_m2=100,
+        purchase_eur_per_m2=921,
+        raw_fields={},
     )
 
 
@@ -149,7 +168,7 @@ def test_send_custom_email_returns_false_without_resend_api_key(monkeypatch: pyt
 def test_send_valuation_email_posts_resend_payload(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("RESEND_API_KEY", "re_test")
     monkeypatch.setenv("RESEND_FROM_EMAIL", "PropHero <noreply@example.com>")
-    monkeypatch.delenv("RESEND_TEST_TO", raising=False)
+    monkeypatch.setenv("RESEND_REPLY_TO", "divestments@erkaugaruu.resend.app")
     client = FakeAsyncClient(FakeResponse())
     monkeypatch.setattr(email_sender.httpx, "AsyncClient", lambda timeout: client)
 
@@ -171,14 +190,20 @@ def test_send_valuation_email_posts_resend_payload(monkeypatch: pytest.MonkeyPat
     payload = call["json"]
     assert payload["from"] == "PropHero <noreply@example.com>"
     assert payload["to"] == ["test@example.com"]
+    assert payload["reply_to"] == "divestments@erkaugaruu.resend.app"
     assert payload["subject"] == (
-        "Tu propiedad en Madrid muestra una posible señal de revalorización"
+        "Tu propiedad en Massamagrell muestra una posible señal de revalorización"
     )
     assert "Hola Test" in payload["html"]
-    assert "4.000 EUR/m²" in payload["html"]
-    assert "4.600 EUR/m²" in payload["html"]
-    assert "+15.0%" in payload["html"]
-    assert "Reservar sesión con un experto" in payload["html"]
+    assert "4.000 €/m²" in payload["html"]
+    assert "4.600 €/m²" in payload["html"]
+    assert "+15,0%" in payload["html"]
+    assert "Descubre cuánto vale tu propiedad hoy" in payload["html"]
+    assert f'cid:{email_sender.LOGO_CONTENT_ID}' in payload["html"]
+    assert any(
+        a.get("content_id") == email_sender.LOGO_CONTENT_ID
+        for a in payload["attachments"]
+    )
     assert payload["attachments"][0]["filename"].startswith("prophero-valoracion-")
     assert payload["attachments"][0]["filename"].endswith(".pdf")
     assert payload["attachments"][0]["content"] == base64.b64encode(b"%PDF-1.4 test").decode(
@@ -186,9 +211,57 @@ def test_send_valuation_email_posts_resend_payload(monkeypatch: pytest.MonkeyPat
     )
 
 
+def test_send_valuation_email_can_route_to_test_inbox(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("RESEND_API_KEY", "re_test")
+    monkeypatch.setenv("RESEND_TEST_EMAIL_TO", "qa@example.com")
+    client = FakeAsyncClient(FakeResponse())
+    monkeypatch.setattr(email_sender.httpx, "AsyncClient", lambda timeout: client)
+
+    asyncio.run(
+        send_valuation_email(
+            lead=_lead(),
+            valuation=_valuation(),
+            pdf_bytes=b"%PDF-1.4 test",
+            test_mode=True,
+        )
+    )
+
+    payload = client.calls[0]["json"]
+    assert payload["to"] == ["qa@example.com"]
+
+
+def test_send_custom_email_uses_real_purchase_ppm2_when_transaction_is_available(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("RESEND_API_KEY", "re_test")
+    client = FakeAsyncClient(FakeResponse())
+    monkeypatch.setattr(email_sender.httpx, "AsyncClient", lambda timeout: client)
+
+    valuation = _valuation()
+    valuation.market_appreciation.from_eur_per_m2 = 1_169
+    valuation.market_appreciation.to_eur_per_m2 = 1_200
+
+    asyncio.run(
+        send_custom_email(
+            to="test@example.com",
+            subject="Informe",
+            body="Plain body",
+            recipient_name="Test User",
+            valuation=valuation,
+            transaction=_transaction(),
+        )
+    )
+
+    html = client.calls[0]["json"]["html"]
+    assert "Pagaste &middot; compra" in html
+    assert "921 €/m²" in html
+    assert "1.200 €/m²" in html
+    assert "€/m² real pagado" in html
+    assert "1.169 €/m²" not in html
+
+
 def test_send_valuation_email_raises_on_resend_error(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("RESEND_API_KEY", "re_test")
-    monkeypatch.delenv("RESEND_TEST_TO", raising=False)
     client = FakeAsyncClient(FakeResponse(status_code=422, body="bad sender"))
     monkeypatch.setattr(email_sender.httpx, "AsyncClient", lambda timeout: client)
 
@@ -205,7 +278,7 @@ def test_send_valuation_email_raises_on_resend_error(monkeypatch: pytest.MonkeyP
 def test_send_custom_email_posts_text_and_escaped_html(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("RESEND_API_KEY", "re_test")
     monkeypatch.setenv("RESEND_FROM_EMAIL", "PropHero <noreply@example.com>")
-    monkeypatch.delenv("RESEND_TEST_TO", raising=False)
+    monkeypatch.setenv("RESEND_REPLY_TO", "coach@erkaugaruu.resend.app")
     client = FakeAsyncClient(FakeResponse())
     monkeypatch.setattr(email_sender.httpx, "AsyncClient", lambda timeout: client)
 
@@ -221,15 +294,34 @@ def test_send_custom_email_posts_text_and_escaped_html(monkeypatch: pytest.Monke
     payload = client.calls[0]["json"]
     assert payload["from"] == "PropHero <noreply@example.com>"
     assert payload["to"] == ["test@example.com"]
+    assert payload["reply_to"] == "coach@erkaugaruu.resend.app"
     assert payload["subject"] == "Coach note"
     assert payload["text"] == "Hola <script>alert(1)</script> & gracias"
     assert "&lt;script&gt;alert(1)&lt;/script&gt; &amp; gracias" in payload["html"]
     assert "<script>" not in payload["html"]
 
 
+def test_send_custom_email_respects_global_test_mode(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("RESEND_API_KEY", "re_test")
+    monkeypatch.setenv("RESEND_TEST_EMAIL_MODE", "true")
+    monkeypatch.setenv("RESEND_TEST_EMAIL_TO", "qa@example.com")
+    client = FakeAsyncClient(FakeResponse())
+    monkeypatch.setattr(email_sender.httpx, "AsyncClient", lambda timeout: client)
+
+    sent = asyncio.run(
+        send_custom_email(
+            to="client@example.com",
+            subject="Coach note",
+            body="Plain body",
+        )
+    )
+
+    assert sent is True
+    assert client.calls[0]["json"]["to"] == ["qa@example.com"]
+
+
 def test_send_custom_email_formats_coach_sections_for_gmail(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("RESEND_API_KEY", "re_test")
-    monkeypatch.delenv("RESEND_TEST_TO", raising=False)
     client = FakeAsyncClient(FakeResponse())
     monkeypatch.setattr(email_sender.httpx, "AsyncClient", lambda timeout: client)
 
@@ -261,14 +353,16 @@ def test_send_custom_email_formats_coach_sections_for_gmail(monkeypatch: pytest.
     assert "text-transform:uppercase" in payload["html"]
     assert "Posible revalorización" in payload["html"]
     assert "Hemos preparado una estimación inicial.<br>La ganancia potencial" in payload["html"]
-    assert "<img" not in payload["html"]
+    # Only the inline Content-ID logo is allowed; no remote/tracking images.
+    assert 'src="http' not in payload["html"]
+    assert payload["html"].count("<img") == 1
+    assert f'cid:{email_sender.LOGO_CONTENT_ID}' in payload["html"]
     assert "font-size:22px;line-height:1;font-weight:800" not in payload["html"]
-    assert "PropHero · Informe adjunto en PDF" in payload["html"]
+    assert "PropHero" in payload["html"]
 
 
 def test_send_custom_email_can_attach_pdf(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("RESEND_API_KEY", "re_test")
-    monkeypatch.delenv("RESEND_TEST_TO", raising=False)
     client = FakeAsyncClient(FakeResponse())
     monkeypatch.setattr(email_sender.httpx, "AsyncClient", lambda timeout: client)
 
@@ -284,28 +378,14 @@ def test_send_custom_email_can_attach_pdf(monkeypatch: pytest.MonkeyPatch):
 
     assert sent is True
     payload = client.calls[0]["json"]
-    assert payload["attachments"] == [
-        {
-            "filename": "report.pdf",
-            "content": base64.b64encode(b"%PDF-1.4 coach").decode("ascii"),
-        }
+    assert payload["attachments"][0] == {
+        "filename": "report.pdf",
+        "content": base64.b64encode(b"%PDF-1.4 coach").decode("ascii"),
+    }
+    # Inline logo is appended as a Content-ID attachment referenced via cid:.
+    logo_attachments = [
+        a for a in payload["attachments"] if a.get("content_id") == email_sender.LOGO_CONTENT_ID
     ]
+    assert len(logo_attachments) == 1
+    assert f'cid:{email_sender.LOGO_CONTENT_ID}' in payload["html"]
 
-
-def test_resend_test_to_overrides_recipient(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("RESEND_API_KEY", "re_test")
-    monkeypatch.setenv("RESEND_TEST_TO", "salchiwolf@gmail.com")
-    client = FakeAsyncClient(FakeResponse())
-    monkeypatch.setattr(email_sender.httpx, "AsyncClient", lambda timeout: client)
-
-    sent = asyncio.run(
-        send_custom_email(
-            to="real-client@example.com",
-            subject="Coach note",
-            body="Plain body",
-        )
-    )
-
-    assert sent is True
-    payload = client.calls[0]["json"]
-    assert payload["to"] == ["salchiwolf@gmail.com"]

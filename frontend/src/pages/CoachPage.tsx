@@ -49,18 +49,21 @@ import {
 import { stageRadiusMeters } from '@/lib/results'
 import {
   CoachAutoEmailPreviewResponse,
+  CoachEmailTestModeResponse,
   CoachTransactionValuationResponse,
   CoachApiError,
   TransactionDetail,
   TransactionSummary,
   clearStoredCoachPassword,
   generateTransactionValuation,
+  getCoachEmailTestMode,
   getStoredCoachPassword,
   getTransaction,
   previewTransactionAutoEmail,
   probeCoachPassword,
   sendTransactionEmail,
   searchTransactions,
+  setCoachEmailTestMode,
   setStoredCoachPassword,
 } from '@/lib/coach-api'
 
@@ -68,6 +71,7 @@ const SEARCH_DEBOUNCE_MS = 300
 const REPORT_PROGRESS_CAP = 0.95
 const REPORT_PROGRESS_TAU_SECONDS = 30
 const REPORT_LONG_RUNNING_HINT_AFTER_S = 90
+const COACH_TEST_EMAIL_TO = 'ignacio.delacuba@prophero.com'
 
 type ReportLoadingPhaseKey =
   | 'resolving'
@@ -190,7 +194,7 @@ function formatPricePerM2(value: number | null | undefined): string {
 
 function formatEmailPricePerM2(value: number | null | undefined): string {
   if (value === null || value === undefined) return '—'
-  return `${new Intl.NumberFormat('es-ES', { maximumFractionDigits: 0 }).format(value)} EUR/m²`
+  return `${new Intl.NumberFormat('es-ES', { maximumFractionDigits: 0 }).format(value)} €/m²`
 }
 
 function formatDate(value: string | null): string {
@@ -218,6 +222,18 @@ function formatEmailPercent(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '—'
   const sign = value > 0 ? '+' : ''
   return `${sign}${value.toFixed(1).replace('.', ',')}%`
+}
+
+function formatPlaceName(value: string | null | undefined): string {
+  return (value ?? '')
+    .trim()
+    .split(/\s+/)
+    .map(
+      (word) =>
+        word.charAt(0).toLocaleUpperCase('es-ES') +
+        word.slice(1).toLocaleLowerCase('es-ES'),
+    )
+    .join(' ')
 }
 
 function totalSpent(row: TransactionSummary): number | null {
@@ -304,14 +320,62 @@ export default function CoachPage() {
   const { transactionId } = useParams<{ transactionId?: string }>()
 
   const [authed, setAuthed] = useState<boolean>(() => Boolean(getStoredCoachPassword()))
+  const [emailTestMode, setEmailTestMode] = useState<CoachEmailTestModeResponse | null>(null)
+  const [emailTestModeLoading, setEmailTestModeLoading] = useState(false)
+  const [emailTestModeError, setEmailTestModeError] = useState<string | null>(null)
 
   const handleAuthed = useCallback(() => setAuthed(true), [])
 
   const handleLogout = useCallback(() => {
     clearStoredCoachPassword()
     setAuthed(false)
+    setEmailTestMode(null)
     navigate('/coach')
   }, [navigate])
+
+  useEffect(() => {
+    if (!authed) return
+    let cancelled = false
+    setEmailTestModeLoading(true)
+    setEmailTestModeError(null)
+    getCoachEmailTestMode()
+      .then((state) => {
+        if (!cancelled) setEmailTestMode(state)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        if (err instanceof CoachApiError && err.code === 'unauthorized') {
+          handleLogout()
+          return
+        }
+        setEmailTestModeError(err instanceof Error ? err.message : 'No se pudo leer modo test')
+      })
+      .finally(() => {
+        if (!cancelled) setEmailTestModeLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [authed, handleLogout])
+
+  async function toggleEmailTestMode() {
+    if (!emailTestMode || emailTestModeLoading) return
+    const nextEnabled = !emailTestMode.enabled
+    setEmailTestModeLoading(true)
+    setEmailTestModeError(null)
+    try {
+      const next = await setCoachEmailTestMode(nextEnabled)
+      setEmailTestMode(next)
+    } catch (err) {
+      if (err instanceof CoachApiError && err.code === 'unauthorized') {
+        handleLogout()
+        return
+      }
+      setEmailTestModeError(err instanceof Error ? err.message : 'No se pudo cambiar modo test')
+    } finally {
+      setEmailTestModeLoading(false)
+    }
+  }
 
   return (
     <>
@@ -332,16 +396,39 @@ export default function CoachPage() {
                 </p>
               </div>
               {authed && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleLogout}
-                  className="self-start text-ink-secondary"
-                >
-                  <LogOut className="h-4 w-4" />
-                  {t('coach.logout')}
-                </Button>
+                <div className="flex flex-col gap-2 md:items-end">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      variant={emailTestMode?.enabled ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={toggleEmailTestMode}
+                      disabled={!emailTestMode || emailTestModeLoading}
+                      className="rounded-xl"
+                    >
+                      {emailTestModeLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+                      {emailTestMode?.enabled ? 'Dev mode ON' : 'Dev mode OFF'}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleLogout}
+                      className="text-ink-secondary"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      {t('coach.logout')}
+                    </Button>
+                  </div>
+                  <p className="max-w-xs text-right text-xs text-ink-muted">
+                    {emailTestMode?.enabled
+                      ? `Dev: todo Resend va a ${emailTestMode.test_email_to}`
+                      : 'Prod: Resend va a clientes reales'}
+                  </p>
+                  {emailTestModeError && (
+                    <p className="max-w-xs text-right text-xs text-destructive">{emailTestModeError}</p>
+                  )}
+                </div>
               )}
             </header>
 
@@ -350,6 +437,7 @@ export default function CoachPage() {
               <TransactionSearchPanel
                 onSelect={(id) => navigate(`/coach/${id}`)}
                 onUnauthorized={handleLogout}
+                emailTestMode={emailTestMode}
               />
             )}
             {authed && transactionId && (
@@ -358,6 +446,7 @@ export default function CoachPage() {
                 transactionId={transactionId}
                 onBack={() => navigate('/coach')}
                 onUnauthorized={handleLogout}
+                emailTestMode={emailTestMode}
               />
             )}
           </div>
@@ -443,6 +532,7 @@ function CoachLogin({ onAuthed }: CoachLoginProps) {
 interface TransactionSearchPanelProps {
   onSelect: (transactionId: string) => void
   onUnauthorized: () => void
+  emailTestMode: CoachEmailTestModeResponse | null
 }
 
 // Sort modes for the coach worklist. Capital-gain / appreciation sorts surface
@@ -472,6 +562,8 @@ const BULK_MAX_SELECTION = 25
 const AIRTABLE_FETCH_BATCH_SIZE = 100
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const
 const DEFAULT_LOCAL_PAGE_SIZE: (typeof PAGE_SIZE_OPTIONS)[number] = 25
+const PM_SELECTED_PLAN_OUT_OF_PH = 'Out of PH'
+const PM_SELECTED_PLAN_NOT_OUT_OF_PH = '__not_out_of_ph__'
 
 function nullableAsNegInfinity(value: number | null | undefined): number {
   return value === null || value === undefined || Number.isNaN(value)
@@ -509,7 +601,81 @@ function average(values: Array<number | null | undefined>): number | null {
   return finite.reduce((sum, value) => sum + value, 0) / finite.length
 }
 
-function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchPanelProps) {
+function csvCell(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return ''
+  const text = String(value)
+  const safeText = /^[=+\-@]/.test(text) ? `'${text}` : text
+  return `"${safeText.replace(/"/g, '""')}"`
+}
+
+function buildCoachClientExportCsv(rows: TransactionSummary[]): string {
+  const headers = [
+    'Transaction ID',
+    'Cliente / Transaction',
+    'Client email',
+    'Address',
+    'PM selected plan',
+    'Coach',
+    'Coach email',
+    'Account manager',
+    'Type',
+    'Created date',
+    'Settlement date',
+    'Town',
+    'M2',
+    'Beds',
+    'Baths',
+    'Final total price',
+    'Purchase EUR per m2',
+    'Estimated current value',
+    'Capital gain',
+    'Appreciation pct',
+  ]
+  const body = rows.map((row) => [
+    row.id,
+    row.transaction_name,
+    row.client_email,
+    row.address,
+    row.pm_selected_plan,
+    row.coach_name,
+    row.coach_email,
+    row.account_manager_name,
+    row.type,
+    row.created_at,
+    row.real_settlement_date,
+    row.appreciation_town_name,
+    row.landsize_m2,
+    row.bedrooms,
+    row.bathrooms,
+    row.final_total_price,
+    row.purchase_eur_per_m2,
+    row.estimated_current_value,
+    row.capital_gain,
+    row.appreciation_pct,
+  ])
+  return [headers, ...body].map((row) => row.map(csvCell).join(',')).join('\n')
+}
+
+function downloadCoachClientCsv(rows: TransactionSummary[], scope: 'filtered' | 'selected') {
+  if (rows.length === 0) return
+  const csv = buildCoachClientExportCsv(rows)
+  const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const date = new Date().toISOString().slice(0, 10)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `coach-clients-${scope}-${date}.csv`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
+function TransactionSearchPanel({
+  onSelect,
+  onUnauthorized,
+  emailTestMode,
+}: TransactionSearchPanelProps) {
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
   // We stream every Airtable batch into a single flat buffer instead of
@@ -528,6 +694,7 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
   const [sortMode, setSortMode] = useState<SortMode>('gain_desc')
   const [minGain, setMinGain] = useState<string>('')
   const [coachFilters, setCoachFilters] = useState<Set<string>>(new Set())
+  const [pmSelectedPlanFilter, setPmSelectedPlanFilter] = useState<string>('')
   const [coachDropdownOpen, setCoachDropdownOpen] = useState(false)
   const coachDropdownRef = useRef<HTMLDivElement>(null)
   const [filtersOpen, setFiltersOpen] = useState(false)
@@ -622,6 +789,16 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
       .sort((a, b) => a.name.localeCompare(b.name, 'es'))
   }, [allRows])
 
+  const pmSelectedPlanOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        allRows
+          .map((row) => row.pm_selected_plan?.trim())
+          .filter((plan): plan is string => Boolean(plan)),
+      ),
+    ).sort((a, b) => a.localeCompare(b, 'es'))
+  }, [allRows])
+
   const minGainNumber = useMemo(() => {
     const parsed = Number(minGain)
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null
@@ -631,6 +808,20 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
     return allRows
       .filter((row) => {
         if (coachFilters.size > 0 && (!row.coach_id || !coachFilters.has(row.coach_id))) return false
+        const pmSelectedPlan = row.pm_selected_plan?.trim()
+        if (
+          pmSelectedPlanFilter === PM_SELECTED_PLAN_NOT_OUT_OF_PH &&
+          pmSelectedPlan === PM_SELECTED_PLAN_OUT_OF_PH
+        ) {
+          return false
+        }
+        if (
+          pmSelectedPlanFilter &&
+          pmSelectedPlanFilter !== PM_SELECTED_PLAN_NOT_OUT_OF_PH &&
+          pmSelectedPlan !== pmSelectedPlanFilter
+        ) {
+          return false
+        }
         if (minGainNumber !== null) {
           const gain = row.capital_gain ?? Number.NEGATIVE_INFINITY
           if (gain < minGainNumber) return false
@@ -639,7 +830,7 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
       })
       .slice()
       .sort((a, b) => compareRows(a, b, sortMode))
-  }, [allRows, coachFilters, minGainNumber, sortMode])
+  }, [allRows, coachFilters, minGainNumber, pmSelectedPlanFilter, sortMode])
 
   const totalPages = Math.max(1, Math.ceil(filteredAll.length / pageSize))
   const clampedPageIndex = Math.min(currentPageIndex, totalPages - 1)
@@ -727,13 +918,17 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
     [filtered, selected],
   )
 
+  const exportRows = selectedRows.length > 0 ? selectedRows : filteredAll
+  const exportScope = selectedRows.length > 0 ? 'selected' : 'filtered'
+
   const allVisibleSelected =
     filtered.length > 0 && filtered.every((row) => selected.has(row.id))
 
-  const filtersActive = coachFilters.size > 0 || minGainNumber !== null
+  const filtersActive = coachFilters.size > 0 || minGainNumber !== null || pmSelectedPlanFilter !== ''
   const activeFilterCount =
     (coachFilters.size > 0 ? 1 : 0) +
-    (minGainNumber !== null ? 1 : 0)
+    (minGainNumber !== null ? 1 : 0) +
+    (pmSelectedPlanFilter ? 1 : 0)
 
   return (
     <div className="flex flex-col gap-md">
@@ -848,13 +1043,23 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
                 </span>
               )}
             </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => downloadCoachClientCsv(exportRows, exportScope)}
+              disabled={exportRows.length === 0}
+            >
+              <Download className="h-4 w-4" />
+              Exportar CSV
+            </Button>
           </div>
         </div>
 
         {filtersOpen && (
           <div
             id="coach-filters-panel"
-            className="mt-md grid gap-md rounded-2xl border border-line/60 bg-surface-muted p-md md:grid-cols-2"
+            className="mt-md grid gap-md rounded-2xl border border-line/60 bg-surface-muted p-md md:grid-cols-3"
           >
             <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
               Capital gain mínimo (€)
@@ -864,10 +1069,36 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
                 min={0}
                 step={1000}
                 value={minGain}
-                onChange={(e) => setMinGain(e.target.value)}
+                onChange={(e) => {
+                  setMinGain(e.target.value)
+                  setCurrentPageIndex(0)
+                  setSelected(new Set())
+                }}
                 placeholder="ej. 10000"
                 className="h-10 rounded-md border border-line bg-surface px-3 text-sm font-normal text-ink shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
               />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+              PM selected plan
+              <select
+                value={pmSelectedPlanFilter}
+                onChange={(e) => {
+                  setPmSelectedPlanFilter(e.target.value)
+                  setCurrentPageIndex(0)
+                  setSelected(new Set())
+                }}
+                className="h-10 rounded-md border border-line bg-surface px-3 text-sm font-normal text-ink shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+              >
+                <option value="">Todos los planes</option>
+                <option value={PM_SELECTED_PLAN_NOT_OUT_OF_PH}>
+                  Todos excepto {PM_SELECTED_PLAN_OUT_OF_PH}
+                </option>
+                {pmSelectedPlanOptions.map((plan) => (
+                  <option key={plan} value={plan}>
+                    {plan}
+                  </option>
+                ))}
+              </select>
             </label>
             <div className="flex items-end">
               <Button
@@ -877,6 +1108,9 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
                 onClick={() => {
                   setMinGain('')
                   setCoachFilters(new Set())
+                  setPmSelectedPlanFilter('')
+                  setCurrentPageIndex(0)
+                  setSelected(new Set())
                 }}
                 disabled={!filtersActive}
                 className="text-ink-secondary"
@@ -971,6 +1205,16 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
               type="button"
               variant="ghost"
               size="sm"
+              onClick={() => downloadCoachClientCsv(selectedRows, 'selected')}
+              className="text-ink-secondary"
+            >
+              <Download className="h-4 w-4" />
+              Exportar selección
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => setSelected(new Set())}
               className="text-ink-secondary"
             >
@@ -1052,6 +1296,7 @@ function TransactionSearchPanel({ onSelect, onUnauthorized }: TransactionSearchP
         onOpenChange={(open) => setBulkOpen(open)}
         rows={selectedRows}
         onClearSelection={() => setSelected(new Set())}
+        emailTestMode={emailTestMode}
       />
     </div>
   )
@@ -1108,6 +1353,11 @@ function TransactionRow({ row, selected, onToggle, onSelect }: TransactionRowPro
                 <span className="inline-flex items-center gap-1 rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-medium text-ink-secondary">
                   <UserCircle2 className="h-3 w-3" aria-hidden />
                   {row.coach_name}
+                </span>
+              )}
+              {row.pm_selected_plan && (
+                <span className="inline-flex items-center rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-medium text-ink-secondary">
+                  PM plan: {row.pm_selected_plan}
                 </span>
               )}
               {row.appreciation_town_name && (
@@ -1365,12 +1615,19 @@ interface BulkSendDialogProps {
   onOpenChange: (open: boolean) => void
   rows: TransactionSummary[]
   onClearSelection: () => void
+  emailTestMode: CoachEmailTestModeResponse | null
 }
 
 // Bulk-send modal. The important guardrail: selected transactions are first
 // converted into editable email/PDF drafts, and only then can the coach send.
 // This keeps weird no-scrape valuations visible before they reach a client.
-function BulkSendDialog({ open, onOpenChange, rows, onClearSelection }: BulkSendDialogProps) {
+function BulkSendDialog({
+  open,
+  onOpenChange,
+  rows,
+  onClearSelection,
+  emailTestMode,
+}: BulkSendDialogProps) {
   const [running, setRunning] = useState(false)
   const [drafting, setDrafting] = useState(false)
   const [done, setDone] = useState(false)
@@ -1381,6 +1638,8 @@ function BulkSendDialog({ open, onOpenChange, rows, onClearSelection }: BulkSend
   const [pdfPreviewError, setPdfPreviewError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const pdfUrlRef = useRef<string | null>(null)
+  const testEmailModeEnabled = Boolean(emailTestMode?.enabled)
+  const testEmailTo = emailTestMode?.test_email_to ?? COACH_TEST_EMAIL_TO
 
   // Reset progress whenever the dialog is reopened with a fresh selection.
   useEffect(() => {
@@ -1436,8 +1695,8 @@ function BulkSendDialog({ open, onOpenChange, rows, onClearSelection }: BulkSend
             },
           }))
           updateStatus(row.id, {
-            status: preview.client_email ? 'ready' : 'skipped',
-            message: preview.review_warning ?? 'Listo para revisar',
+            status: 'ready',
+            message: preview.review_warning ?? (preview.client_email ? 'Listo para revisar' : 'Sin email cliente; solo test'),
           })
         } catch (err) {
           if ((err as Error).name === 'AbortError') return
@@ -1506,14 +1765,15 @@ function BulkSendDialog({ open, onOpenChange, rows, onClearSelection }: BulkSend
         index += 1
         if (!row || controller.signal.aborted) return
         const draft = drafts[row.id]
-        if (!draft?.preview.client_email) {
+        if (!draft || (!draft.preview.client_email && !testEmailModeEnabled)) {
           updateStatus(row.id, { status: 'skipped', message: 'Sin email cliente' })
           continue
         }
+        const intendedRecipient = draft.preview.client_email ?? testEmailTo
         updateStatus(row.id, { status: 'sending' })
         try {
           const response = await sendTransactionEmail(row.id, {
-            to: draft.preview.client_email,
+            to: intendedRecipient,
             subject: draft.subject,
             body: draft.body,
             valuation_request: draft.preview.valuation_request,
@@ -1524,7 +1784,7 @@ function BulkSendDialog({ open, onOpenChange, rows, onClearSelection }: BulkSend
           updateStatus(row.id, {
             status: response.sent ? 'sent' : 'skipped',
             message: response.sent
-              ? `Enviado → ${draft.preview.delivered_to ?? draft.preview.client_email}`
+              ? `Enviado → ${response.delivered_to ?? intendedRecipient}`
               : response.message,
           })
         } catch (err) {
@@ -1594,11 +1854,18 @@ function BulkSendDialog({ open, onOpenChange, rows, onClearSelection }: BulkSend
           <DialogTitle>Revisar antes de enviar</DialogTitle>
           <DialogDescription>
             Primero generamos el email y el PDF en modo «sin comparables». Revisa el
-            contenido y los avisos; solo después se habilita el envío. En local se
-            enruta al inbox de pruebas configurado en{' '}
-            <code className="rounded bg-surface-muted px-1 text-xs">RESEND_TEST_TO</code>.
+            contenido y los avisos; solo después se habilita el envío.
           </DialogDescription>
         </DialogHeader>
+
+        {testEmailModeEnabled && (
+          <div className="rounded-2xl border border-primary/20 bg-primary/5 p-md text-sm text-ink">
+            <p className="font-semibold">Dev mode global activo</p>
+            <p className="text-ink-secondary">
+              Estos envíos se entregarán a {testEmailTo}; los clientes reales no reciben nada.
+            </p>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-2 rounded-2xl border border-line bg-surface-muted p-md md:grid-cols-6">
           <BulkCounter label="Preparando" value={counts.pending} tone="active" />
@@ -1631,7 +1898,9 @@ function BulkSendDialog({ open, onOpenChange, rows, onClearSelection }: BulkSend
                           {row.transaction_name}
                         </p>
                         <p className="truncate text-xs text-ink-secondary">
-                          {draft?.preview.delivered_to ?? row.client_email ?? 'Sin email cliente'}
+                          {testEmailModeEnabled
+                            ? `Dev → ${testEmailTo}`
+                            : draft?.preview.delivered_to ?? row.client_email ?? 'Sin email cliente'}
                           {state.message ? ` · ${state.message}` : ''}
                         </p>
                       </div>
@@ -1675,7 +1944,14 @@ function BulkSendDialog({ open, onOpenChange, rows, onClearSelection }: BulkSend
                 <div className="grid gap-2 rounded-xl border border-line/70 bg-surface-muted p-sm text-xs md:grid-cols-3">
                   <div>
                     <p className="font-semibold uppercase tracking-wide text-ink-muted">Destino</p>
-                    <p className="truncate text-ink">{activeDraft.preview.delivered_to ?? '—'}</p>
+                    <p className="truncate text-ink">
+                      {testEmailModeEnabled ? testEmailTo : activeDraft.preview.delivered_to ?? '—'}
+                    </p>
+                    {testEmailModeEnabled && (
+                      <p className="truncate text-[11px] text-ink-muted">
+                        Cliente: {activeDraft.preview.client_email ?? 'sin email'}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <p className="font-semibold uppercase tracking-wide text-ink-muted">Estimado</p>
@@ -1763,7 +2039,9 @@ function BulkSendDialog({ open, onOpenChange, rows, onClearSelection }: BulkSend
                   ? 'Preparando…'
                   : done
                     ? 'Completado'
-                    : `Enviar ${readyCount} revisados`}
+                    : testEmailModeEnabled
+                      ? `Enviar ${readyCount} tests`
+                      : `Enviar ${readyCount} revisados`}
             </Button>
           </div>
         </div>
@@ -1832,6 +2110,7 @@ interface TransactionDetailPanelProps {
   transactionId: string
   onBack: () => void
   onUnauthorized: () => void
+  emailTestMode: CoachEmailTestModeResponse | null
 }
 
 type ReportFlowView = 'setup' | 'report' | 'composer'
@@ -1840,6 +2119,7 @@ function TransactionDetailPanel({
   transactionId,
   onBack,
   onUnauthorized,
+  emailTestMode,
 }: TransactionDetailPanelProps) {
   const { t } = useTranslation()
   const [data, setData] = useState<TransactionDetail | null>(null)
@@ -2031,6 +2311,7 @@ function TransactionDetailPanel({
               <CoachClientReportComposer
                 transaction={data}
                 valuationResult={valuationResult}
+                emailTestMode={emailTestMode}
               />
             </div>
           )}
@@ -2438,6 +2719,7 @@ function CoachReportLoadingDialog({ open }: CoachReportLoadingDialogProps) {
 interface CoachClientReportComposerProps {
   transaction: TransactionDetail
   valuationResult: CoachTransactionValuationResponse
+  emailTestMode: CoachEmailTestModeResponse | null
 }
 
 interface EditableReportSection {
@@ -2449,13 +2731,16 @@ interface EditableReportSection {
 function CoachClientReportComposer({
   transaction,
   valuationResult,
+  emailTestMode,
 }: CoachClientReportComposerProps) {
   const { t } = useTranslation()
   const stats = valuationResult.valuation.stats
   const appreciation = valuationResult.valuation.market_appreciation ?? null
   const invested = totalSpent(transaction)
   const defaultTo = transaction.client_email ?? ''
-  const zoneName = appreciation?.town_name ?? valuationResult.valuation.municipio.name
+  const zoneName = formatPlaceName(
+    appreciation?.town_name ?? valuationResult.valuation.municipio.name,
+  )
   const currentPpm2 = appreciation?.to_eur_per_m2 ?? stats.avg_price_per_m2 ?? null
   const purchasePpm2 =
     transaction.purchase_eur_per_m2 ?? pricePerM2(invested, transaction.landsize_m2)
@@ -2472,16 +2757,17 @@ function CoachClientReportComposer({
       title: 'Lo que pagaste vs. cómo está el mercado hoy',
       body: [
         `Cuando adquiriste tu propiedad, el precio fue de ${formatEmailPricePerM2(purchasePpm2)}.`,
-        `Hoy, el EUR/m² medio en ${zoneName} se sitúa en ${formatEmailPricePerM2(currentPpm2)} — lo que representa una variación de ${formatEmailPercent(appreciation?.pct_change !== undefined ? appreciation.pct_change * 100 : null)} desde tu adquisición.`,
-        `Este dato refleja la mediana del municipio de ${zoneName} y no el valor específico de tu inmueble. La ubicación exacta, planta, orientación y estado de la propiedad pueden hacer que tu caso sea mejor o peor que la mediana. En la sesión con nuestros expertos lo analizamos en detalle.`,
+        `Hoy, la mediana municipal €/m² en ${zoneName} se sitúa en ${formatEmailPricePerM2(currentPpm2)} — lo que representa una variación de ${formatEmailPercent(appreciation?.pct_change !== undefined ? appreciation.pct_change * 100 : null)} desde tu adquisición.`,
+        `La primera cifra es tu €/m² real pagado; la segunda refleja la mediana del municipio de ${zoneName}, no el valor específico de tu inmueble. La ubicación exacta, planta, orientación y estado de la propiedad pueden hacer que tu caso sea mejor o peor que la mediana. En la sesión con nuestros expertos lo analizamos en detalle.`,
       ].join('\n'),
     },
     {
       id: 'meaning',
       title: '¿Qué significa esto para ti?',
       body: [
-        `Si el mercado de ${zoneName} se ha revalorizado, es una buena señal para tu inversión. Pero para entender el impacto real en tu propiedad concreta, te invitamos a una sesión gratuita de 30 minutos con uno de nuestros expertos en valoración.`,
-        `→ ${bookingUrl}`,
+        `Si quieres explorar cómo aprovechar la revalorización de ${zoneName} y sacar capital de tu inmueble, podemos ayudarte a aterrizarlo con números reales. Como cliente de PropHero tienes a tu disposición nuestro equipo de expertos y tasadores oficiales para revisar tu caso y valorar las mejores opciones para tu propiedad.`,
+        `En 30 minutos te damos una estimación real, basada en tu inmueble concreto — no en promedios.`,
+        `→ Descubre cuánto vale tu propiedad hoy [${bookingUrl}]`,
       ].join('\n'),
     },
   ]
@@ -2497,6 +2783,8 @@ function CoachClientReportComposer({
   const [sending, setSending] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const testEmailModeEnabled = Boolean(emailTestMode?.enabled)
+  const testEmailTo = emailTestMode?.test_email_to ?? COACH_TEST_EMAIL_TO
 
   const emailBody = [
     `Hola ${firstName},`,
@@ -2516,13 +2804,19 @@ function CoachClientReportComposer({
   }
 
   async function handleSend() {
-    if (sending || !to.trim() || !subject.trim() || sections.every((section) => !section.body.trim())) return
+    if (
+      sending ||
+      (!testEmailModeEnabled && !to.trim()) ||
+      !subject.trim() ||
+      sections.every((section) => !section.body.trim())
+    ) return
     setSending(true)
     setMessage(null)
     setError(null)
+    const intendedRecipient = testEmailModeEnabled ? testEmailTo : to.trim()
     try {
       const response = await sendTransactionEmail(transaction.id, {
-        to: to.trim(),
+        to: intendedRecipient,
         subject: subject.trim(),
         body: emailBody.trim(),
         valuation_request: valuationResult.valuation_request,
@@ -2575,10 +2869,24 @@ function CoachClientReportComposer({
       </div>
 
       <div className="grid gap-lg p-lg md:p-xl">
+        {testEmailModeEnabled && (
+          <div className="rounded-2xl border border-primary/20 bg-primary/5 p-md text-sm text-ink">
+            <p className="font-semibold">Dev mode global activo</p>
+            <p className="text-ink-secondary">
+              Este envío irá a {testEmailTo}; el cliente real no recibe nada.
+            </p>
+          </div>
+        )}
+
         <div className="grid gap-md md:grid-cols-2">
           <label className="grid gap-2 text-sm font-medium text-ink">
             {t('coach.email.to')}
             <Input value={to} onChange={(event) => setTo(event.target.value)} />
+            {testEmailModeEnabled && (
+              <span className="text-xs font-normal text-ink-muted">
+                En Dev mode se ignora este campo y se entrega a {testEmailTo}.
+              </span>
+            )}
           </label>
           <label className="grid gap-2 text-sm font-medium text-ink">
             {t('coach.email.subject')}
@@ -2594,7 +2902,12 @@ function CoachClientReportComposer({
         {mode === 'preview' ? (
           <div className="rounded-2xl border border-line bg-white p-lg shadow-sm">
             <div className="border-b border-line pb-md">
-              <p className="text-sm text-ink-secondary">Para: {to || '—'}</p>
+              <p className="text-sm text-ink-secondary">
+                Para: {testEmailModeEnabled ? testEmailTo : to || '—'}
+              </p>
+              {testEmailModeEnabled && (
+                <p className="mt-1 text-xs text-ink-muted">Cliente original: {to || '—'}</p>
+              )}
               <h4 className="mt-1 text-xl font-semibold text-ink">{subject}</h4>
               <p className="mt-1 text-sm text-ink-secondary">
                 {valuationResult.valuation_request.address}
@@ -2666,11 +2979,16 @@ function CoachClientReportComposer({
           type="button"
           size="lg"
           onClick={handleSend}
-          disabled={sending || !to.trim() || !subject.trim() || sections.every((section) => !section.body.trim())}
+          disabled={
+            sending ||
+            (!testEmailModeEnabled && !to.trim()) ||
+            !subject.trim() ||
+            sections.every((section) => !section.body.trim())
+          }
           className="w-full rounded-xl shadow-card transition-shadow hover:shadow-lift sm:w-auto"
         >
           {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          {sending ? t('coach.email.sending') : 'Enviar al cliente'}
+          {sending ? t('coach.email.sending') : testEmailModeEnabled ? 'Enviar dev' : 'Enviar al cliente'}
         </Button>
       </div>
     </Card>

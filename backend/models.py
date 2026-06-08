@@ -523,6 +523,9 @@ class TransactionSummary(BaseModel):
     created_at: Optional[str] = Field(
         None, description="ISO date or whatever Airtable's `Create Date` column returned."
     )
+    pm_selected_plan: Optional[str] = Field(
+        None, description="Airtable `PM selected plan`, used by the coach worklist filter."
+    )
     price: Optional[int] = Field(None, description="Airtable `Price` in EUR.")
     final_reno_cost: Optional[int] = Field(None, description="Airtable `Final reno cost` in EUR.")
     final_furniture_cost: Optional[int] = Field(
@@ -681,11 +684,27 @@ class CoachEmailSendRequest(BaseModel):
     lead: Optional[LeadInfo] = None
     transaction: Optional[TransactionDetail] = None
     include_comparables: bool = True
+    test_mode: bool = Field(
+        False,
+        description="Route this send to RESEND_TEST_EMAIL_TO instead of the client.",
+    )
 
 
 class CoachEmailSendResponse(BaseModel):
     sent: bool
     message: str
+    delivered_to: Optional[str] = None
+    client_email: Optional[str] = None
+    test_mode: bool = False
+
+
+class CoachEmailTestModeRequest(BaseModel):
+    enabled: bool
+
+
+class CoachEmailTestModeResponse(BaseModel):
+    enabled: bool
+    test_email_to: str
 
 
 class CoachAutoEmailPreviewResponse(BaseModel):
@@ -700,10 +719,7 @@ class CoachAutoEmailPreviewResponse(BaseModel):
     )
     delivered_to: Optional[str] = Field(
         None,
-        description=(
-            "Email address that would receive the message. When RESEND_TEST_TO "
-            "is set this is the test inbox, not the client's."
-        ),
+        description="Email address that would receive the message.",
     )
     subject: str
     body: str
@@ -744,10 +760,7 @@ class CoachAutoEmailResponse(BaseModel):
     )
     delivered_to: Optional[str] = Field(
         None,
-        description=(
-            "Email address the message was actually delivered to. When "
-            "RESEND_TEST_TO is set this is the test inbox, not the client's."
-        ),
+        description="Email address the message was actually delivered to.",
     )
     client_email: Optional[str] = Field(
         None, description="Client email taken from the Airtable transaction."

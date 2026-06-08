@@ -19,6 +19,7 @@ Field mapping (Airtable → API):
 | `Created_Date`                                                                                    | `created_at`         |
 | `Country (from Properties)`                                                                       | filter only          |
 | `Stage`                                                                                           | filter only          |
+| `PM selected plan`                                                                                | `pm_selected_plan`   |
 | `Price`                                                                                           | `price`              |
 | `Final reno cost`                                                                                 | `final_reno_cost`    |
 | `Final furniture cost`                                                                            | `final_furniture_cost` |
@@ -79,6 +80,7 @@ FIELD_COUNTRY = "Country (from Properties)"
 FIELD_STAGE = "Stage"
 TARGET_COUNTRY = "Spain"
 TARGET_STAGE = "Property leased"
+FIELD_PM_SELECTED_PLAN = "PM selected plan"
 FIELD_PRICE = "Price"
 FIELD_FINAL_RENO_COST = "Final reno cost"
 FIELD_FINAL_FURNITURE_COST = "Final furniture cost"
@@ -128,6 +130,7 @@ VALUATION_FIELDS: list[str] = [
     FIELD_BATHS,
     FIELD_LANDSIZE,
     FIELD_CREATED_AT,
+    FIELD_PM_SELECTED_PLAN,
     FIELD_PRICE,
     FIELD_FINAL_RENO_COST,
     FIELD_FINAL_FURNITURE_COST,
@@ -290,6 +293,7 @@ def _summary_from_record(record: dict[str, Any]) -> TransactionSummary:
         bathrooms=_get_int(fields, FIELD_BATHS),
         landsize_m2=landsize_m2,
         created_at=_get_str(fields, FIELD_CREATED_AT),
+        pm_selected_plan=_get_str(fields, FIELD_PM_SELECTED_PLAN),
         price=_get_int(fields, FIELD_PRICE),
         final_reno_cost=_get_int(fields, FIELD_FINAL_RENO_COST),
         final_furniture_cost=_get_int(fields, FIELD_FINAL_FURNITURE_COST),

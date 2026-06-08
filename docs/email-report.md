@@ -70,8 +70,11 @@ All knobs live in environment variables (see `.env.example`):
 # Resend — required for actual email delivery
 RESEND_API_KEY=re_xxxxxxxxxxxxxxxxx
 RESEND_FROM_EMAIL="PropHero <noreply@prophero.com>"
-# Optional smoke-test override; remove before sending to real clients
-RESEND_TEST_TO=salchiwolf@gmail.com
+# Optional reply inbox; useful for routing replies into Resend inbound
+RESEND_REPLY_TO=divestments@erkaugaruu.resend.app
+# Optional safety mode: route all Resend deliveries to one inbox
+RESEND_TEST_EMAIL_MODE=true
+RESEND_TEST_EMAIL_TO=ignacio.delacuba@prophero.com
 
 # SQLite location (defaults to backend/data/leads.db)
 HV_DB_PATH=/absolute/path/to/leads.db
@@ -85,10 +88,17 @@ returns without sending. The lead and valuation are still persisted and the
 HTTP response is still 200 — useful in dev where we don't want to spam test
 inboxes. The `email_scheduled` field in `LeadResponse` reflects this.
 
-**If `RESEND_TEST_TO` is set**, all emails are delivered to that address while
-the original lead/client recipient is left untouched in the app payloads. Use
-this for smoke tests, then unset it in production so reports go to each
-client's actual email.
+When `RESEND_API_KEY` is configured, emails are delivered to the lead/client
+email captured in the request unless test mode is enabled.
+
+For smoke tests, set `RESEND_TEST_EMAIL_MODE=true` or use the global
+`Dev mode ON/OFF` button in the `/coach` header. Resend then receives
+`RESEND_TEST_EMAIL_TO` as the only destination while the original lead/client
+email remains visible in logs/UI for review.
+
+**If `RESEND_REPLY_TO` is set**, Resend receives a `reply_to` value in the
+outbound payload. The email still appears to come from `RESEND_FROM_EMAIL`, but
+client replies go to the configured inbox (for example a Resend inbound address).
 
 ## Resend setup (one-time)
 
@@ -98,6 +108,8 @@ client's actual email.
 3. Create an API key with `emails.send` scope and put it in `.env`.
 4. Set `RESEND_FROM_EMAIL` to a `Name <addr@your-domain.com>` value that
    matches the verified domain.
+5. Optional: set `RESEND_REPLY_TO` to a Resend inbound address if you want
+   replies visible in Resend while keeping the verified PropHero sender.
 
 Note: with an unverified domain you can only send to your own login email —
 fine for smoke tests, useless for production.
